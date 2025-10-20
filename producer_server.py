@@ -14,7 +14,7 @@ def on_message(ws, message):
             print("New photo sent.")
     elif message.startswith("Coordinates: "):
         print(message)
-	ws.send("Coordinates received.")
+        ws.send("Coordinates received.")
     else:
         ws.send("Message send in invalid format. Accepted messages: 'SEND_PHOTO', 'Coordinates: (lat, lon)'")
 
