@@ -4,7 +4,7 @@ import time
 import base64
 import os
 
-SERVER_URL = "ws://adres_serwera:8080"
+SERVER_URL = "ws://server_address:8080"
 
 def on_message(ws, message):
     print("Odebrano od serwera:", message)
