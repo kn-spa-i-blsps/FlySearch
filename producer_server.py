@@ -1,17 +1,27 @@
 import websocket
 import threading
-import base64
 
 SERVER_URL = "ws://server_address:8080"
+CAPTURE_PY = "/home/app/capture.py"
+OUT_DIR = "./img"
+FNAME = "photo.jpg"
+
+pathlib.Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
+PHOTO_PATH = str(pathlib.Path(OUT_DIR) / FNAME)
+
+def take_photo():
+    env = os.environ.copy()
+    env["OUT_DIR"] = str(pathlib.Path(OUT_DIR).resolve())
+    env["FNAME"] = FNAME
+    subprocess.run(["python3", CAPTURE_PY], env=env, check=True)
 
 def on_message(ws, message):
     print("Received:", message)
     if message == "SEND_PHOTO":
-        #os.system("libcamera-jpeg -o photo.jpg")
-        with open("photo.jpg", "rb") as f:
-            data = base64.b64encode(f.read()).decode("utf-8")
-            ws.send(data)
-            print("New photo sent.")
+        take_photo()
+        with open(PHOTO_PATH, "rb") as f:
+            ws.send(f.read(), opcode=websocket.ABNF.OPCODE_BINARY)
+            print(f"Sent photo: {PHOTO_PATH}")
     elif message.startswith("Coordinates: "):
         print(message)
         ws.send("Coordinates received.")
