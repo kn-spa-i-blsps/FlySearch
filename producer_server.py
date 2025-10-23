@@ -1,8 +1,10 @@
 import websocket
 import threading
+import pathlib
+import subprocess
 
 SERVER_URL = "ws://server_address:8080"
-CAPTURE_PY = "/home/app/capture.py"
+CAPTURE_PY = "/app/capture.py"
 OUT_DIR = "./img"
 FNAME = "photo.jpg"
 
