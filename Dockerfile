@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Utwórz i aktywuj wirtualne środowisko Pythona
 RUN python3 -m venv --system-site-packages $VIRTUAL_ENV \
     && pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir websockets
+    && pip install --no-cache-dir websockets websocket-client
 
 # Ustaw katalog roboczy
 WORKDIR /app
