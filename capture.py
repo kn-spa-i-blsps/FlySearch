@@ -7,7 +7,7 @@ DIR = Path(os.environ.get("OUT_DIR", "./out")) # save files to /out in the conta
 H = 1080
 W = 1920
 os.makedirs(DIR, exist_ok=True)
-file_name = f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+file_name = os.environ.get("FNAME", "photo.jpg")
 path = os.path.join(DIR, file_name)
 
 camera = Picamera2()
