@@ -43,10 +43,39 @@ services:
       HEIGHT: "${HEIGHT:-1080}"
       QUALITY: "${QUALITY:-90}"
     # na start wygodnie:
-    privileged: true
+    # privileged: true
     # po testach usuń privileged i dopisz konkretne device'y:
-    # devices:
-    #  - /dev/media0:/dev/media0
-    #  - /dev/media1:/dev/media1
-    #  - /dev/video0:/dev/video0
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/video19:/dev/video19
+      - /dev/video2:/dev/video2
+      - /dev/video20:/dev/video20
+      - /dev/video21:/dev/video21
+      - /dev/video22:/dev/video22
+      - /dev/video23:/dev/video23
+      - /dev/video24:/dev/video24
+      - /dev/video25:/dev/video25
+      - /dev/video26:/dev/video26
+      - /dev/video27:/dev/video27
+      - /dev/video28:/dev/video28
+      - /dev/video29:/dev/video29
+      - /dev/video3:/dev/video3
+      - /dev/video30:/dev/video30
+      - /dev/video31:/dev/video31
+      - /dev/video32:/dev/video32
+      - /dev/video33:/dev/video33
+      - /dev/video34:/dev/video34
+      - /dev/video35:/dev/video35
+      - /dev/video4:/dev/video4
+      - /dev/video5:/dev/video5
+      - /dev/video6:/dev/video6
+      - /dev/video7:/dev/video7
+      - /dev/media0:/dev/media0
+      - /dev/media1:/dev/media1
+      - /dev/media2:/dev/media2
+      - /dev/media3:/dev/media3
+      - /dev/dma_heap/linux,cma:/dev/dma_heap/linux,cma
+      - /dev/dma_heap/system:/dev/dma_heap/system
+      - /dev/dma_heap/vidbuf_cached:/dev/dma_heap/vidbuf_cached
     profiles: ["producer"]
