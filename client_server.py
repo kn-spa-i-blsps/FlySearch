@@ -18,11 +18,10 @@ async def handler(ws):
         async for message in ws:
             # binary photo (if you switch client to send bytes)
             if isinstance(message, (bytes, bytearray)):
-                data = bytes(message)
                 file_name = f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
                 path = os.path.join(UPLOAD_DIR, file_name)
                 with open(path, "wb") as f:
-                    f.write(data)
+                    f.write(message)
                 print(f"[WS] saved binary -> {path}")
                 await ws.send(f"SAVED {path}")
                 continue
@@ -47,6 +46,28 @@ def _signal_handler():
     if not stop.is_set():
         print("\n[WS] shutdown requested (signal). Closing clients…")
         stop.set()
+
+async def stdin_sender():
+    # Enter = wyślij SEND_PHOTO do wszystkich; 'q' = zamknij serwer
+    loop = asyncio.get_running_loop()
+    while not stop.is_set():
+        try:
+            line = await loop.run_in_executor(None, input, "Enter=SEND_PHOTO, q=quit")
+        except (EOFError, KeyboardInterrupt):
+            break
+        line = (line or "").strip().lower()
+        if line == "q":
+            _signal_handler()
+            break
+        dead = []
+        for ws in list(clients):
+            try:
+                await ws.send("SEND_PHOTO")
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            clients.discard(ws)
+        print(f"[WS] SEND_PHOTO sent to {len(clients)} client(s)", flush=True)
 
 async def main():
     loop = asyncio.get_running_loop()
