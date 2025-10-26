@@ -8,19 +8,19 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--server", default=os.environ.get("SERVER_URL", "ws://127.0.0.1:8080"))
     p.add_argument("--capture", default=os.environ.get("CAPTURE_PY", "/app/capture.py"))
-    p.add_argument("--out", default=os.environ.get("OUT_DIR", "/out"))
+    p.add_argument("--img", default=os.environ.get("IMG_DIR", "/img"))
     p.add_argument("--fname", default=os.environ.get("FNAME", "photo.jpg"))
     return p.parse_args()
 
 def main():
     args = parse_args()
 
-    out_dir = pathlib.Path(args.out); out_dir.mkdir(parents=True, exist_ok=True)
-    photo_path = str(out_dir / args.fname)
+    img_dir = pathlib.Path(args.img); img_dir.mkdir(parents=True, exist_ok=True)
+    photo_path = str(img_dir / args.fname)
 
     def take_photo():
         env = os.environ.copy()
-        env["OUT_DIR"] = str(out_dir)
+        env["IMG_DIR"] = str(img_dir)
         env["FNAME"] = args.fname
         subprocess.run(["python3", args.capture], env=env, check=True)
 
