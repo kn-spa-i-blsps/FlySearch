@@ -5,8 +5,10 @@ import websockets
 clients: set = set()
 stop = asyncio.Event()
 
-HOST, PORT = "0.0.0.0", 8080
-UPLOAD_DIR = "uploads"
+HOST = os.environ.get("WS_HOST", "0.0.0.0")
+PORT = int(os.environ.get("WS_PORT", "8080"))
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
+MAX_WS_MB = int(os.environ.get("MAX_WS_MB", "25"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 async def handler(ws):
@@ -80,7 +82,7 @@ async def main():
     async with websockets.serve(
         handler,
         HOST, PORT,
-        max_size=25 * 1024 * 1024,  # 25MB
+        max_size=MAX_WS_MB * 1024 * 1024,  # 25MB
     ):
         print(f"[WS] listening on ws://{HOST}:{PORT}")
         await stop.wait()

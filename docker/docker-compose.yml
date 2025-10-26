@@ -1,9 +1,5 @@
 services:
   server:
-    environment:
-        PYTHONUNBUFFERED: "1"
-    tty: true
-    stdin_open: true
     build: 
       context: ..
       dockerfile: Dockerfile
@@ -13,6 +9,14 @@ services:
     volumes:
       - ../:/app
       - ../uploads:/app/uploads
+    environment:
+        PYTHONUNBUFFERED: "1"
+        WS_HOST: "${WS_HOST:-0.0.0.0}"
+        WS_PORT: "${WS_PORT:-8080}"
+        UPLOAD_DIR: "/app/uploads"
+        MAX_WS_MB: "${MAX_WS_MB:-25}"
+    tty: true
+    stdin_open: true
     ports: ["8080:8080"]
     profiles: ["server"]
 
@@ -31,7 +35,14 @@ services:
       - ../img:/img
       - /run/udev:/run/udev:ro
     environment:
-      IMG_DIR: /img
+      environment:
+      SERVER_URL: "${SERVER_URL}"
+      IMG_DIR: "${IMG_DIR:-/img}"
+      CAPTURE_PY: "${CAPTURE_PY:-/app/capture.py}"
+      FNAME: "${FNAME:-photo.jpg}"
+      WIDTH: "${WIDTH:-1920}"
+      HEIGHT: "${HEIGHT:-1080}"
+      QUALITY: "${QUALITY:-90}"
     # na start wygodnie:
     privileged: true
     # po testach usuń privileged i dopisz konkretne device'y:

@@ -6,10 +6,13 @@ import argparse
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--server", default=os.environ.get("SERVER_URL", "ws://127.0.0.1:8080"))
-    p.add_argument("--capture", default=os.environ.get("CAPTURE_PY", "/app/capture.py"))
-    p.add_argument("--img", default=os.environ.get("IMG_DIR", "/img"))
-    p.add_argument("--fname", default=os.environ.get("FNAME", "photo.jpg"))
+    server = os.environ.get("SERVER_URL", p.server)
+    capture = os.environ.get("CAPTURE_PY", p.capture)
+    img_dir = pathlib.Path(os.environ.get("OUT_DIR", p.img))
+    fname = os.environ.get("FNAME", p.fname)
+    w = int(os.environ.get("WIDTH", "1920"))
+    h = int(os.environ.get("HEIGHT", "1080"))
+    q = int(os.environ.get("QUALITY", "90"))
     return p.parse_args()
 
 def main():
@@ -22,6 +25,9 @@ def main():
         env = os.environ.copy()
         env["IMG_DIR"] = str(img_dir)
         env["FNAME"] = args.fname
+        env["WIDTH"] = args.w
+        env["HEIGHT"] = args.h 
+        env["QUALITY"] = args.q
         subprocess.run(["python3", args.capture], env=env, check=True)
 
     def on_message(ws, message):
