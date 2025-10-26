@@ -1,26 +1,30 @@
 services:
   server:
-    build: .
+    build: 
+      context: ..
+      dockerfile: Dockerfile
     image: flysearch:latest
     command: python3 /app/client_server.py
     working_dir: /app
     volumes:
-      - ./:/app
-      - ./uploads:/app/uploads
+      - ../:/app
+      - ../uploads:/app/uploads
     ports: ["8080:8080"]
     profiles: ["server"]
 
   producer:
     image: flysearch:latest
-    build: .
+    build: 
+      context: ..
+      dockerfile: Dockerfile
     command: >
       python3 /app/producer_server.py
       --server ${SERVER_URL}
       --fname ${FNAME:-photo.jpg}
     working_dir: /app
     volumes:
-      - ./:/app
-      - ./img:/img
+      - ../:/app
+      - ../img:/img
       - /run/udev:/run/udev:ro
     environment:
       IMG_DIR: /img
