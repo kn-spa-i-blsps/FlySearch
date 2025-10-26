@@ -25,9 +25,9 @@ def main():
         env = os.environ.copy()
         env["IMG_DIR"] = str(img_dir)
         env["FNAME"] = args.fname
-        env["WIDTH"] = args.w
-        env["HEIGHT"] = args.h 
-        env["QUALITY"] = args.q
+        env["WIDTH"] = str(args.width)
+        env["HEIGHT"] = str(args.height)
+        env["QUALITY"] = str(args.quality)
         subprocess.run(["python3", args.capture], env=env, check=True)
 
     def on_message(ws, message):
