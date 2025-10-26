@@ -4,7 +4,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     image: flysearch:latest
-    command: python3 /app/client_server.py
+    command: python3 -u /app/client_server.py
     working_dir: /app
     volumes:
       - ../:/app
@@ -35,7 +35,6 @@ services:
       - ../img:/img
       - /run/udev:/run/udev:ro
     environment:
-      environment:
       SERVER_URL: "${SERVER_URL}"
       IMG_DIR: "${IMG_DIR:-/img}"
       CAPTURE_PY: "${CAPTURE_PY:-/app/capture.py}"
