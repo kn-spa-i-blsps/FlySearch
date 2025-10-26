@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from picamera2 import Picamera2
 
-DIR = Path(os.environ.get("OUT_DIR", "./out")) # save files to /out in the container
+DIR = Path(os.environ.get("IMG_DIR", "./img")) # save files to /img in the container
 H = 1080
 W = 1920
 os.makedirs(DIR, exist_ok=True)
