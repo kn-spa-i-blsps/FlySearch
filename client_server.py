@@ -1,6 +1,8 @@
-import asyncio, os, signal
+import asyncio, os, signal, json
 from datetime import datetime 
 import websockets
+from typing import Dict
+from prompt_generation.prompts import Prompts, PROMPT_FACTORIES
 
 clients: set = set()
 stop = asyncio.Event()
@@ -9,7 +11,9 @@ HOST = os.environ.get("WS_HOST", "0.0.0.0")
 PORT = int(os.environ.get("WS_PORT", "8080"))
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 MAX_WS_MB = int(os.environ.get("MAX_WS_MB", "25"))
+PROMPTS_DIR = os.environ.get("PROMPTS_DIR", "prompts")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(PROMPTS_DIR, exist_ok=True)
 
 async def handler(ws):
     peer = ws.remote_address
@@ -48,19 +52,85 @@ def _signal_handler():
         print("\n[WS] shutdown requested (signal). Closing clients…")
         stop.set()
 
+def _generate_prompt(kind: str, kv: Dict[str, str]) -> Dict[str, str]:
+    """
+    kind: 'FS-1' lub 'FS-2'
+    kv:   słownik z parametrami (object, glimpses, area)
+    """
+    # wartości domyślne
+    params = {
+        "object": kv.get("object", "helipad"),
+        "glimpses": int(kv.get("glimpses", "6")),
+        "area": int(kv.get("area", "80")),  # dla FS-1
+    }
+    t = Prompts(kind)
+    factory = PROMPT_FACTORIES[t]
+    if t == Prompts.FS1:
+        text = factory(params["glimpses"], params["object"], params["area"])
+    else:
+        text = factory(params["glimpses"], params["object"])
+    return {"kind": kind, "text": text, **params}
+
+def _save_prompt(prompt_meta: Dict[str, str]) -> Dict[str, str]:
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base = f"{prompt_meta['kind'].lower()}_{ts}"
+    txt_path = os.path.join(PROMPTS_DIR, base + ".txt")
+    json_path = os.path.join(PROMPTS_DIR, base + ".json")
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write(prompt_meta["text"])
+    meta_to_save = dict(prompt_meta)
+    meta_to_save.pop("text", None)
+    meta_to_save["saved_at"] = ts
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(meta_to_save, f, ensure_ascii=False, indent=2)
+    return {"txt": txt_path, "json": json_path}
+
+async def _send_prompt_to_client(prompt_text: str):
+    # bierzemy pierwszego aktywnego klienta (u Ciebie jest jeden)
+    ws = next(iter(clients), None)
+    if ws is None:
+        print("No drone connected – prompt zapisany lokalnie, ale nie wysłany.")
+        return
+    payload = {
+        "type": "SEND_PROMPT",
+        "msg_id": f"p-{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
+        "prompt_id": f"p-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        "prompt": prompt_text
+    }
+    try:
+        await ws.send(json.dumps(payload))
+        print("[WS] SEND_PROMPT sent")
+    except Exception as e:
+        print(f"[WS] failed to send prompt: {e}")
+
 async def stdin_repl():
-    # SEND_PHOTO - wyślij zdjęcie na drona; 'q' = zamknij serwer
+    """
+    Komendy:
+      SEND_PHOTO           - poproś drona o zdjęcie
+      PROMPT FS-1 [key=val ...]
+      PROMPT FS-2 [key=val ...]
+        Parametry:
+          object=<nazwa>
+          glimpses=<int>
+          area=<int>        (tylko FS-1)
+      q                     - zakończ
+    """
     loop = asyncio.get_running_loop()
+    print("Commands: SEND_PHOTO | PROMPT FS-1|FS-2 [object=.. glimpses=.. area=..] | q")
     while not stop.is_set():
         try:
             line = await loop.run_in_executor(None, input, "> ")
         except (EOFError, KeyboardInterrupt):
             line = "q"
-        line = (line or " ").strip().lower()
-        if line in ("q", "quit", "exit"):
+        line = (line or " ").strip()
+        if not line:
+            continue
+
+        cmd = line.lower()
+        if cmd in ("q", "quit", "exit"):
             _signal_handler()
             break
-        if line == "send_photo":
+        if cmd == "send_photo":
             ws = next(iter(clients), None)
             if ws is None:
                 print("No drone connected")
@@ -70,8 +140,30 @@ async def stdin_repl():
                 print("[WS] SEND_PHOTO sent")
             except Exception as e:
                 print(f"[WS] send failed: {e}")
+            continue
+
+        if cmd.startswith("prompt "):
+            parts = cmd.split()
+            if len(parts) < 2:
+                print("Usage: PROMPT FS-1|FS-2 [object=.. glimpses=.. area=..]")
+                continue
+            kind = parts[1].upper()
+            if kind not in ("FS-1", "FS-2"):
+                print("Kind must be FS-1 or FS-2")
+                continue
+
+            kv: Dict[str, str] = {}
+            for token in parts[2:]:
+                if "=" in token:
+                    k, v = token.split("=", 1)
+                    kv[k.strip().lower()] = v.strip()
+            meta = _generate_prompt(kind, kv)
+            saved = _save_prompt(meta)
+            print(f"[PROMPT] saved -> {saved['txt']} (+meta {saved['json']})")
+            continue
+
         else:
-            print("Commands: SEND_PHOTO | q")
+            print("Commands: SEND_PHOTO | PROMPT FS-1|FS-2 [object=.. glimpses=.. area=..] | q")
 
 async def main():
     loop = asyncio.get_running_loop()
