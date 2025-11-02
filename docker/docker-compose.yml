@@ -1,0 +1,52 @@
+services:
+  server:
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+    image: flysearch:latest
+    command: python3 -u /app/client_server.py
+    working_dir: /app
+    volumes:
+      - ../:/app
+      - ../uploads:/app/uploads
+    environment:
+        PYTHONUNBUFFERED: "1"
+        WS_HOST: "${WS_HOST:-0.0.0.0}"
+        WS_PORT: "${WS_PORT:-8080}"
+        UPLOAD_DIR: "/app/uploads"
+        MAX_WS_MB: "${MAX_WS_MB:-25}"
+    tty: true
+    stdin_open: true
+    ports: ["8080:8080"]
+    profiles: ["server"]
+
+  producer:
+    image: flysearch:latest
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+    command: >
+      python3 /app/producer_server.py
+      --server ${SERVER_URL}
+      --fname ${FNAME:-photo.jpg}
+    working_dir: /app
+    volumes:
+      - ../:/app
+      - ../img:/img
+      - /run/udev:/run/udev:ro
+    environment:
+      SERVER_URL: "${SERVER_URL}"
+      IMG_DIR: "${IMG_DIR:-/img}"
+      CAPTURE_PY: "${CAPTURE_PY:-/app/capture.py}"
+      FNAME: "${FNAME:-photo.jpg}"
+      WIDTH: "${WIDTH:-1920}"
+      HEIGHT: "${HEIGHT:-1080}"
+      QUALITY: "${QUALITY:-90}"
+    # na start wygodnie:
+    privileged: true
+    # po testach usuń privileged i dopisz konkretne device'y:
+    # devices:
+    #  - /dev/media0:/dev/media0
+    #  - /dev/media1:/dev/media1
+    #  - /dev/video0:/dev/video0
+    profiles: ["producer"]
