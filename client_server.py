@@ -15,7 +15,6 @@ async def handler(ws):
     peer = ws.remote_address
     clients.add(ws)
     print(f"[WS] connected: {peer}")
-    await ws.send("SEND_PHOTO")  # ask the client to send a photo
     try:
         async for message in ws:
             # binary photo (if you switch client to send bytes)
@@ -49,27 +48,30 @@ def _signal_handler():
         print("\n[WS] shutdown requested (signal). Closing clients…")
         stop.set()
 
-async def stdin_sender():
-    # Enter = wyślij SEND_PHOTO do wszystkich; 'q' = zamknij serwer
+async def stdin_repl():
+    # SEND_PHOTO - wyślij zdjęcie na drona; 'q' = zamknij serwer
     loop = asyncio.get_running_loop()
     while not stop.is_set():
         try:
-            line = await loop.run_in_executor(None, input, "Enter=SEND_PHOTO, q=quit")
+            line = await loop.run_in_executor(None, input, "> ")
         except (EOFError, KeyboardInterrupt):
-            break
-        line = (line or "").strip().lower()
-        if line == "q":
+            line = "q"
+        line = (line or " ").strip().lower()
+        if line in ("q", "quit", "exit"):
             _signal_handler()
             break
-        dead = []
-        for ws in list(clients):
+        if line == "send_photo":
+            ws = next(iter(clients), None)
+            if ws is None:
+                print("No drone connected")
+                continue
             try:
                 await ws.send("SEND_PHOTO")
-            except Exception:
-                dead.append(ws)
-        for ws in dead:
-            clients.discard(ws)
-        print(f"[WS] SEND_PHOTO sent to {len(clients)} client(s)", flush=True)
+                print("[WS] SEND_PHOTO sent")
+            except Exception as e:
+                print(f"[WS] send failed: {e}")
+        else:
+            print("Commands: SEND_PHOTO | q")
 
 async def main():
     loop = asyncio.get_running_loop()
@@ -85,7 +87,7 @@ async def main():
         max_size=MAX_WS_MB * 1024 * 1024,  # 25MB
     ):
         print(f"[WS] listening on ws://{HOST}:{PORT}")
-        await stop.wait()
+        await asyncio.gather (stdin_repl(), stop.wait())
     
     if clients:
         await asyncio.gather(
