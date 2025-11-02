@@ -73,8 +73,8 @@ async def handler(ws):
     except websockets.ConnectionClosed:
         print(f"[WS] disconnected: {peer}")
         
-    except Exception:
-        print("Invalid message type")
+    except Exception as e:
+        print(f"[WS] error: {e}")
 
     finally:
         clients.discard(ws)
@@ -214,7 +214,7 @@ async def stdin_repl():
             except Exception as e: 
                 print(f"[WS] send failed, comment NOT queued: {e}")
             continue 
-        
+
         else:
             print("Commands: SEND_PHOTO | BOTH <comment...> | PROMPT FS-1|FS-2 [object=.. glimpses=.. area=..] | q")
 
