@@ -18,6 +18,7 @@ COMMENTS_DIR = os.environ.get("COMMENTS_DIR", "comments")
 MAX_WS_MB = int(os.environ.get("MAX_WS_MB", "25"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(PROMPTS_DIR, exist_ok=True)
+os.makedirs(COMMENTS_DIR, exist_ok=True)
 
 pending_notes = deque()
 
