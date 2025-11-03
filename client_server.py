@@ -211,7 +211,7 @@ async def stdin_repl():
                 await ws.send("SEND_PHOTO")
                 queued_at = datetime.now().strftime("%Y%m%d_%H%M%S")
                 pending_notes.append({"text": comment, "queued_at": queued_at, "expires_at": time.time() + NOTE_TIMEOUT_SEC})
-                print(f"[WS] SEND_PHOTO sent (comment queued for {NOTE_TIMEOUT_SEC}s): '{comment}')")
+                print(f"[WS] SEND_PHOTO sent (comment queued for {NOTE_TIMEOUT_SEC}s): '{comment}'")
             except Exception as e: 
                 print(f"[WS] send failed, comment NOT queued: {e}")
             continue 
