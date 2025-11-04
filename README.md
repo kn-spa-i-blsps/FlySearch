@@ -6,8 +6,8 @@ Procedure to send the photo from RPi to your laptop
 2. Create an .env file according to .env_example, add it to your /docker directory on your laptop and RPi
 3. On your laptop, build the image:   
 ```docker build -t flysearch:latest .```
-4. On your laptop, run docker-compose:   
-```docker compose --profile server up --build```
+4. On your laptop, run docker-compose in interactive mode:   
+```docker compose run --rm --service-ports server python3 -u /app/client_server.py```
 5. On your laptop, in new terminal tab, run:   
 ```cloudflared tunnel --url http://localhost:PORT/``` (substitute your port)
 6. Copy the generated link of type: https://your-server.trycloudflare.com and substitute https to wss to get 
