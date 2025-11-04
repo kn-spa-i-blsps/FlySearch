@@ -3,6 +3,7 @@ import pathlib
 import subprocess
 import os
 import argparse
+import json
 
 def parse_args():
     p = argparse.ArgumentParser()
@@ -37,11 +38,12 @@ def main():
             with open(photo_path, "rb") as f:
                 ws.send(f.read(), opcode=websocket.ABNF.OPCODE_BINARY)
                 print(f"Sent photo: {photo_path}")
-        elif message.startswith("Coordinates: "):
-            print(message)
-            ws.send("Coordinates received.")
+        elif message == "TELEMETRY":
+            tmpl = json.load(open("telemetry.json"))
+            # wczytywanie telemetrii z FC
+            ws.send(json.dumps({"type": "TELEMETRY", "data": tmpl}))
         else:
-            ws.send("Message send in invalid format. Accepted messages: 'SEND_PHOTO', 'Coordinates: (lat, lon)'")
+            ws.send("Message sent in invalid format. Accepted messages: 'SEND_PHOTO', 'TELEMETRY'")
 
     ws = websocket.WebSocketApp(
         args.server,

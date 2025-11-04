@@ -1,0 +1,10 @@
+{
+  "ts": null,              
+  "position": { "lat": null, "lon": null, "alt": null },
+  "velocity": { "vx": null, "vy": null, "vz": null },
+  "attitude": { "yaw": null, "pitch": null, "roll": null },
+  "battery":  { "voltage": null, "percent": null },
+  "mode": null,             
+  "armed": null,            
+  "extras": {}              
+}
