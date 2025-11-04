@@ -39,7 +39,7 @@ def main():
                 ws.send(f.read(), opcode=websocket.ABNF.OPCODE_BINARY)
                 print(f"Sent photo: {photo_path}")
         elif message == "TELEMETRY":
-            tmpl = json.load(open("telemetry.json"))
+            tmpl = json.load(open("app/telemetry.json"))
             # wczytywanie telemetrii z FC
             ws.send(json.dumps({"type": "TELEMETRY", "data": tmpl}))
         else:
