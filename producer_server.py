@@ -31,14 +31,6 @@ def main():
         env["QUALITY"] = str(args.quality)
         subprocess.run(["python3", args.capture], env=env, check=True)
 
-    def load_telemetry_template():
-        try:
-            with open("telemetry.json", "r", encoding="utf-8") as f:
-                print(f"Sending telemetry")
-                return json.load(f)
-        except Exception as e:
-            print(f"[RPi] telemetry template error: {e}")
-
     def on_message(ws, message):
         print("Received:", message)
         if message == "SEND_PHOTO":
@@ -47,10 +39,9 @@ def main():
                 ws.send(f.read(), opcode=websocket.ABNF.OPCODE_BINARY)
                 print(f"Sent photo: {photo_path}")
         elif message == "TELEMETRY":
-            tmpl = load_telemetry_template()
+            tmpl = json.load(open("telemetry.json"))
+            # wczytywanie telemetrii z FC
             ws.send(json.dumps({"type": "TELEMETRY", "data": tmpl}))
-            print("[RPi] TELEMETRY sent")
-            return
         else:
             ws.send("Message sent in invalid format. Accepted messages: 'SEND_PHOTO', 'TELEMETRY'")
 
