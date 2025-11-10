@@ -15,10 +15,12 @@ PORT = int(os.environ.get("WS_PORT", "8080"))
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 PROMPTS_DIR = os.environ.get("PROMPTS_DIR", "prompts")
 COMMENTS_DIR = os.environ.get("COMMENTS_DIR", "comments")
+TELEMETRY_DIR = os.environ.get("TELEMETRY_DIR", "telemetry")
 MAX_WS_MB = int(os.environ.get("MAX_WS_MB", "25"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(PROMPTS_DIR, exist_ok=True)
 os.makedirs(COMMENTS_DIR, exist_ok=True)
+os.makedirs(TELEMETRY_DIR, exist_ok=True)
 
 pending_notes = deque()
 
@@ -64,12 +66,32 @@ async def handler(ws):
                     print(f"[WS] note saved -> {note_txt} (+meta {note_json})")
                 continue
 
-            # text messages
             text = message.strip()
-            if text.startswith("Coordinates: "):
-                print(f"[WS] coordinates: {text}")
-                await ws.send("Coordinates received")
+            try:
+                obj = json.loads(text)
+            except json.JSONDecodeError:
                 continue
+
+            if isinstance(obj, dict) and obj.get("type") == "TELEMETRY":
+                data = obj.get("data", {})
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                file_base = f"telemetry_{ts}"
+                file_name = f"{file_base}.json"
+                path = os.path.join(TELEMETRY_DIR, file_name)
+
+                payload = {
+                    "received_at": ts,
+                    "data": data
+                }
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, ensure_ascii=False, indent=2)
+
+                print(f"[WS] saved telemetry(JSON) -> {path}")
+                await ws.send(f"SAVED {path}")
+                continue
+
+            continue
+
 
     except websockets.ConnectionClosed:
         print(f"[WS] disconnected: {peer}")
@@ -90,7 +112,7 @@ def _generate_prompt(kind: str, kv: Dict[str, str]) -> Dict[str, str]:
     kind: 'FS-1' lub 'FS-2'
     kv:   słownik z parametrami (object, glimpses, area)
     """
-    # wartości domyślne
+
     params = {
         "object": kv.get("object", "helipad"),
         "glimpses": int(kv.get("glimpses", "6")),
@@ -214,6 +236,18 @@ async def stdin_repl():
                 print(f"[WS] SEND_PHOTO sent (comment queued for {NOTE_TIMEOUT_SEC}s): '{comment}'")
             except Exception as e: 
                 print(f"[WS] send failed, comment NOT queued: {e}")
+            continue
+
+        if cmd.startswith("telemetry"):
+            ws = next(iter(clients), None)
+            if ws is None:
+                print("No drone connected")
+                continue
+            try: 
+                await ws.send("TELEMETRY")
+                print("[WS] TELEMETRY sent")
+            except Exception as e:
+                print(f"[WS] send failed: {e}")
             continue 
 
         else:
