@@ -17,4 +17,4 @@ wss://your-server.trycloudflare.com
 8. On your RPi, run docker-compose with a SERVER_URL variable: 
 ```SERVER_URL=wss://your-server.trycloudflare.com docker compose --profile producer up --build```
 9. Search for the photo on your laptop, in the project root, in the directory /uploads
-10. To stop the connection gracefully, click ctrl+C on your laptop, in the tab where you ran docker-compose                             
+10. To stop the connection gracefully, click ctrl+C on your laptop, in the tab where you ran docker-compose
