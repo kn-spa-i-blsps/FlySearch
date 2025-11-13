@@ -15,6 +15,7 @@ services:
         WS_PORT: "${WS_PORT:-8080}"
         UPLOAD_DIR: "/app/uploads"
         MAX_WS_MB: "${MAX_WS_MB:-25}"
+        API_KEY: "${API_KEY}"
     tty: true
     stdin_open: true
     ports: ["8080:8080"]

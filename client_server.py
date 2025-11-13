@@ -1,5 +1,6 @@
 import asyncio, os, signal, json, time
 from datetime import datetime
+from pathlib import Path
 import websockets
 from typing import Dict
 
@@ -18,7 +19,7 @@ stop = asyncio.Event()
 
 HOST = os.environ.get("WS_HOST", "0.0.0.0")
 PORT = int(os.environ.get("WS_PORT", "8080"))
-CHATS_DIR = os.environ.get("CHATS_DIR", "saved_chats")
+CHATS_DIR = Path(os.environ.get("CHATS_DIR", "saved_chats"))
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 PROMPTS_DIR = os.environ.get("PROMPTS_DIR", "prompts")
 TELEMETRY_DIR = os.environ.get("TELEMETRY_DIR", "telemetry")
@@ -432,7 +433,7 @@ async def stdin_repl():
                 print(f"Successfully saved {image_counter} images to {assets_dir}")
             except Exception as e:
                 print(f"Error writing JSON file {json_path}: {e}")
-                continue
+            continue
 
         # Continue stopped conversation. Usage: CHAT_RETRIEVE <chat_name>
         if cmd.startswith("chat_retrieve "):
