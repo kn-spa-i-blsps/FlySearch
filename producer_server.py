@@ -4,6 +4,7 @@ import subprocess
 import os
 import argparse
 import json
+import base64
 
 def parse_args():
     p = argparse.ArgumentParser()
@@ -42,6 +43,23 @@ def main():
             tmpl = json.load(open("telemetry.json"))
             # wczytywanie telemetrii z FC
             ws.send(json.dumps({"type": "TELEMETRY", "data": tmpl}))
+        elif message == "PHOTO_WITH_TELEMETRY":
+            # Base64, because we can't combine binary data with text.
+            take_photo()
+            with open(photo_path, "rb") as f:
+                photo_data = f.read()
+            photo_base64 = base64.b64encode(photo_data).decode('utf-8')
+
+            tmpl = json.load(open("telemetry.json"))
+
+            payload = {
+                "type": "PHOTO_WITH_TELEMETRY",
+                "photo": photo_base64,
+                "telemetry": tmpl
+            }
+
+            ws.send(json.dumps(payload))
+            print(f"Sent photo ({photo_path}) with telemetry.")
         else:
             ws.send("Message sent in invalid format. Accepted messages: 'SEND_PHOTO', 'TELEMETRY'")
 
