@@ -169,7 +169,7 @@ def _generate_prompt(kind: str, kv: Dict[str, str]) -> Dict[str, str]:
     kind: 'FS-1' lub 'FS-2'
     kv:   słownik z parametrami (object, glimpses, area)
     """
-    # TODO: DOESN'T WORK!!!! USING DEFAULT VALUES!!!!!!!!
+
     params = {
         "object": kv.get("object", "helipad"),
         "glimpses": int(kv.get("glimpses", "6")),
