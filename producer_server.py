@@ -25,6 +25,11 @@ def main():
     session_file = commands_dir / f"session_{session_id}.jsonl"
     latest_file  = commands_dir / "latest_command.json"
 
+    print(f"[RPi] IMG_DIR      = {img_dir.resolve()}")
+    print(f"[RPi] COMMANDS_DIR = {commands_dir.resolve()}")
+    print(f"[RPi] session_file = {session_file}")
+    print(f"[RPi] latest_file  = {latest_file}")
+
     seq = {"n": 0}
     def next_seq():
         seq["n"] += 1
@@ -147,6 +152,10 @@ def main():
 
     ws = websocket.WebSocketApp(
         args.server,
+        on_open=lambda _ws: print("[RPi] WS open"),
+        on_error=lambda _ws,e: print(f"[RPi] WS error: {e}"),
+        on_close=lambda _ws,code,msg: print(f"[RPi] WS closed code={code} msg={msg}"),
+        on_data=lambda _ws,data,opcode,fin: print(f"[RPi] on_data: {'text' if opcode==1 else 'binary' if opcode==2 else opcode}, len={len(data)}"),
         on_message=on_message
     )
     ws.run_forever()
