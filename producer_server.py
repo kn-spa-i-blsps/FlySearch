@@ -108,7 +108,7 @@ def main():
         if isinstance(message, str):
             try:
                 obj = json.loads(message)
-            except Exception:
+            except Exception as e:
                 obj = None
                 print(f"[RPi] json.loads FAILED on text message: {e}")
 
