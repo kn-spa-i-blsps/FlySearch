@@ -25,11 +25,6 @@ def main():
     session_file = commands_dir / f"session_{session_id}.jsonl"
     latest_file  = commands_dir / "latest_command.json"
 
-    print(f"[RPi] IMG_DIR      = {img_dir.resolve()}")
-    print(f"[RPi] COMMANDS_DIR = {commands_dir.resolve()}")
-    print(f"[RPi] session_file = {session_file}")
-    print(f"[RPi] latest_file  = {latest_file}")
-
     seq = {"n": 0}
     def next_seq():
         seq["n"] += 1
@@ -124,6 +119,7 @@ def main():
                 }
                 append_jsonl(session_file, record)
                 write_json(latest_file, record)
+                print("[RPi] COMMAND saved")
                 if "move" in obj:
                     x, y, z = obj["move"]
                     print(f"[RPi] COMMAND odebrano: MOVE (x={x}, y={y}, z={z})")
