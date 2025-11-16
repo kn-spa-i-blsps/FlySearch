@@ -74,6 +74,10 @@ async def handler(ws):
             except json.JSONDecodeError:
                 continue
 
+            if isinstance(obj, dict) and obj.get("type") == "ACK" and obj.get("of") == "COMMAND":
+                print(f"[ACK ← RPi] COMMAND seq={obj.get('seq')} ok={obj.get('ok')} err={obj.get('error')}")
+                continue
+
             # Telemetry in json.
             if isinstance(obj, dict) and obj.get("type") == "TELEMETRY":
                 data = obj.get("data", {})
@@ -215,7 +219,11 @@ async def _send_command_to_client(*, found: bool = False, move=None):
     ws = next(iter(clients), None)
     if ws is None:
         print("[WS] No drone connected – command NOT sent")
-        return False
+    else:
+        payload = {"type":"COMMAND","ts":ts, "move":[x, y, z]}
+        print(f"[WS] DEBUG about to send to RPi -> {payload}")
+        await ws.send(json.dumps(payload))
+        print("[WS] DEBUG sent to RPi (COMMAND)")
 
     payload = {
         "type": "COMMAND",
