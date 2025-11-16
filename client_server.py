@@ -224,7 +224,7 @@ async def _send_command_to_client(*, found: bool = False, move=None) -> bool:
     """
     ws = next(iter(clients), None)
     if ws is None:
-        print("[WS] No drone connected – command NOT sent")
+        print("[WS] No drone connected - command NOT sent")
         return False
 
     payload = {
@@ -245,10 +245,9 @@ async def _send_command_to_client(*, found: bool = False, move=None) -> bool:
         print("[WS] No command content (neither 'found' nor 'move'). Not sending.")
         return False
 
-    print(f"[WS] DEBUG about to send to RPi -> {payload}")
     try:
         await ws.send(json.dumps(payload))
-        print("[WS] DEBUG sent to RPi (COMMAND)")
+        print("[WS] COMMAND sent to RPi")
         return True
     except Exception as e:
         print("[WS] COMMAND send failed:", e)
@@ -361,24 +360,14 @@ async def stdin_repl():
                 continue
 
             raw = response.text or ""
-            print("\n[VLM RAW]:")
             print(raw if raw.strip() else "<empty>")
-
-            # (opcjonalnie) zapisz RAW do pliku, żeby mieć ślad
-            try:
-                os.makedirs("vlm_raw", exist_ok=True)
-                ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                with open(os.path.join("vlm_raw", f"raw_{ts}.txt"), "w", encoding="utf-8") as f:
-                    f.write(raw)
-            except Exception as e:
-                print("[VLM] raw save error:", e)
 
             # parsowanie XML -> (FOUND) lub (x,y,z)
             try:
                 parsed = parse_xml_response(raw)
             except ParsingError as e:
                 print("[VLM] parse error:", e)
-                print("Command NOT sent. Inspect RAW above.")
+                print("Command NOT sent")
                 continue
 
             # potwierdzenie operatora i wysyłka
@@ -446,6 +435,32 @@ async def stdin_repl():
 
             print(f"VLM answer: {response.text}")
 
+            raw = response.text or ""
+            print(raw if raw.strip() else "<empty>")
+
+            # parsowanie XML -> (FOUND) lub (x,y,z)
+            try:
+                parsed = parse_xml_response(raw)
+            except ParsingError as e:
+                print("[VLM] parse error:", e)
+                print("Command NOT sent")
+                continue
+
+            # potwierdzenie operatora i wysyłka
+            if parsed.found:
+                ok = await _confirm_send(found=True)
+                if ok:
+                    await _send_command_to_client(found=True)
+                else:
+                    print("Cancelled by operator.")
+            else:
+                move = parsed.move
+                ok = await _confirm_send(move=move)
+                if ok:
+                    await _send_command_to_client(move=move)
+                else:
+                    print("Cancelled by operator.")
+
             # TODO: autosave
 
             continue
@@ -454,7 +469,7 @@ async def stdin_repl():
         if cmd.startswith("chat_save "):
 
             if chat_session is None:
-                print("Chat with vlm is not initialized. Use CHAT_INIT first.")
+                print("Chat with VLM is not initialized. Use CHAT_INIT first.")
                 continue
 
             cmd = cmd.split()

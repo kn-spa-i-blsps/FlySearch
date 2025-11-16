@@ -104,41 +104,55 @@ def main():
             try:
                 obj = json.loads(message)
             except Exception as e:
-                obj = None
                 print(f"[RPi] json.loads FAILED on text message: {e}")
+                obj = None
 
         if isinstance(obj, dict) and obj.get("type") == "COMMAND":
             try:
                 s = next_seq()
-                record = {
+                normalized = {
                     "ts": now_ts(),
                     "seq": s,
-                    "direction": "in",
-                    "kind": "COMMAND",
-                    "payload": obj,
                 }
-                append_jsonl(session_file, record)
-                write_json(latest_file, record)
-                print("[RPi] COMMAND saved")
-                if "move" in obj:
-                    x, y, z = obj["move"]
-                    print(f"[RPi] COMMAND odebrano: MOVE (x={x}, y={y}, z={z})")
-                elif obj.get("action") == "FOUND":
-                    print("[RPi] COMMAND odebrano: FOUND")
-                else:
-                    print(f"[RPi] COMMAND odebrano: {obj}")
 
+                # FOUND
+                if obj.get("action") == "FOUND":
+                    normalized["type"] = "FOUND"
+                    log_msg = "[RPi] COMMAND received: FOUND"
+
+                # MOVE
+                elif "move" in obj and isinstance(obj["move"], (list, tuple)) and len(obj["move"]) == 3:
+                    x, y, z = obj["move"]
+                    x, y, z = float(x), float(y), float(z)
+                    normalized["type"] = "MOVE"
+                    normalized["move"] = [x, y, z]
+                    log_msg = f"[RPi] COMMAND received: MOVE (x={x}, y={y}, z={z})"
+
+                else:
+                    err = f"Unknown COMMAND payload: {obj}"
+                    print(f"[RPi] {err}")
+                    try:
+                        ws.send(json.dumps({"type": "ACK", "of": "COMMAND", "ok": False, "error": "bad payload"}))
+                    finally:
+                        return
+
+                append_jsonl(session_file, normalized)
+                write_json(latest_file, normalized)
+                print(log_msg)
                 print(f"[RPi] COMMAND stored (seq={s}) → {session_file.name}; latest_command.json updated")
+
                 ws.send(json.dumps({"type": "ACK", "of": "COMMAND", "ok": True, "seq": s}))
                 print(f"[RPi] ACK wysłany (seq={s})")
+
             except Exception as e:
                 print(f"[RPi] COMMAND store error: {e}")
                 try:
                     ws.send(json.dumps({"type": "ACK", "of": "COMMAND", "ok": False, "error": str(e)}))
                 except Exception:
                     pass
-            return
-        
+            finally:
+                return
+
         if isinstance(message, str):
             print(f"[RPi] Unrecognized TEXT (not a command): {message[:200]}")
         else:
