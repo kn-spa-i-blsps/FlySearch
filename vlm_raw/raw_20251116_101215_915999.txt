@@ -1,0 +1,2 @@
+<Reasoning>The drone is still too high, and the image remains blank. I need to descend further to bring the ground into view and begin the search for "karol". I will descend another 50 meters to get closer to the ground, keeping my current horizontal position.</Reasoning>
+<Action>(0, 0, -50)</Action>

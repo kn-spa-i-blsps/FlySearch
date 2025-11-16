@@ -215,29 +215,40 @@ def parse_telemetry(path):
     height = telemetry_data.get("height", "N/A")
     return f"Your current altitude is {height} meters above ground level."
 
-async def _send_command_to_client(*, found: bool = False, move=None):
+async def _send_command_to_client(*, found: bool = False, move=None) -> bool:
+    """
+    Wyślij komendę do RPi:
+      - found=True  ->  {"type":"COMMAND","action":"FOUND", ...}
+      - move=(x,y,z)->  {"type":"COMMAND","move":[x,y,z], ...}
+    Zwraca True/False w zależności od powodzenia wysyłki.
+    """
     ws = next(iter(clients), None)
     if ws is None:
         print("[WS] No drone connected – command NOT sent")
-    else:
-        payload = {"type":"COMMAND","ts":ts, "move":[x, y, z]}
-        print(f"[WS] DEBUG about to send to RPi -> {payload}")
-        await ws.send(json.dumps(payload))
-        print("[WS] DEBUG sent to RPi (COMMAND)")
+        return False
 
     payload = {
         "type": "COMMAND",
-        "ts": datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        "ts": datetime.now().strftime("%Y%m%d_%H%M%S_%f"),
     }
+
     if found:
         payload["action"] = "FOUND"
     elif move is not None:
-        # ujednolicamy na listę liczb
-        payload["move"] = [float(move[0]), float(move[1]), float(move[2])]
+        try:
+            x, y, z = float(move[0]), float(move[1]), float(move[2])
+        except Exception as e:
+            print(f"[WS] Invalid move triple {move}: {e}")
+            return False
+        payload["move"] = [x, y, z]
+    else:
+        print("[WS] No command content (neither 'found' nor 'move'). Not sending.")
+        return False
 
+    print(f"[WS] DEBUG about to send to RPi -> {payload}")
     try:
         await ws.send(json.dumps(payload))
-        print("[WS] COMMAND sent ->", payload)
+        print("[WS] DEBUG sent to RPi (COMMAND)")
         return True
     except Exception as e:
         print("[WS] COMMAND send failed:", e)
