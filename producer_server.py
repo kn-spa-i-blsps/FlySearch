@@ -1,11 +1,4 @@
-import websocket
-import pathlib
-import subprocess
-import os
-import argparse
-import json
-import base64
-import uuid 
+import websocket, pathlib, subprocess, os, argparse, json, base64, uuid 
 from datetime import datetime 
 
 def parse_args():
@@ -112,6 +105,7 @@ def main():
                 obj = json.loads(message)
             except Exception:
                 obj = None
+                print(f"[RPi] json.loads FAILED on text message: {e}")
 
         if isinstance(obj, dict) and obj.get("type") == "COMMAND":
             try:
@@ -144,6 +138,11 @@ def main():
                     pass
             return
         
+        if isinstance(message, str):
+            print(f"[RPi] Unrecognized TEXT (not a command): {message[:200]}")
+        else:
+            print(f"[RPi] Unrecognized NON-TEXT message (len={len(message)})")
+
         ws.send("Message sent in invalid format. Accepted messages: 'SEND_PHOTO', 'TELEMETRY', 'PHOTO_WITH_TELEMETRY'")
 
     ws = websocket.WebSocketApp(
