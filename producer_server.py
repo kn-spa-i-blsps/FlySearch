@@ -62,39 +62,56 @@ def main():
         subprocess.run(["python3", args.capture], env=env, check=True)
 
     def on_message(ws, message):
-        print("Received:", message)
+        preview = message if isinstance(message, str) else f"<{len(message)} bytes>"
+        print("Received:", (preview[:160] + "...") if isinstance(preview, str) and len(preview) > 160 else preview)
+
         if message == "SEND_PHOTO":
             take_photo()
             with open(photo_path, "rb") as f:
                 ws.send(f.read(), opcode=websocket.ABNF.OPCODE_BINARY)
-                print(f"Sent photo: {photo_path}")
-        if message == "TELEMETRY":
-            tmpl = json.load(open("telemetry.json"))
-            # wczytywanie telemetrii z FC
+            print(f"Sent photo: {photo_path}")
+            return
+
+        elif message == "TELEMETRY":
+            try:
+                with open("telemetry.json", "r", encoding="utf-8") as tf:
+                    tmpl = json.load(tf)
+            except FileNotFoundError:
+                print("[RPi] telemetry.json not found – sending empty {}")
+                tmpl = {}
             ws.send(json.dumps({"type": "TELEMETRY", "data": tmpl}))
-        if message == "PHOTO_WITH_TELEMETRY":
-            # Base64, because we can't combine binary data with text.
+            print("[RPi] Sent TELEMETRY json")
+            return
+
+        elif message == "PHOTO_WITH_TELEMETRY":
             take_photo()
             with open(photo_path, "rb") as f:
                 photo_data = f.read()
             photo_base64 = base64.b64encode(photo_data).decode('utf-8')
 
-            tmpl = json.load(open("telemetry.json"))
+            try:
+                with open("telemetry.json", "r", encoding="utf-8") as tf:
+                    tmpl = json.load(tf)
+            except FileNotFoundError:
+                print("[RPi] telemetry.json not found – embedding empty {}")
+                tmpl = {}
 
             payload = {
                 "type": "PHOTO_WITH_TELEMETRY",
                 "photo": photo_base64,
                 "telemetry": tmpl
             }
-
             ws.send(json.dumps(payload))
             print(f"Sent photo ({photo_path}) with telemetry.")
+            return
 
-                    # --- JSON control plane: COMMAND from server ---
-        try:
-            obj = json.loads(message) if isinstance(message, str) else None
-        except Exception:
-            obj = None
+        # --- JSON control plane: COMMAND from server ---
+        obj = None
+        if isinstance(message, str):
+            try:
+                obj = json.loads(message)
+            except Exception:
+                obj = None
 
         if isinstance(obj, dict) and obj.get("type") == "COMMAND":
             try:
@@ -104,14 +121,21 @@ def main():
                     "seq": s,
                     "direction": "in",
                     "kind": "COMMAND",
-                    "payload": obj,     # np. {"type":"COMMAND","move":[x,y,z]} lub {"type":"COMMAND","action":"FOUND"}
+                    "payload": obj,
                 }
                 append_jsonl(session_file, record)
                 write_json(latest_file, record)
-                print(f"[RPi] COMMAND stored (seq={s}) → {session_file.name}; latest_command.json updated")
+                if "move" in obj:
+                    x, y, z = obj["move"]
+                    print(f"[RPi] COMMAND odebrano: MOVE (x={x}, y={y}, z={z})")
+                elif obj.get("action") == "FOUND":
+                    print("[RPi] COMMAND odebrano: FOUND")
+                else:
+                    print(f"[RPi] COMMAND odebrano: {obj}")
 
-                # ACK z powrotem na serwer
+                print(f"[RPi] COMMAND stored (seq={s}) → {session_file.name}; latest_command.json updated")
                 ws.send(json.dumps({"type": "ACK", "of": "COMMAND", "ok": True, "seq": s}))
+                print(f"[RPi] ACK wysłany (seq={s})")
             except Exception as e:
                 print(f"[RPi] COMMAND store error: {e}")
                 try:
@@ -119,9 +143,8 @@ def main():
                 except Exception:
                     pass
             return
-
-        else:
-            ws.send("Message sent in invalid format. Accepted messages: 'SEND_PHOTO', 'TELEMETRY'")
+        
+        ws.send("Message sent in invalid format. Accepted messages: 'SEND_PHOTO', 'TELEMETRY', 'PHOTO_WITH_TELEMETRY'")
 
     ws = websocket.WebSocketApp(
         args.server,

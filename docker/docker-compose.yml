@@ -34,10 +34,12 @@ services:
     volumes:
       - ../:/app
       - ../img:/img
+      - ../commands:/commands
       - /run/udev:/run/udev:ro
     environment:
       SERVER_URL: "${SERVER_URL}"
       IMG_DIR: "${IMG_DIR:-/img}"
+      COMMANDS_DIR: "${COMMANDS_DIR:~/commands}"
       CAPTURE_PY: "${CAPTURE_PY:-/app/capture.py}"
       FNAME: "${FNAME:-photo.jpg}"
       WIDTH: "${WIDTH:-1920}"
