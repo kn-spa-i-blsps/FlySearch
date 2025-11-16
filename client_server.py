@@ -7,6 +7,7 @@ from typing import Dict
 from google.api_core.exceptions import InvalidArgument
 
 from prompt_generation.prompts import Prompts, PROMPT_FACTORIES
+from response_parsers.xml_response_parser import parse_xml_response, ParsingError
 from collections import deque
 from PIL import Image
 import google.generativeai as genai
@@ -210,6 +211,45 @@ def parse_telemetry(path):
     height = telemetry_data.get("height", "N/A")
     return f"Your current altitude is {height} meters above ground level."
 
+async def _send_command_to_client(*, found: bool = False, move=None):
+    ws = next(iter(clients), None)
+    if ws is None:
+        print("[WS] No drone connected – command NOT sent")
+        return False
+
+    payload = {
+        "type": "COMMAND",
+        "ts": datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    }
+    if found:
+        payload["action"] = "FOUND"
+    elif move is not None:
+        # ujednolicamy na listę liczb
+        payload["move"] = [float(move[0]), float(move[1]), float(move[2])]
+
+    try:
+        await ws.send(json.dumps(payload))
+        print("[WS] COMMAND sent ->", payload)
+        return True
+    except Exception as e:
+        print("[WS] COMMAND send failed:", e)
+        return False
+
+async def _confirm_send(move=None, found=False):
+    print("\n--- COMMAND PREVIEW ---")
+    if found:
+        print("ACTION: FOUND")
+    else:
+        x, y, z = move
+        print(f"MOVE: (x={x}, y={y}, z={z})")
+    print("Press Enter to send, or type 'no' to cancel.")
+    loop = asyncio.get_running_loop()
+    try:
+        ans = await loop.run_in_executor(None, input, "> ")
+    except (EOFError, KeyboardInterrupt):
+        ans = "no"
+    return (ans.strip().lower() in ("", "y", "yes"))
+
 async def stdin_repl():
     """
     Komendy:
@@ -301,9 +341,41 @@ async def stdin_repl():
                 print(f"Error when talking to vlm: {e}")
                 continue
 
-            print(response.text)
+            raw = response.text or ""
+            print("\n[VLM RAW]:")
+            print(raw if raw.strip() else "<empty>")
 
-            # TODO: autosave
+            # (opcjonalnie) zapisz RAW do pliku, żeby mieć ślad
+            try:
+                os.makedirs("vlm_raw", exist_ok=True)
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                with open(os.path.join("vlm_raw", f"raw_{ts}.txt"), "w", encoding="utf-8") as f:
+                    f.write(raw)
+            except Exception as e:
+                print("[VLM] raw save error:", e)
+
+            # parsowanie XML -> (FOUND) lub (x,y,z)
+            try:
+                parsed = parse_xml_response(raw)
+            except ParsingError as e:
+                print("[VLM] parse error:", e)
+                print("Command NOT sent. Inspect RAW above.")
+                continue
+
+            # potwierdzenie operatora i wysyłka
+            if parsed.found:
+                ok = await _confirm_send(found=True)
+                if ok:
+                    await _send_command_to_client(found=True)
+                else:
+                    print("Cancelled by operator.")
+            else:
+                move = parsed.move
+                ok = await _confirm_send(move=move)
+                if ok:
+                    await _send_command_to_client(move=move)
+                else:
+                    print("Cancelled by operator.")
 
             continue
 
