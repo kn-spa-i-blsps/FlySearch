@@ -40,8 +40,8 @@ services:
       IMG_DIR: "${IMG_DIR:-/img}"
       CAPTURE_PY: "${CAPTURE_PY:-/app/capture.py}"
       FNAME: "${FNAME:-photo.jpg}"
-      WIDTH: "${WIDTH:-1920}"
-      HEIGHT: "${HEIGHT:-1080}"
+      WIDTH: "${WIDTH:-500}"
+      HEIGHT: "${HEIGHT:-500}"
       QUALITY: "${QUALITY:-90}"
     # na start wygodnie:
     privileged: true
