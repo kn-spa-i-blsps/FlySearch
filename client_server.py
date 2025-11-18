@@ -209,7 +209,7 @@ def parse_telemetry(path):
         telemetry = json.load(f)
 
     telemetry_data = telemetry.get("data", {})
-    height = telemetry_data.get("position").get("alt")
+    height = telemetry_data.get("position", {}).get("alt", "N/A")
     return [f"Your current altitude is {height} meters above ground level.", height]
 
 async def stdin_repl():
