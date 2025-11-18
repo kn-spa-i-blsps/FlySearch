@@ -23,7 +23,7 @@ RUN curl -fsSL https://archive.raspberrypi.com/debian/raspberrypi.gpg.key \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcamera-apps \
     fontconfig \
-    fonts-noto-serif \
+    fonts-dejavu-core \
     python3 \
     python3-venv \
     python3-pip \
