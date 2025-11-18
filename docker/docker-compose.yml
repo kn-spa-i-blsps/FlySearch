@@ -45,6 +45,8 @@ services:
       WIDTH: "${WIDTH:-1920}"
       HEIGHT: "${HEIGHT:-1080}"
       QUALITY: "${QUALITY:-90}"
+    tty: true 
+    stdin_open: true
     # na start wygodnie:
     privileged: true
     # po testach usuń privileged i dopisz konkretne device'y:
