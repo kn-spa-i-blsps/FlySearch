@@ -22,6 +22,8 @@ RUN curl -fsSL https://archive.raspberrypi.com/debian/raspberrypi.gpg.key \
 # Zainstaluj pakiety RPi, Python oraz Picamera2
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcamera-apps \
+    fontconfig \
+    fonts-noto-serif \
     python3 \
     python3-venv \
     python3-pip \
@@ -32,7 +34,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python3 -m venv --system-site-packages $VIRTUAL_ENV \
     && pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir websockets websocket-client \
-    && pip install --no-cache-dir google-generativeai google-api-core Pillow 
+    && pip install --no-cache-dir google-generativeai google-api-core Pillow
+
+# Opcjonalnie: odświeżenie cache fontów (przydatne, jeśli używasz matplotlib itp.)
+RUN fc-cache -fv
 
 # Ustaw katalog roboczy
 WORKDIR /app
