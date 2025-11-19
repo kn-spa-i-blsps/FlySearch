@@ -45,12 +45,10 @@ RUN if [ "$TARGETARCH" = "arm64" || "$TARGETARCH" = "arm32" ]; then \
 RUN python3 -m venv --system-site-packages $VIRTUAL_ENV \
     && pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir websockets websocket-client \
-    && pip install --no-cache-dir google-generativeai google-api-core Pillow numpy
+    && pip install --no-cache-dir google-generativeai google-api-core Pillow numpy pymavlink
 
 # 5. Odświeżenie cache fontów
 RUN fc-cache -fv
 
 WORKDIR /app
-COPY capture.py /app/capture.py
-
-CMD ["python3", "/app/capture.py"]
+COPY . /app

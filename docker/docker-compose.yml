@@ -8,7 +8,7 @@ services:
     working_dir: /app
     volumes:
       - ../:/app
-      - ../uploads:/app/uploads
+      - ../uploads:/uploads
     environment:
         PYTHONUNBUFFERED: "1"
         WS_HOST: "${WS_HOST:-0.0.0.0}"
@@ -45,6 +45,9 @@ services:
       WIDTH: "${WIDTH:-500}"
       HEIGHT: "${HEIGHT:-500}"
       QUALITY: "${QUALITY:-90}"
+      EXECUTE_MOVES: "1"      # domyślnie 0 (OFF)
+      MAV_DEVICE: "/dev/ttyACM0"
+      MAV_BAUD: "57600"
     tty: true 
     stdin_open: true
     # na start wygodnie:
