@@ -1,12 +1,12 @@
-/uploads
-/docker/.env
-/prompts
-/comments
-/telemetry
-/saved_chats
-/vlm_raw
-/__pycache__
-/prompt_generation/__pycache__
-/response_parsers/__pycache__
-/.venv
+uploads/
+docker/.env
+prompts/
+comments/
+telemetry/
+saved_chats/
+__pycache__/
+prompt_generation/__pycache__/
+vlm_raw/
+response_parsers/__pycache__/
+.venv/
 

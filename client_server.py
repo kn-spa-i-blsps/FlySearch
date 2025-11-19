@@ -13,6 +13,8 @@ from PIL import Image
 import google.generativeai as genai
 import base64
 
+import add_guardrails as gd
+
 NOTE_TIMEOUT_SEC = int(os.environ.get("NOTE_TIMEOUT_SEC", "15"))
 
 clients: set = set()
@@ -212,8 +214,8 @@ def parse_telemetry(path):
         telemetry = json.load(f)
 
     telemetry_data = telemetry.get("data", {})
-    height = telemetry_data.get("height", "N/A")
-    return f"Your current altitude is {height} meters above ground level."
+    height = telemetry_data.get("position", {}).get("alt", 10)
+    return [f"Your current altitude is {height} meters above ground level.", height]
 
 async def _send_command_to_client(*, found: bool = False, move=None) -> bool:
     """
@@ -316,6 +318,12 @@ async def stdin_repl():
             ws = next(iter(clients), None)
             if ws is None:
                 print("No drone connected")
+                # TEST CODE TEST CODE TEST CODE
+                # print("Simulating photo and telemetry")
+                # global last_photo_path_cache
+                # global last_telemetry_path_cache
+                # last_photo_path_cache = "uploads/test.png"
+                # last_telemetry_path_cache = "telemetry.json"
                 continue
             try:
                 await ws.send(cmd.upper())
@@ -336,15 +344,6 @@ async def stdin_repl():
                 continue
 
             try:
-                img = Image.open(last_photo_path_cache)
-            except FileNotFoundError:
-                print(f"Error: No photo found '{last_photo_path_cache}'. Photo may be deleted.")
-                continue
-            except Exception as e:
-                print(f"Error during photo opening: {e}")
-                continue
-
-            try:
                 prompt = parse_telemetry(last_telemetry_path_cache)
             except FileNotFoundError:
                 print(f"Error: No telemetry found '{last_telemetry_path_cache}'. Data may be deleted.")
@@ -354,7 +353,24 @@ async def stdin_repl():
                 continue
 
             try:
-                response = chat_session.send_message([prompt, img])
+                img = Image.open(last_photo_path_cache)
+                img_grid = gd.dot_matrix_two_dimensional_drone(
+                    img=img,
+                    w_dots=5,
+                    h_dots=5,
+                    drone_height=prompt[1]
+                )
+                img_grid.save("tmp.png")
+            except FileNotFoundError:
+                print(f"Error: No photo found '{last_photo_path_cache}'. Photo may be deleted.")
+                continue
+            except Exception as e:
+                print(f"Error during photo opening: {e}")
+                continue
+
+            try:
+                img_new = Image.open("tmp.png")
+                response = chat_session.send_message([prompt[0], img_new])
             except Exception as e:
                 print(f"Error when talking to vlm: {e}")
                 continue
@@ -402,9 +418,9 @@ async def stdin_repl():
                 print("No prompt generated yet. Use PROMPT FS-1|FS-2 [object=.. glimpses=.. area=..].")
                 continue
 
-            # As it turns out, we need photo with the initial prompt.
-            if last_photo_path_cache is None:
-                print("No photocached - it may be because no photo was requested yet (remember that SEND_PHOTO won't work for that).")
+            # As it turns out, we need the photo and the telemtry with the initial prompt.
+            if last_photo_path_cache is None or last_telemetry_path_cache is None:
+                print("No photo or telemetry cached - it may be because no photo/telemetry was requested yet.")
                 continue
 
             try:
@@ -414,7 +430,24 @@ async def stdin_repl():
                 continue
 
             try:
+                prompt = parse_telemetry(last_telemetry_path_cache)
+            except FileNotFoundError:
+                print(f"Error: No telemetry found '{last_telemetry_path_cache}'. Data may be deleted.")
+                continue
+            except Exception as e:
+                print(f"Error during telemetry opening: {e}")
+                continue
+
+            try:
                 img = Image.open(last_photo_path_cache)
+                # TODO: Magic numbers to fix
+                img_grid = gd.dot_matrix_two_dimensional_drone(
+                    img=img,
+                    w_dots=5,
+                    h_dots=5,
+                    drone_height=prompt[1]
+                )
+                img_grid.save("tmp.png")
             except FileNotFoundError:
                 print(f"Error: No photo found '{last_photo_path_cache}'. Photo may be deleted.")
                 continue
@@ -423,7 +456,8 @@ async def stdin_repl():
                 continue
 
             try:
-                response = chat_session.send_message([last_prompt_text_cache, img])
+                img_new = Image.open("tmp.png")
+                response = chat_session.send_message([last_prompt_text_cache, img_new, prompt[0]])
             except InvalidArgument as e:
                 print(f"ERROR: Invalid api key: {e}")
                 chat_session = None

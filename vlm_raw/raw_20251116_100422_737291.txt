@@ -1,2 +1,0 @@
-<Reasoning>The image is still a uniform grey, meaning "karol" is not yet in view. I need to continue descending to get closer to the ground and hopefully spot the object. I will descend another 20 meters, still keeping my horizontal position centered to cover the initial search area. This descent should bring me much closer to a height where ground features, and potentially "karol", become visible.</Reasoning>
-<Action>(10, 10, -20)</Action>

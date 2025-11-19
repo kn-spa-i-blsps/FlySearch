@@ -42,8 +42,8 @@ services:
       COMMANDS_DIR: "${COMMANDS_DIR:-/commands}"
       CAPTURE_PY: "${CAPTURE_PY:-/app/capture.py}"
       FNAME: "${FNAME:-photo.jpg}"
-      WIDTH: "${WIDTH:-1920}"
-      HEIGHT: "${HEIGHT:-1080}"
+      WIDTH: "${WIDTH:-500}"
+      HEIGHT: "${HEIGHT:-500}"
       QUALITY: "${QUALITY:-90}"
     tty: true 
     stdin_open: true
