@@ -4,4 +4,5 @@
 /comments
 /telemetry
 /saved_chats
-
+/__pycache__
+/prompt_generation/__pycache__
