@@ -7,5 +7,6 @@
 /vlm_raw
 /__pycache__
 /prompt_generation/__pycache__
+/response_parsers/__pycache__
 /.venv
 
