@@ -4,6 +4,7 @@
 /comments
 /telemetry
 /saved_chats
+/vlm_raw
 /__pycache__
 /prompt_generation/__pycache__
 /.venv
