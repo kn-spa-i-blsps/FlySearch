@@ -16,17 +16,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     fontconfig \
     fonts-noto-core \
+    build-essential \
     python3 \
+    python3-dev \
+    libjpeg-dev \
+    zlib1g-dev \
     python3-venv \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. SZYBKA WERYFIKACJA: Sprawdź czy czcionka się zainstalowała.
-# Jeśli ten krok zwróci błąd, będziemy wiedzieć, że apt zawiódł.
-RUN ls -lh /usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf && echo ">>> CZCIONKA ZAINSTALOWANA POPRAWNIE <<<"
-
 # 3. Logika warunkowa dla Raspberry Pi (kamera)
-RUN if [ "$TARGETARCH" = "arm64" || "$TARGETARCH" = "arm32" ]; then \
+RUN if [ "$TARGETARCH" = "arm64" || "$TARGETARCH" = "arm32" || "$TARGETARCH" = "arm" ]; then \
         echo ">>> Wykryto Raspberry Pi (arm64). Instalacja bibliotek kamery..." && \
         curl -fsSL https://archive.raspberrypi.com/debian/raspberrypi.gpg.key \
         | gpg --dearmor -o /usr/share/keyrings/raspberrypi-archive-keyring.gpg && \
