@@ -45,7 +45,6 @@ services:
       WIDTH: "${WIDTH:-500}"
       HEIGHT: "${HEIGHT:-500}"
       QUALITY: "${QUALITY:-90}"
-      EXECUTE_MOVES: "1"      # domyślnie 0 (OFF)
       MAV_DEVICE: "/dev/ttyACM0"
       MAV_BAUD: "57600"
     tty: true 
