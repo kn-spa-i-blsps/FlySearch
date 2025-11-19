@@ -69,7 +69,6 @@ def dot_matrix_two_dimensional_drone(img: PIL.Image.Image, w_dots, h_dots, camer
 
     assert width == height
 
-
     pixel_per_unit = 2 * drone_height * math.tan(math.radians(camera_fov_degrees / 2)) / width
 
     # Unit -> unit used inside of Unreal Engine
