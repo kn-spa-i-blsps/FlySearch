@@ -30,8 +30,6 @@ def main():
 
     # 2) Fallback: libcamera-jpeg (USB webcam przez V4L2/libcamera)
     cmd = ["libcamera-jpeg", "-o", str(path), "-n", "--width", str(W), "--height", str(H), "-q", str(Q)]
-    if CAM_INDEX:
-        cmd.extend(["--camera", str(CAM_INDEX)])
     try:
         subprocess.run(cmd, check=True)
         print(f"Image saved at: {path}")
