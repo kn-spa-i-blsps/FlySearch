@@ -30,23 +30,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN ls -lh /usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf && echo ">>> CZCIONKA ZAINSTALOWANA POPRAWNIE <<<"
 
 # 3. Instalacja bibliotek kamery TYLKO na ARM (RPi)
-RUN case "$(dpkg --print-architecture)" in \
-      arm64|armhf) \
-        echo ">>> ARM wykryty – instaluję repo RPi i Picamera2"; \
+RUN if [ "$TARGETARCH" = "arm64" || "$TARGETARCH" = "arm32" || "$TARGETARCH" = "arm" ]; then \
+        echo ">>> Wykryto Raspberry Pi (arm64). Instalacja bibliotek kamery..." && \
         curl -fsSL https://archive.raspberrypi.com/debian/raspberrypi.gpg.key \
-          | gpg --dearmor -o /usr/share/keyrings/raspberrypi-archive-keyring.gpg && \
+        | gpg --dearmor -o /usr/share/keyrings/raspberrypi-archive-keyring.gpg && \
         echo "deb [signed-by=/usr/share/keyrings/raspberrypi-archive-keyring.gpg] https://archive.raspberrypi.com/debian/ bookworm main" \
-          > /etc/apt/sources.list.d/raspi.list && \
+        > /etc/apt/sources.list.d/raspi.list && \
         apt-get update && \
         apt-get install -y --no-install-recommends \
-          libcamera-apps \
-          python3-picamera2 \
-        && apt-get clean && rm -rf /var/lib/apt/lists/* ; \
-        ;; \
-      *) \
-        echo ">>> Nie-ARM (amd64 itp.) – pomijam instalację kamery"; \
-        ;; \
-    esac
+            libcamera-apps \
+            python3-picamera2 \
+        && apt-get clean && rm -rf /var/lib/apt/lists/*; \
+    else \
+        echo ">>> Wykryto architekturę $TARGETARCH (PC/Laptop). Pomijanie instalacji kamery."; \
+    fi
 
 # 4. Wirtualne środowisko i pakiety Python
 RUN python3 -m venv --system-site-packages $VIRTUAL_ENV \
