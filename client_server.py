@@ -7,6 +7,7 @@ from typing import Dict
 from google.api_core.exceptions import InvalidArgument
 
 from prompt_generation.prompts import Prompts, PROMPT_FACTORIES
+from response_parsers.xml_response_parser import parse_xml_response, ParsingError
 from collections import deque
 from PIL import Image
 import google.generativeai as genai
@@ -73,6 +74,10 @@ async def handler(ws):
             try:
                 obj = json.loads(text)
             except json.JSONDecodeError:
+                continue
+
+            if isinstance(obj, dict) and obj.get("type") == "ACK" and obj.get("of") == "COMMAND":
+                print(f"[ACK ← RPi] COMMAND seq={obj.get('seq')} ok={obj.get('ok')} err={obj.get('error')}")
                 continue
 
             # Telemetry in json.
@@ -212,6 +217,59 @@ def parse_telemetry(path):
     height = telemetry_data.get("position", {}).get("alt", 10)
     return [f"Your current altitude is {height} meters above ground level.", height]
 
+async def _send_command_to_client(*, found: bool = False, move=None) -> bool:
+    """
+    Wyślij komendę do RPi:
+      - found=True  ->  {"type":"COMMAND","action":"FOUND", ...}
+      - move=(x,y,z)->  {"type":"COMMAND","move":[x,y,z], ...}
+    Zwraca True/False w zależności od powodzenia wysyłki.
+    """
+    ws = next(iter(clients), None)
+    if ws is None:
+        print("[WS] No drone connected - command NOT sent")
+        return False
+
+    payload = {
+        "type": "COMMAND",
+        "ts": datetime.now().strftime("%Y%m%d_%H%M%S_%f"),
+    }
+
+    if found:
+        payload["action"] = "FOUND"
+    elif move is not None:
+        try:
+            x, y, z = float(move[0]), float(move[1]), float(move[2])
+        except Exception as e:
+            print(f"[WS] Invalid move triple {move}: {e}")
+            return False
+        payload["move"] = [x, y, z]
+    else:
+        print("[WS] No command content (neither 'found' nor 'move'). Not sending.")
+        return False
+
+    try:
+        await ws.send(json.dumps(payload))
+        print("[WS] COMMAND sent to RPi")
+        return True
+    except Exception as e:
+        print("[WS] COMMAND send failed:", e)
+        return False
+
+async def _confirm_send(move=None, found=False):
+    print("\n--- COMMAND PREVIEW ---")
+    if found:
+        print("ACTION: FOUND")
+    else:
+        x, y, z = move
+        print(f"MOVE: (x={x}, y={y}, z={z})")
+    print("Press Enter to send, or type 'no' to cancel.")
+    loop = asyncio.get_running_loop()
+    try:
+        ans = await loop.run_in_executor(None, input, "> ")
+    except (EOFError, KeyboardInterrupt):
+        ans = "no"
+    return (ans.strip().lower() in ("", "y", "yes"))
+
 async def stdin_repl():
     """
     Komendy:
@@ -317,9 +375,31 @@ async def stdin_repl():
                 print(f"Error when talking to vlm: {e}")
                 continue
 
-            print(response.text)
+            raw = response.text or ""
+            print(raw if raw.strip() else "<empty>")
 
-            # TODO: autosave
+            # parsowanie XML -> (FOUND) lub (x,y,z)
+            try:
+                parsed = parse_xml_response(raw)
+            except ParsingError as e:
+                print("[VLM] parse error:", e)
+                print("Command NOT sent")
+                continue
+
+            # potwierdzenie operatora i wysyłka
+            if parsed.found:
+                ok = await _confirm_send(found=True)
+                if ok:
+                    await _send_command_to_client(found=True)
+                else:
+                    print("Cancelled by operator.")
+            else:
+                move = parsed.move
+                ok = await _confirm_send(move=move)
+                if ok:
+                    await _send_command_to_client(move=move)
+                else:
+                    print("Cancelled by operator.")
 
             continue
 
@@ -389,6 +469,32 @@ async def stdin_repl():
 
             print(f"VLM answer: {response.text}")
 
+            raw = response.text or ""
+            print(raw if raw.strip() else "<empty>")
+
+            # parsowanie XML -> (FOUND) lub (x,y,z)
+            try:
+                parsed = parse_xml_response(raw)
+            except ParsingError as e:
+                print("[VLM] parse error:", e)
+                print("Command NOT sent")
+                continue
+
+            # potwierdzenie operatora i wysyłka
+            if parsed.found:
+                ok = await _confirm_send(found=True)
+                if ok:
+                    await _send_command_to_client(found=True)
+                else:
+                    print("Cancelled by operator.")
+            else:
+                move = parsed.move
+                ok = await _confirm_send(move=move)
+                if ok:
+                    await _send_command_to_client(move=move)
+                else:
+                    print("Cancelled by operator.")
+
             # TODO: autosave
 
             continue
@@ -397,7 +503,7 @@ async def stdin_repl():
         if cmd.startswith("chat_save "):
 
             if chat_session is None:
-                print("Chat with vlm is not initialized. Use CHAT_INIT first.")
+                print("Chat with VLM is not initialized. Use CHAT_INIT first.")
                 continue
 
             cmd = cmd.split()
