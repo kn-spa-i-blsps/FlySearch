@@ -9,4 +9,5 @@ prompt_generation/__pycache__/
 vlm_raw/
 response_parsers/__pycache__/
 .venv/
+tmp.png
 
