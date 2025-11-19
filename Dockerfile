@@ -16,7 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     fontconfig \
     fonts-noto-core \
+    build-essential \
     python3 \
+    python3-dev \
+    libjpeg-dev \
+    zlib1g-dev \
     python3-venv \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
