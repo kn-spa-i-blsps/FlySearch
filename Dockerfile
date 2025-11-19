@@ -27,7 +27,7 @@ RUN ls -lh /usr/share/fonts/truetype/noto/NotoSerif-Bold.ttf && echo ">>> CZCION
 
 # 3. Instalacja bibliotek kamery TYLKO na ARM (RPi)
 RUN case "$(dpkg --print-architecture)" in \
-      arm64|armhf \
+      arm64|armhf) \
         echo ">>> ARM wykryty – instaluję repo RPi i Picamera2"; \
         curl -fsSL https://archive.raspberrypi.com/debian/raspberrypi.gpg.key \
           | gpg --dearmor -o /usr/share/keyrings/raspberrypi-archive-keyring.gpg && \
@@ -39,7 +39,7 @@ RUN case "$(dpkg --print-architecture)" in \
           python3-picamera2 \
         && apt-get clean && rm -rf /var/lib/apt/lists/* ; \
         ;; \
-      * \
+      *) \
         echo ">>> Nie-ARM (amd64 itp.) – pomijam instalację kamery"; \
         ;; \
     esac
