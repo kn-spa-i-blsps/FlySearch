@@ -23,11 +23,11 @@ def parse_args():
     p.add_argument("--height",  default=os.environ.get("HEIGHT", 500))
     p.add_argument("--quality", default=os.environ.get("QUALITY", 90))
     p.add_argument("--commands", default=os.environ.get("COMMANDS_DIR", "/commands"))
-    p.add_argument("--mav_device",  default=os.environ.get("MAV_DEVICE", "/dev/ttyACM0"))
+    p.add_argument("--mav_device",  default=os.environ.get("MAV_DEVICE", "/dev/ttyAMA0"))
     p.add_argument("--mav_baud",    default=int(os.environ.get("MAV_BAUD", "57600")), type=int)
     p.add_argument("--telemetry_timeout", default=float(os.environ.get("TELEM_TIMEOUT", "2.0")), type=float)
     p.add_argument("--move_method", default=int(os.environ.get("MOVE_METHOD", "0")),   type=int)  # 0..3
-    p.add_argument("--exec_moves",  default=int(os.environ.get("EXECUTE_MOVES", "0")), type=int) # 0=OFF, 1=ON
+    p.add_argument("--exec_moves",  default=int(os.environ.get("EXECUTE_MOVES", "1")), type=int) # 0=OFF, 1=ON
     return p.parse_args()
 
 def main():
@@ -126,10 +126,10 @@ def main():
         try:
             ned = grid_xyz_to_ned(move)
             ok = send_vector_command(
-                device=args.mav_device,
-                baud=args.mav_baud,
+                #device=args.mav_device,
+                #baud=args.mav_baud,
                 vector=ned,               # (N, E, D) w metrach
-                method_id=args.move_method  # 0..3
+                #method_id=args.move_method  # 0..3
             )
             print(f"[RPi] FC execute move ned={ned} method={args.move_method} ok={ok}")
             return bool(ok)

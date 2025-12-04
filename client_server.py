@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 import websockets
 from typing import Dict
+import io
 
 from google.api_core.exceptions import InvalidArgument
 
@@ -127,11 +128,28 @@ async def handler(ws):
                 img_file_name = f"{img_file_base}.jpg"
                 img_path = os.path.join(UPLOAD_DIR, img_file_name)
 
-                with open(img_path, "wb") as f:
-                    f.write(photo_data)
 
-                print(f"[WS] saved photo -> {img_path}")
+                try:
+                    img=Image.open(io.BytesIO(photo_data))
+                    w, h = img.size
+                    side = min(w,h)
+                    left = (w - side)// 2
+                    top = (h - side) //2
+                    right = left + side
+                    bottom = top + side
 
+                    img_cropped=img.crop((left,top,right,bottom))
+
+                    img_cropped.save(img_path, format="JPEG", quality=90)
+                    print(f"[WS] saved *square* photo -> {img_path} ({side}x{side})")
+                except Exception as e:
+                    print(f"[WS] square crop failed, saving raw photo: {e}")
+                    with open(img_path, "wb") as f:
+                        f.write(photo_data)
+                        print(f"[WS] saved photo (raw) -> {img_path}")
+                    
+
+              
                 # Telemetry
                 tel_file_base = f"telemetry_{ts}"
                 tel_file_name = f"{tel_file_base}.json"

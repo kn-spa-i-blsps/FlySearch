@@ -52,10 +52,64 @@ _current_log_file_path: Optional[str] = None
 # Funkcje pomocnicze: połączenie i odbiór wiadomości MAVLink
 # ---------------------------------------------------------------------------
 
+def _request_data_streams(
+    master: mavutil.mavfile,
+    position_hz: int = 5,
+    extra1_hz: int = 10,
+    ext_status_hz: int = 2,
+) -> None:
+    """
+    Prosi autopilota o wysyłanie strumieni danych:
+      - MAV_DATA_STREAM_POSITION      -> GLOBAL_POSITION_INT
+      - MAV_DATA_STREAM_EXTRA1        -> ATTITUDE
+      - MAV_DATA_STREAM_EXTENDED_STATUS -> SYS_STATUS, itp.
+    """
+    try:
+        ts = master.target_system
+        tc = master.target_component
+
+        # Pozycja i prędkość
+        master.mav.request_data_stream_send(
+            ts,
+            tc,
+            mavutil.mavlink.MAV_DATA_STREAM_POSITION,
+            position_hz,
+            1,  # start
+        )
+
+        # Attitude
+        master.mav.request_data_stream_send(
+            ts,
+            tc,
+            mavutil.mavlink.MAV_DATA_STREAM_EXTRA1,
+            extra1_hz,
+            1,
+        )
+
+        # Status/bateria
+        master.mav.request_data_stream_send(
+            ts,
+            tc,
+            mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS,
+            ext_status_hz,
+            1,
+        )
+
+        print(
+            f"[MAV] Requested data streams: "
+            f"POSITION={position_hz}Hz, EXTRA1={extra1_hz}Hz, EXT_STATUS={ext_status_hz}Hz"
+        )
+    except Exception as e:
+        # Nie chcemy wywalać całego modułu, jeśli request się nie uda
+        print("[MAV] request_data_stream_send failed:", e)
+
+
 def _ensure_connection(device: str, baud: int, heartbeat_timeout: float = 5.0) -> None:
     """
     Zapewnia połączenie MAVLink z danym urządzeniem i uruchomiony wątek odbioru.
     Jeśli połączenie już istnieje z tym samym device/baud, nic nie robi.
+    Dodatkowo po HEARTBEAT wysyła request_data_stream_send, żeby dostać
+    GLOBAL_POSITION_INT, ATTITUDE i SYS_STATUS na tym linku.
     """
     global _master, _current_device, _current_baud, _receiver_thread
 
@@ -80,18 +134,31 @@ def _ensure_connection(device: str, baud: int, heartbeat_timeout: float = 5.0) -
     _receiver_stop_event.clear()
     _state.clear()
 
+    print(f"[MAV] Opening MAVLink connection on {device} @ {baud}...")
     # Nawiąż nowe połączenie
     _master = mavutil.mavlink_connection(device, baud=baud)
     _current_device = device
     _current_baud = baud
 
     # Czekamy na HEARTBEAT, żeby upewnić się, że autopilot odpowiada
-    _master.wait_heartbeat(timeout=heartbeat_timeout)
+    hb = _master.wait_heartbeat(timeout=heartbeat_timeout)
+    if hb is None:
+        raise TimeoutError(f"[MAV] No HEARTBEAT on {device} within {heartbeat_timeout} s")
+
+    print(
+        f"[MAV] Got HEARTBEAT: system={_master.target_system}, "
+        f"component={_master.target_component}, type={hb.type}, "
+        f"autopilot={hb.autopilot}"
+    )
+
+    # Poproś o strumienie danych (GLOBAL_POSITION_INT, ATTITUDE, SYS_STATUS)
+    _request_data_streams(_master)
 
     # Startujemy wątek odbioru, jeśli jeszcze nie działa
     if _receiver_thread is None or not _receiver_thread.is_alive():
         _receiver_thread = threading.Thread(target=_receiver_worker, daemon=True)
         _receiver_thread.start()
+        print("[MAV] Receiver thread started.")
 
 
 def _receiver_worker() -> None:
@@ -100,6 +167,7 @@ def _receiver_worker() -> None:
     """
     global _master
 
+    print("[MAV] _receiver_worker: started.")
     while not _receiver_stop_event.is_set():
         if _master is None:
             time.sleep(0.1)
@@ -205,7 +273,7 @@ def get_telemetry_json(
     ten JSON jako słownik (lub None, jeśli nie udało się nic sensownego zebrać).
 
     Parametry:
-      - device: np. "/dev/tty.usbserial-D30JQ57H"
+      - device: np. "/dev/tty.usbserial-D30JQ57H" albo "/dev/serial0"
       - baud: np. 57600 albo 115200
       - wait_for_data: jeśli True, czekamy maksymalnie 'timeout' sekund na dane
       - timeout: ile maksymalnie czekać na pojawienie się danych
@@ -370,8 +438,8 @@ def stop_continuous_logging(
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # Przykład: podmień na swój port:
-    device = "/dev/tty.usbserial-D30JQ57H"
+    # Przykład: podmień na swój port, np. "/dev/serial0" na RPi
+    device = "/dev/tty.AMA0"
     baud = 57600
 
     print("Pobieram pojedynczy snapshot...")

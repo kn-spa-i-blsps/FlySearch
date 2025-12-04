@@ -45,15 +45,16 @@ services:
       WIDTH: "${WIDTH:-500}"
       HEIGHT: "${HEIGHT:-500}"
       QUALITY: "${QUALITY:-90}"
-      MAV_DEVICE: "/dev/ttyACM0"
+      MAV_DEVICE: "/dev/ttyAMA0"
       MAV_BAUD: "57600"
     tty: true 
     stdin_open: true
     # na start wygodnie:
-    privileged: true
+    
     # po testach usuń privileged i dopisz konkretne device'y:
-    # devices:
-    #  - /dev/media0:/dev/media0
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/ttyAMA0:/dev/ttyAMA0
     #  - /dev/media1:/dev/media1
     #  - /dev/video0:/dev/video0
     profiles: ["producer"]

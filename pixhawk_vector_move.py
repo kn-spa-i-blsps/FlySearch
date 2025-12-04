@@ -62,11 +62,11 @@ def _is_guided(master: mavutil.mavfile) -> bool:
 
 
 def method_position_offset(master, dx, dy, dz) -> bool:
-    if not _is_guided(master):
-        print("[M0] Dron nie jest w GUIDED – przerwano.")
-        return False
+   # if not _is_guided(master):
+   #     print("[M0] Dron nie jest w GUIDED – przerwano.")
+   #     return False
 
-    type_mask = 3576  # use position
+    type_mask = 0b0000111111111000  # use position
     try:
         master.mav.set_position_target_local_ned_send(
             0,
@@ -91,8 +91,8 @@ def method_position_offset(master, dx, dy, dz) -> bool:
 
 
 def method_velocity_ned(master, dx, dy, dz) -> bool:
-    if not _is_guided(master):
-        return False
+    #if not _is_guided(master):
+     #   return False
 
     dist = math.sqrt(dx*dx + dy*dy + dz*dz)
     if dist < 1e-3:
@@ -116,9 +116,9 @@ def method_velocity_ned(master, dx, dy, dz) -> bool:
 
     while time.time() - t0 < duration:
 
-        if not _is_guided(master):
-            print("[M1] tryb przestał być GUIDED → STOP")
-            return False
+        #if not _is_guided(master):
+       #     print("[M1] tryb przestał być GUIDED → STOP")
+      #      return False
 
         try:
             master.mav.set_position_target_local_ned_send(
@@ -146,8 +146,8 @@ def method_velocity_ned(master, dx, dy, dz) -> bool:
 
 
 def method_velocity_body(master, dx, dy, dz) -> bool:
-    if not _is_guided(master):
-        return False
+    #if not _is_guided(master):
+    #    return False
 
     dist = math.sqrt(dx*dx + dy*dy + dz*dz)
     if dist < 1e-3:
@@ -258,10 +258,10 @@ def method_accel_ned(master, dx, dy, dz) -> bool:
 
 
 def send_vector_command(
-    device: str,
-    baud: int,
     vector: Tuple[float, float, float],
-    method_id: int,
+    device: str = '/dev/ttyAMA0',
+    baud: int = 57600,
+    method_id: int = 0,
 ) -> bool:
     """
     Główna funkcja: Ty podajesz TYLKO:

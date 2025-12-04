@@ -23,12 +23,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     python3-venv \
     python3-pip \
+    fswebcam \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. SZYBKA WERYFIKACJA: Sprawdź czy czcionka się zainstalowała.
 # Jeśli ten krok zwróci błąd, będziemy wiedzieć, że apt zawiódł.
 RUN case "$(dpkg --print-architecture)" in \
-      arm64|armhf) \
+      arm32|armhf) \
         echo ">>> ARM wykryty – instaluję repo RPi i Picamera2"; \
         curl -fsSL https://archive.raspberrypi.com/debian/raspberrypi.gpg.key \
           | gpg --dearmor -o /usr/share/keyrings/raspberrypi-archive-keyring.gpg && \
