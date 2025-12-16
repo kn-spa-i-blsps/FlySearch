@@ -1,3 +1,31 @@
+x-producer-common: &producer_common
+  image: flysearch:latest
+  build: 
+    context: ..
+    dockerfile: Dockerfile
+  command: >
+    python3 /app/producer_server.py
+    --server ${SERVER_URL}
+    --fname ${FNAME:-photo.jpg}
+  working_dir: /app
+  volumes:
+    - ../:/app
+    - ../img:/img
+    - ../commands:/commands
+    - /run/udev:/run/udev:ro
+  environment:
+    SERVER_URL: "${SERVER_URL}"
+    IMG_DIR: "${IMG_DIR:-/img}"
+    COMMANDS_DIR: "${COMMANDS_DIR:-/commands}"
+    CAPTURE_PY: "${CAPTURE_PY:-/app/capture.py}"
+    FNAME: "${FNAME:-photo.jpg}"
+    WIDTH: "${WIDTH:-500}"
+    HEIGHT: "${HEIGHT:-500}"
+    QUALITY: "${QUALITY:-90}"
+    MAV_BAUD: "57600"
+  tty: true 
+  stdin_open: true
+
 services:
   server:
     build: 
@@ -20,41 +48,20 @@ services:
     stdin_open: true
     ports: ["8080:8080"]
     profiles: ["server"]
-
-  producer:
-    image: flysearch:latest
-    build: 
-      context: ..
-      dockerfile: Dockerfile
-    command: >
-      python3 /app/producer_server.py
-      --server ${SERVER_URL}
-      --fname ${FNAME:-photo.jpg}
-    working_dir: /app
-    volumes:
-      - ../:/app
-      - ../img:/img
-      - ../commands:/commands
-      - /run/udev:/run/udev:ro
-    environment:
-      SERVER_URL: "${SERVER_URL}"
-      IMG_DIR: "${IMG_DIR:-/img}"
-      COMMANDS_DIR: "${COMMANDS_DIR:-/commands}"
-      CAPTURE_PY: "${CAPTURE_PY:-/app/capture.py}"
-      FNAME: "${FNAME:-photo.jpg}"
-      WIDTH: "${WIDTH:-500}"
-      HEIGHT: "${HEIGHT:-500}"
-      QUALITY: "${QUALITY:-90}"
-      MAV_DEVICE: "/dev/ttyAMA0"
-      MAV_BAUD: "57600"
-    tty: true 
-    stdin_open: true
-    # na start wygodnie:
     
-    # po testach usuń privileged i dopisz konkretne device'y:
+  # drone / RPi hardware
+  producer:
+    <<: *producer_common
+    profiles: ["producer_hw"]
+    environment:
+      MAV_DEVICE: "/dev/ttyAMA0"
     devices:
       - /dev/video0:/dev/video0
       - /dev/ttyAMA0:/dev/ttyAMA0
-    #  - /dev/media1:/dev/media1
-    #  - /dev/video0:/dev/video0
+    
+  # no-drone / laptop-friendly
+  producer_test:
+    <<: *producer_common
     profiles: ["producer"]
+    environment:
+      MAV_DEVICE: ""
