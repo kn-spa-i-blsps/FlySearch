@@ -52,7 +52,7 @@ services:
   # drone / RPi hardware
   producer:
     <<: *producer_common
-    profiles: ["producer_hw"]
+    profiles: ["producer"]
     environment:
       MAV_DEVICE: "/dev/ttyAMA0"
     devices:
@@ -62,6 +62,6 @@ services:
   # no-drone / laptop-friendly
   producer_test:
     <<: *producer_common
-    profiles: ["producer"]
+    profiles: ["producer_test"]
     environment:
       MAV_DEVICE: ""
