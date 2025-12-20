@@ -27,24 +27,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN case "$(dpkg --print-architecture)" in \
-      arm64|aarch64|armhf|armv7l|arm32) \
-        . /etc/os-release; \
-        curl -fsSL https://archive.raspberrypi.com/debian/raspberrypi.gpg.key \
-          | gpg --dearmor -o /usr/share/keyrings/raspberrypi-archive-keyring.gpg && \
-        echo "deb [signed-by=/usr/share/keyrings/raspberrypi-archive-keyring.gpg] https://archive.raspberrypi.com/debian/ ${VERSION_CODENAME} main" \
-          > /etc/apt/sources.list.d/raspi.list && \
-        apt-get update && \
-        apt-get install -y --no-install-recommends \
-          libcamera-apps \
-          python3-picamera2 \
-          python3-libcamera \
-          libcamera-ipa \
-        && apt-get clean && rm -rf /var/lib/apt/lists/* ; \
-        ;; \
-      *) \
-        echo "Non-ARM – skipping Picamera2 install"; \
-        ;; \
-    esac
+  arm64|aarch64|armhf|armv7l|arm32) \
+    . /etc/os-release; \
+    curl -fsSL https://archive.raspberrypi.com/debian/raspberrypi.gpg.key \
+      | gpg --dearmor -o /usr/share/keyrings/raspberrypi-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/raspberrypi-archive-keyring.gpg] https://archive.raspberrypi.com/debian/ ${VERSION_CODENAME} main" \
+      > /etc/apt/sources.list.d/raspi.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends libcamera-apps python3-picamera2 python3-libcamera libcamera-ipa \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* ; \
+    ;; \
+  *) echo "Non-ARM – skipping Picamera2 install"; ;; \
+esac
+
 
 
 # Venv and Python packagres
