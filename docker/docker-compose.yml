@@ -60,3 +60,6 @@ services:
     profiles: ["producer_test"]
     environment:
       MAV_DEVICE: ""
+    privileged: true
+    volumes:
+      - /dev:/dev

@@ -45,13 +45,13 @@ RUN case "$(dpkg --print-architecture)" in \
     esac
 
 
-# 4. Wirtualne środowisko i pakiety Python
+# Venv and Python packagres
 RUN python3 -m venv --system-site-packages $VIRTUAL_ENV \
     && pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir websockets websocket-client \
     && pip install --no-cache-dir google-generativeai google-api-core Pillow numpy pymavlink pyserial
 
-# 5. Odświeżenie cache fontów
+# Refreshing cache fonts
 RUN fc-cache -fv
 
 WORKDIR /app
