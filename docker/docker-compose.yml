@@ -10,7 +10,6 @@ x-producer-common: &producer_common
   working_dir: /app
   volumes:
     - ../:/app
-    - ../img:/img
     - ../commands:/commands
     - /run/udev:/run/udev:ro
   environment:
