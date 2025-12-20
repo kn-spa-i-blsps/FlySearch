@@ -6,7 +6,6 @@ x-producer-common: &producer_common
   command: >
     python3 /app/producer_server.py
     --server ${SERVER_URL}
-    --fname ${FNAME:-photo.jpg}
   working_dir: /app
   volumes:
     - ../:/app
@@ -14,10 +13,7 @@ x-producer-common: &producer_common
     - /run/udev:/run/udev:ro
   environment:
     SERVER_URL: "${SERVER_URL}"
-    IMG_DIR: "${IMG_DIR:-/img}"
     COMMANDS_DIR: "${COMMANDS_DIR:-/commands}"
-    CAPTURE_PY: "${CAPTURE_PY:-/app/capture.py}"
-    FNAME: "${FNAME:-photo.jpg}"
     WIDTH: "${WIDTH:-500}"
     HEIGHT: "${HEIGHT:-500}"
     QUALITY: "${QUALITY:-90}"
