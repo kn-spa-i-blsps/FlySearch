@@ -63,3 +63,4 @@ services:
     privileged: true
     volumes:
       - /dev:/dev
+      - /sys:/sys
