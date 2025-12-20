@@ -26,11 +26,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fswebcam \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. SZYBKA WERYFIKACJA: Sprawdź czy czcionka się zainstalowała.
-# Jeśli ten krok zwróci błąd, będziemy wiedzieć, że apt zawiódł.
 RUN case "$(dpkg --print-architecture)" in \
-      arm32|armhf) \
-        echo ">>> ARM wykryty – instaluję repo RPi i Picamera2"; \
+      arm32|armhf|arm64|aarch64) \
+        echo ">>> ARM detected - installing RPi repo and Picamera2"; \
         curl -fsSL https://archive.raspberrypi.com/debian/raspberrypi.gpg.key \
           | gpg --dearmor -o /usr/share/keyrings/raspberrypi-archive-keyring.gpg && \
         echo "deb [signed-by=/usr/share/keyrings/raspberrypi-archive-keyring.gpg] https://archive.raspberrypi.com/debian/ bookworm main" \
@@ -42,9 +40,10 @@ RUN case "$(dpkg --print-architecture)" in \
         && apt-get clean && rm -rf /var/lib/apt/lists/* ; \
         ;; \
       *) \
-        echo ">>> Nie-ARM (amd64 itp.) – pomijam instalację kamery"; \
+        echo ">>> Non-ARM - skipping camera install"; \
         ;; \
     esac
+
 
 # 4. Wirtualne środowisko i pakiety Python
 RUN python3 -m venv --system-site-packages $VIRTUAL_ENV \
