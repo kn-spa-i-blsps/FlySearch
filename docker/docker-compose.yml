@@ -44,7 +44,7 @@ services:
     ports: ["8080:8080"]
     profiles: ["server"]
     
-  # drone / RPi hardware
+  # drone / RPi hardware for actual workflow
   producer:
     <<: *producer_common
     profiles: ["producer"]
@@ -54,7 +54,7 @@ services:
       - /dev/video0:/dev/video0
       - /dev/ttyAMA0:/dev/ttyAMA0
     
-  # no-drone / laptop-friendly
+  # no-drone / laptop-friendly for tests without drone
   producer_test:
     <<: *producer_common
     profiles: ["producer_test"]

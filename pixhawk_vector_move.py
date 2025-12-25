@@ -2,19 +2,19 @@
 """
 pixhawk_vector_move.py
 
-Sterowanie dronem ArduPilot (GUIDED) wektorem przesunięcia (dx, dy, dz)
-czterema metodami, wybieranymi przez method_id 0–3.
+Drone control in ArduPilot (GUIDED) using a displacement vector (dx, dy, dz)
+with four methods, selected by method_id 0–3.
 
 method_id:
     0 -> POSITION OFFSET (LOCAL_OFFSET_NED)
-    1 -> VELOCITY NED (LOCAL_NED, duration i velocity liczone z wektora)
-    2 -> VELOCITY BODY (BODY_NED, duration i velocity liczone z wektora)
-    3 -> ACCELERATION NED (LOCAL_NED, duration i acceleration liczone z wektora)
+    1 -> VELOCITY NED (LOCAL_NED, duration and velocity computed from the vector)
+    2 -> VELOCITY BODY (BODY_NED, duration and velocity computed from the vector)
+    3 -> ACCELERATION NED (LOCAL_NED, duration and acceleration computed from the vector)
 
-Wejście:
+Input:
     send_vector_command(device, baud, vector, method_id)
 
-    vector = (dx, dy, dz) [metry]
+    vector = (dx, dy, dz) [meters]
 """
 
 import time
@@ -23,10 +23,10 @@ from typing import Tuple
 
 from pymavlink import mavutil
 
-# Domyślne parametry do liczenia duration itp.
-DEFAULT_SPEED = 1.0               # [m/s] dla metod 1 i 2
+# Default parameters to calculate duration etc.
+DEFAULT_SPEED = 1.0               # [m/s] for methods 1 and 2
 DEFAULT_VEL_SEND_RATE_HZ = 5.0    # [Hz]
-DEFAULT_ACCEL_MAG = 0.5           # [m/s^2] dla metody 3
+DEFAULT_ACCEL_MAG = 0.5           # [m/s^2] for methods 3
 DEFAULT_ACCEL_SEND_RATE_HZ = 5.0  # [Hz]
 
 
@@ -53,17 +53,17 @@ def _get_mode(master: mavutil.mavfile) -> str:
 
 def _is_guided(master: mavutil.mavfile) -> bool:
     mode = _get_mode(master)
-    print(f"[vector_move] Aktualny tryb: {mode}")
+    print(f"[vector_move] Current mode: {mode}")
     return mode == "GUIDED"
 
 
 # ---------------------------------- METHOD 0 ----------------------------------
-# Bez zmian – przesunięcie o wektor w LOCAL_OFFSET_NED
+# No changes – shift by a vector in LOCAL_OFFSET_NED
 
 
 def method_position_offset(master, dx, dy, dz) -> bool:
    # if not _is_guided(master):
-   #     print("[M0] Dron nie jest w GUIDED – przerwano.")
+   #     print("[M0] Drone not in GUIDED – interrupted.")
    #     return False
 
     type_mask = 0b0000111111111000  # use position
@@ -79,15 +79,15 @@ def method_position_offset(master, dx, dy, dz) -> bool:
             0, 0, 0,
             0, 0
         )
-        print(f"[M0] Wysłano offset (dx={dx}, dy={dy}, dz={dz}) [m, NED]")
+        print(f"[M0] Sent offset (dx={dx}, dy={dy}, dz={dz}) [m, NED]")
         return True
     except Exception as e:
-        print("[M0] Błąd:", e)
+        print("[M0] Error:", e)
         return False
 
 
 # ---------------------------------- METHOD 1 ----------------------------------
-# VELOCITY NED – teraz liczymy vx,vy,vz i duration z wektora (dx,dy,dz)
+# VELOCITY NED – calculating vx,vy,vz and duration from vecotr (dx,dy,dz)
 
 
 def method_velocity_ned(master, dx, dy, dz) -> bool:
@@ -96,7 +96,7 @@ def method_velocity_ned(master, dx, dy, dz) -> bool:
 
     dist = math.sqrt(dx*dx + dy*dy + dz*dz)
     if dist < 1e-3:
-        print("[M1] Wektor ~0, nic nie robię.")
+        print("[M1] Vector ~0, doing nothing.")
         return True
 
     speed = max(DEFAULT_SPEED, 0.01)
@@ -133,7 +133,7 @@ def method_velocity_ned(master, dx, dy, dz) -> bool:
                 0, 0
             )
         except Exception as e:
-            print("[M1] Błąd:", e)
+            print("[M1] Error:", e)
             return False
 
         time.sleep(dt)
@@ -142,7 +142,7 @@ def method_velocity_ned(master, dx, dy, dz) -> bool:
 
 
 # ---------------------------------- METHOD 2 ----------------------------------
-# VELOCITY BODY – to samo co M1, ale w osi drona (BODY_NED)
+# VELOCITY BODY – same as M1, but in the drone's axis (BODY_NED)
 
 
 def method_velocity_body(master, dx, dy, dz) -> bool:
@@ -151,7 +151,7 @@ def method_velocity_body(master, dx, dy, dz) -> bool:
 
     dist = math.sqrt(dx*dx + dy*dy + dz*dz)
     if dist < 1e-3:
-        print("[M2] Wektor ~0, nic nie robię.")
+        print("[M2] Vector ~0, doing nothing.")
         return True
 
     speed = max(DEFAULT_SPEED, 0.01)
@@ -165,14 +165,14 @@ def method_velocity_body(master, dx, dy, dz) -> bool:
     dt = 1 / DEFAULT_VEL_SEND_RATE_HZ if DEFAULT_VEL_SEND_RATE_HZ > 0 else 0.2
     t0 = time.time()
 
-    print(f"[M2] move by BODY offset (dx={dx}, dy={dy}, dz={dz}) [m w osi drona] "
+    print(f"[M2] move by BODY offset (dx={dx}, dy={dy}, dz={dz}) [m in drone's axis] "
           f"→ vBODY=(vx={vx:.2f}, vy={vy:.2f}, vz={vz:.2f}) [m/s], "
           f"duration={duration:.2f}s")
 
     while time.time() - t0 < duration:
 
         if not _is_guided(master):
-            print("[M2] tryb przestał być GUIDED → STOP")
+            print("[M2] mode is no longer GUIDED → STOP")
             return False
 
         try:
@@ -188,7 +188,7 @@ def method_velocity_body(master, dx, dy, dz) -> bool:
                 0, 0
             )
         except Exception as e:
-            print("[M2] Błąd:", e)
+            print("[M2] Error:", e)
             return False
 
         time.sleep(dt)
@@ -197,7 +197,7 @@ def method_velocity_body(master, dx, dy, dz) -> bool:
 
 
 # ---------------------------------- METHOD 3 ----------------------------------
-# ACCEL NED – liczymy stałą wartość przyspieszenia w kierunku wektora
+# ACCEL NED – calculating a constant value of acceletation in the direction of the vector 
 
 
 def method_accel_ned(master, dx, dy, dz) -> bool:
@@ -206,12 +206,12 @@ def method_accel_ned(master, dx, dy, dz) -> bool:
 
     dist = math.sqrt(dx*dx + dy*dy + dz*dz)
     if dist < 1e-3:
-        print("[M3] Wektor ~0, nic nie robię.")
+        print("[M3] Vector ~0, doing nothing.")
         return True
 
     a = max(DEFAULT_ACCEL_MAG, 1e-3)
 
-    # ruch z przyspieszeniem a: s = 1/2 * a * t^2  → t = sqrt(2 s / a)
+    # motion with acceletation a: s = 1/2 * a * t^2  → t = sqrt(2 s / a)
     duration = math.sqrt(2 * dist / a)
 
     ux, uy, uz = dx/dist, dy/dist, dz/dist
@@ -230,7 +230,7 @@ def method_accel_ned(master, dx, dy, dz) -> bool:
     while time.time() - t0 < duration:
 
         if not _is_guided(master):
-            print("[M3] tryb przestał być GUIDED → STOP")
+            print("[M3] mode is no longer GUIDED → STOP")
             return False
 
         try:
@@ -246,7 +246,7 @@ def method_accel_ned(master, dx, dy, dz) -> bool:
                 0, 0
             )
         except Exception as e:
-            print("[M3] Błąd:", e)
+            print("[M3] Error:", e)
             return False
 
         time.sleep(dt)
@@ -264,16 +264,16 @@ def send_vector_command(
     method_id: int = 0,
 ) -> bool:
     """
-    Główna funkcja: Ty podajesz TYLKO:
-        - device (np. "/dev/tty.usbserial-D30JQ57H")
-        - baud (np. 57600)
-        - vector = (dx, dy, dz) [metry]
+    Main function: You provide ONLY:
+        - device (e.g. "/dev/tty.usbserial-D30JQ57H")
+        - baud (e.g. 57600)
+        - vector = (dx, dy, dz) [meters]
         - method_id 0–3
 
-    Zależnie od method_id wewnętrznie liczymy:
-        - velocity (metody 1,2) i duration,
-        - acceleration (metoda 3) i duration,
-        - albo wysyłamy offset (metoda 0).
+    Depending on method_id, we compute internally:
+        - velocity (methods 1,2) and duration,
+        - acceleration (method 3) and duration,
+        - or we send an offset (method 0).
 
     method_id:
         0 = POSITION_OFFSET   (LOCAL_OFFSET_NED)
@@ -286,7 +286,7 @@ def send_vector_command(
     try:
         master = _connect(device, baud)
     except Exception as e:
-        print("[dispatcher] Błąd połączenia:", e)
+        print("[dispatcher] Connection error:", e)
         return False
 
     if method_id == 0:
@@ -302,7 +302,7 @@ def send_vector_command(
         return method_accel_ned(master, dx, dy, dz)
 
     else:
-        print(f"[dispatcher] Nieprawidłowy method_id: {method_id} (0–3)")
+        print(f"[dispatcher] Incorrect method_id: {method_id} (0–3)")
         return False
 
 
@@ -316,11 +316,11 @@ if __name__ == "__main__":
     print("\n=== TEST: method 0 offset (2m North, 0.5m up) ===")
     send_vector_command(device, baud, (2.0, 0.0, -0.5), method_id=0)
 
-    print("\n=== TEST: method 1 velocity_ned (ten sam wektor) ===")
+    print("\n=== TEST: method 1 velocity_ned (the same vector) ===")
     send_vector_command(device, baud, (2.0, 0.0, -0.5), method_id=1)
 
-    print("\n=== TEST: method 2 velocity_body (ten sam wektor względem nosa) ===")
+    print("\n=== TEST: method 2 velocity_body (the same vector with respect to the nose) ===")
     send_vector_command(device, baud, (2.0, 0.0, -0.5), method_id=2)
 
-    print("\n=== TEST: method 3 accel_ned (ten sam wektor) ===")
+    print("\n=== TEST: method 3 accel_ned (the same vector) ===")
     send_vector_command(device, baud, (2.0, 0.0, -0.5), method_id=3)

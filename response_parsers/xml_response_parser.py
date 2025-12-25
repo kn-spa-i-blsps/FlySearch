@@ -1,3 +1,6 @@
+'''
+The response parsing logic has been directly copied from the official Github repository of the Flysearch project: https://github.com/gmum/flysearch '''
+
 import re
 from dataclasses import dataclass
 from typing import Tuple
