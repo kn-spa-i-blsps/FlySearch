@@ -56,7 +56,7 @@ def carthesian(x, y):
 
 
 # It doesn't render dots on the edges of the image.
-def dot_matrix_two_dimensional_drone(img: PIL.Image.Image, w_dots, h_dots, camera_fov_degrees=90, drone_height=100):
+def dot_matrix_two_dimensional_drone(img: PIL.Image.Image, w_dots=5, h_dots=5, camera_fov_degrees=90, drone_height=100):
     def get_opposite_color(pixel_color):
         if pixel_color[0] + pixel_color[1] + pixel_color[2] >= 255 * 3 / 2:
             opposite_color = (0, 0, 0)
