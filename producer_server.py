@@ -1,5 +1,8 @@
-import websocket, pathlib, subprocess, os, argparse, json, base64, uuid 
-from datetime import datetime 
+import time
+
+import websocket, pathlib, subprocess, os, argparse, json, base64, uuid
+from datetime import datetime
+import picamera
 
 try:
     from pixhawk_telemetry_utils import get_telemetry_json
@@ -42,6 +45,8 @@ def main():
     session_file = commands_dir / f"session_{session_id}.jsonl"
     latest_file  = commands_dir / "latest_command.json"
 
+    video_path = str(img_dir / f"video_{session_id}.h264")
+
     seq = {"n": 0}
     def next_seq():
         seq["n"] += 1
@@ -62,195 +67,214 @@ def main():
             json.dump(obj, f, ensure_ascii=False, indent=2)
         tmp.replace(path)
 
-    def take_photo():
-        env = os.environ.copy()
-        env["IMG_DIR"] = str(img_dir)
-        env["FNAME"] = args.fname
-        env["WIDTH"] = str(args.width)
-        env["HEIGHT"] = str(args.height)
-        env["QUALITY"] = str(args.quality)
-        subprocess.run(["python3", args.capture], env=env, check=True)
+    print("[RPi] Initializing PiCamera...")
+    with picamera.PiCamera() as camera:
 
-    def gather_telemetry() -> dict:
-        """
-        Jeden snapshot z Pixhawka. Zwraca {} gdy brak modułu/połączenia.
-        Dodaje pole 'height' = position.alt dla kompatybilności z serwerem.
-        """
-        if get_telemetry_json is None:
-            return {}
-        try:
-            data = get_telemetry_json(
-                device=args.mav_device,
-                baud=args.mav_baud,
-                wait_for_data=True,
-                timeout=args.telemetry_timeout
-            )
-        except Exception as e:
-            print(f"[RPi] TELEMETRY read error: {e}")
-            data = None
+        camera.resolution = (int(args.width), int(args.height))
+        camera.framerate = 24
 
-        if not data:
-            return {}
+        camera.annotate_text = f"Session: {session_id}"
 
-        # back-compat z parse_telemetry() po stronie serwera
-        try:
-            alt = (data.get("position") or {}).get("alt")
-            if alt is not None and "height" not in data:
-                data["height"] = alt
-        except Exception:
-            pass
+        time.sleep(2)
 
-        return data
-    
-    def grid_xyz_to_ned(move):
-        """
-        Mapowanie z promptu VLM: (x=E, y=N, z=UP)  →  NED: (N, E, D).
-        """
-        x, y, z = float(move[0]), float(move[1]), float(move[2])
-        N = y
-        E = x
-        D = -z
-        return (N, E, D)
+        print(f"[RPi] Starting video recording: {video_path}")
+        camera.start_recording(video_path)
 
-    def maybe_execute_move(move):
-        """
-        Jeżeli EXECUTE_MOVES=1 i mamy pixhawk_vector_move, wyślij komendę do Pixhawka.
-        Zwraca True/False (czy wysłano do FC).
-        """
-        if not args.exec_moves:
-            print("[RPi] EXECUTE_MOVES=0 → tylko loguję komendę, bez wysyłania do FC.")
-            return False
-        if send_vector_command is None:
-            print("[RPi] pixhawk_vector_move not available → nie wysyłam do FC.")
-            return False
-        try:
-            ned = grid_xyz_to_ned(move)
-            ok = send_vector_command(
-                #device=args.mav_device,
-                #baud=args.mav_baud,
-                vector=ned,               # (N, E, D) w metrach
-                #method_id=args.move_method  # 0..3
-            )
-            print(f"[RPi] FC execute move ned={ned} method={args.move_method} ok={ok}")
-            return bool(ok)
-        except Exception as e:
-            print(f"[RPi] FC execute error: {e}")
-            return False
-
-    def on_message(ws, message):
-        preview = message if isinstance(message, str) else f"<{len(message)} bytes>"
-        print("Received:", (preview[:160] + "...") if isinstance(preview, str) and len(preview) > 160 else preview)
-
-        if message == "SEND_PHOTO":
-            take_photo()
-            with open(photo_path, "rb") as f:
-                ws.send(f.read(), opcode=websocket.ABNF.OPCODE_BINARY)
-            print(f"Sent photo: {photo_path}")
-            return
-
-        elif message == "TELEMETRY":
+        def take_photo():
+            print("[RPi] Capturing high-quality photo...")
             try:
-                with open("telemetry.json", "r", encoding="utf-8") as tf:
-                    tmpl = json.load(tf)
-            except FileNotFoundError:
-                print("[RPi] telemetry.json not found – sending empty {}")
-                tmpl = {}
-            ws.send(json.dumps({"type": "TELEMETRY", "data": tmpl}))
-            print("[RPi] Sent TELEMETRY json")
-            return
+                camera.capture(photo_path, use_video_port=False, quality=int(args.quality))
+                print(f"[RPi] Photo saved to {photo_path}")
+            except Exception as e:
+                print(f"[RPi] Capture error: {e}")
 
-        elif message == "PHOTO_WITH_TELEMETRY":
+        def gather_telemetry() -> dict:
+            """
+            Jeden snapshot z Pixhawka. Zwraca {} gdy brak modułu/połączenia.
+            Dodaje pole 'height' = position.alt dla kompatybilności z serwerem.
+            """
+            if get_telemetry_json is None:
+                return {}
             try:
+                data = get_telemetry_json(
+                    device=args.mav_device,
+                    baud=args.mav_baud,
+                    wait_for_data=True,
+                    timeout=args.telemetry_timeout
+                )
+            except Exception as e:
+                print(f"[RPi] TELEMETRY read error: {e}")
+                data = None
+
+            if not data:
+                return {}
+
+            # back-compat z parse_telemetry() po stronie serwera
+            try:
+                alt = (data.get("position") or {}).get("alt")
+                if alt is not None and "height" not in data:
+                    data["height"] = alt
+            except Exception:
+                pass
+
+            return data
+
+        def grid_xyz_to_ned(move):
+            """
+            Mapowanie z promptu VLM: (x=E, y=N, z=UP)  →  NED: (N, E, D).
+            """
+            x, y, z = float(move[0]), float(move[1]), float(move[2])
+            N = y
+            E = x
+            D = -z
+            return (N, E, D)
+
+        def maybe_execute_move(move):
+            """
+            Jeżeli EXECUTE_MOVES=1 i mamy pixhawk_vector_move, wyślij komendę do Pixhawka.
+            Zwraca True/False (czy wysłano do FC).
+            """
+            if not args.exec_moves:
+                print("[RPi] EXECUTE_MOVES=0 → tylko loguję komendę, bez wysyłania do FC.")
+                return False
+            if send_vector_command is None:
+                print("[RPi] pixhawk_vector_move not available → nie wysyłam do FC.")
+                return False
+            try:
+                ned = grid_xyz_to_ned(move)
+                ok = send_vector_command(
+                    #device=args.mav_device,
+                    #baud=args.mav_baud,
+                    vector=ned,               # (N, E, D) w metrach
+                    #method_id=args.move_method  # 0..3
+                )
+                print(f"[RPi] FC execute move ned={ned} method={args.move_method} ok={ok}")
+                return bool(ok)
+            except Exception as e:
+                print(f"[RPi] FC execute error: {e}")
+                return False
+
+        def on_message(ws, message):
+            preview = message if isinstance(message, str) else f"<{len(message)} bytes>"
+            print("Received:", (preview[:160] + "...") if isinstance(preview, str) and len(preview) > 160 else preview)
+
+            if message == "SEND_PHOTO":
                 take_photo()
                 with open(photo_path, "rb") as f:
-                    photo_data = f.read()
-                photo_base64 = base64.b64encode(photo_data).decode('utf-8')
-            except Exception as e:
-                print(f"[RPi] PHOTO_WITH_TELEMETRY: photo error: {e}")
-                photo_base64 = None
+                    ws.send(f.read(), opcode=websocket.ABNF.OPCODE_BINARY)
+                print(f"Sent photo: {photo_path}")
+                return
 
-            tel = gather_telemetry()
-
-            payload = {
-                "type": "PHOTO_WITH_TELEMETRY",
-                "photo": photo_base64,
-                "telemetry": tel
-            }
-            ws.send(json.dumps(payload))
-            print(f"[RPi] Sent PHOTO_WITH_TELEMETRY (photo={photo_base64 is not None}, telem_keys={list(tel.keys())})")
-            return
-
-        # --- JSON control plane: COMMAND from server ---
-        obj = None
-        if isinstance(message, str):
-            try:
-                obj = json.loads(message)
-            except Exception as e:
-                print(f"[RPi] json.loads FAILED on text message: {e}")
-                obj = None
-
-        if isinstance(obj, dict) and obj.get("type") == "COMMAND":
-            try:
-                s = next_seq()
-
-                # Normalizacja do lekkiego formatu na dysku
-                normalized = {
-                    "ts": now_ts(),
-                    "seq": s,
-                }
-
-                executed = False
-                if obj.get("action") == "FOUND":
-                    normalized["type"] = "FOUND"
-                    print("[RPi] COMMAND received: FOUND")
-                    # (tu nic nie wysyłamy do FC – samo powiadomienie)
-                elif "move" in obj:
-                    x, y, z = obj["move"]
-                    normalized["type"] = "MOVE"
-                    normalized["move"] = [float(x), float(y), float(z)]
-                    print(f"[RPi] COMMAND received: MOVE (x={x}, y={y}, z={z})")
-                    # próba wykonania (opcjonalnie, zależnie od EXECUTE_MOVES)
-                    executed = maybe_execute_move((x, y, z))
-                else:
-                    print("[RPi] Unknown COMMAND payload:", obj)
-                    return
-
-                append_jsonl(session_file, normalized)
-                write_json(latest_file, normalized)
-                print(f"[RPi] COMMAND stored (seq={s}) → {session_file.name}; latest_command.json updated")
-
-                ws.send(json.dumps({
-                    "type": "ACK",
-                    "of": "COMMAND",
-                    "ok": True,
-                    "seq": s,
-                    "executed": executed
-                }))
-                print(f"[RPi] ACK sent (seq={s}, executed={executed})")
-            except Exception as e:
-                print(f"[RPi] COMMAND store error: {e}")
+            elif message == "TELEMETRY":
                 try:
-                    ws.send(json.dumps({"type": "ACK", "of": "COMMAND", "ok": False, "error": str(e)}))
-                except Exception:
-                    pass
-            return
+                    with open("telemetry.json", "r", encoding="utf-8") as tf:
+                        tmpl = json.load(tf)
+                except FileNotFoundError:
+                    print("[RPi] telemetry.json not found – sending empty {}")
+                    tmpl = {}
+                ws.send(json.dumps({"type": "TELEMETRY", "data": tmpl}))
+                print("[RPi] Sent TELEMETRY json")
+                return
 
-        if isinstance(message, str):
-            print(f"[RPi] Unrecognized TEXT (not a command): {message[:200]}")
-        else:
-            print(f"[RPi] Unrecognized NON-TEXT message (len={len(message)})")
+            elif message == "PHOTO_WITH_TELEMETRY":
+                try:
+                    take_photo()
+                    with open(photo_path, "rb") as f:
+                        photo_data = f.read()
+                    photo_base64 = base64.b64encode(photo_data).decode('utf-8')
+                except Exception as e:
+                    print(f"[RPi] PHOTO_WITH_TELEMETRY: photo error: {e}")
+                    photo_base64 = None
 
-        ws.send("Message sent in invalid format. Accepted messages: 'SEND_PHOTO', 'TELEMETRY', 'PHOTO_WITH_TELEMETRY'")
+                tel = gather_telemetry()
 
-    ws = websocket.WebSocketApp(
-        args.server,
-        on_open=lambda _ws: print("[RPi] WS open"),
-        on_error=lambda _ws,e: print(f"[RPi] WS error: {e}"),
-        on_close=lambda _ws,code,msg: print(f"[RPi] WS closed code={code} msg={msg}"),
-        on_data=lambda _ws,data,opcode,fin: print(f"[RPi] on_data: {'text' if opcode==1 else 'binary' if opcode==2 else opcode}, len={len(data)}"),
-        on_message=on_message
-    )
-    ws.run_forever()
+                payload = {
+                    "type": "PHOTO_WITH_TELEMETRY",
+                    "photo": photo_base64,
+                    "telemetry": tel
+                }
+                ws.send(json.dumps(payload))
+                print(f"[RPi] Sent PHOTO_WITH_TELEMETRY (photo={photo_base64 is not None}, telem_keys={list(tel.keys())})")
+                return
+
+            # --- JSON control plane: COMMAND from server ---
+            obj = None
+            if isinstance(message, str):
+                try:
+                    obj = json.loads(message)
+                except Exception as e:
+                    print(f"[RPi] json.loads FAILED on text message: {e}")
+                    obj = None
+
+            if isinstance(obj, dict) and obj.get("type") == "COMMAND":
+                try:
+                    s = next_seq()
+
+                    # Normalizacja do lekkiego formatu na dysku
+                    normalized = {
+                        "ts": now_ts(),
+                        "seq": s,
+                    }
+
+                    executed = False
+                    if obj.get("action") == "FOUND":
+                        normalized["type"] = "FOUND"
+                        print("[RPi] COMMAND received: FOUND")
+                        # (tu nic nie wysyłamy do FC – samo powiadomienie)
+                    elif "move" in obj:
+                        x, y, z = obj["move"]
+                        normalized["type"] = "MOVE"
+                        normalized["move"] = [float(x), float(y), float(z)]
+                        print(f"[RPi] COMMAND received: MOVE (x={x}, y={y}, z={z})")
+                        # próba wykonania (opcjonalnie, zależnie od EXECUTE_MOVES)
+                        executed = maybe_execute_move((x, y, z))
+                    else:
+                        print("[RPi] Unknown COMMAND payload:", obj)
+                        return
+
+                    append_jsonl(session_file, normalized)
+                    write_json(latest_file, normalized)
+                    print(f"[RPi] COMMAND stored (seq={s}) → {session_file.name}; latest_command.json updated")
+
+                    ws.send(json.dumps({
+                        "type": "ACK",
+                        "of": "COMMAND",
+                        "ok": True,
+                        "seq": s,
+                        "executed": executed
+                    }))
+                    print(f"[RPi] ACK sent (seq={s}, executed={executed})")
+                except Exception as e:
+                    print(f"[RPi] COMMAND store error: {e}")
+                    try:
+                        ws.send(json.dumps({"type": "ACK", "of": "COMMAND", "ok": False, "error": str(e)}))
+                    except Exception:
+                        pass
+                return
+
+            if isinstance(message, str):
+                print(f"[RPi] Unrecognized TEXT (not a command): {message[:200]}")
+            else:
+                print(f"[RPi] Unrecognized NON-TEXT message (len={len(message)})")
+
+            ws.send("Message sent in invalid format. Accepted messages: 'SEND_PHOTO', 'TELEMETRY', 'PHOTO_WITH_TELEMETRY'")
+
+        ws = websocket.WebSocketApp(
+            args.server,
+            on_open=lambda _ws: print("[RPi] WS open"),
+            on_error=lambda _ws,e: print(f"[RPi] WS error: {e}"),
+            on_close=lambda _ws,code,msg: print(f"[RPi] WS closed code={code} msg={msg}"),
+            on_data=lambda _ws,data,opcode,fin: print(f"[RPi] on_data: {'text' if opcode==1 else 'binary' if opcode==2 else opcode}, len={len(data)}"),
+            on_message=on_message
+        )
+        try:
+            ws.run_forever()
+        except KeyboardInterrupt:
+            print("Stopping...")
+        finally:
+            print("[RPi] Stopping video recording...")
+            camera.stop_recording()
+            print("[RPi] Video saved.")
 
 if __name__ == "__main__":
     main()
