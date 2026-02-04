@@ -20,7 +20,7 @@ from mission_control.utils.parsers import parse_prompt_arguments
 class MissionControl:
     def __init__(self):
         self.config = Config()                      # Configuration variables - dirs, ports, hosts...
-        self.mission_context = MissionContext()     # Holds useful info like last photo taken.
+        self.mission_context = MissionContext()     # Holds useful info e.g. current conversation with the VLM.
 
         self.stop = asyncio.Event()                 # todo: idk yet lmao
 

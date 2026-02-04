@@ -6,6 +6,8 @@ import add_guardrails as gd
 
 
 def crop_img_square(photo_data):
+    """Crops the image into square of size of shorter side. """
+
     img = Image.open(io.BytesIO(photo_data))
     w, h = img.size
     side = min(w, h)
@@ -17,6 +19,11 @@ def crop_img_square(photo_data):
     return img.crop((left, top, right, bottom)), side
 
 def add_grid(photo_path, drone_height):
+    """ Adds grid to the image.
+
+    That grid shows how many meters drone have to move to be above that point.
+    """
+
     img = Image.open(photo_path)
     img_grid = gd.dot_matrix_two_dimensional_drone(
         img=img,

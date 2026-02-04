@@ -1,8 +1,12 @@
 import os
 from pathlib import Path
+
+
 class Config:
+    """ Configuration variables - dirs, ports, hosts... """
+
     def __init__(self):
-        # VLM model for the LLM backend factories
+        # VLM model for the LLM backend factories.
         self.model_backend = os.environ.get("MODEL_BACKEND", "gemini")
         self.model_name = os.environ.get("MODEL_NAME", "gemini-2.5-flash")
 

@@ -3,6 +3,11 @@ from typing import Dict
 
 
 def parse_telemetry(path):
+    """ Parses telemetry data from JSON file.
+
+        Returns message for the VLM about current height.
+    """
+
     with open(path, "r", encoding="utf-8") as f:
         telemetry = json.load(f)
 
@@ -11,6 +16,11 @@ def parse_telemetry(path):
     return [f"Your current altitude is {height} meters above ground level.", height]
 
 def parse_prompt_arguments(cmd):
+    """Divides arguments for the prompt command.
+
+        Returns kind of prompt and dictionary of arguments.
+    """
+
     parts = cmd.split()
     if len(parts) < 1:
         print("Usage: PROMPT FS-1|FS-2 [object=.. glimpses=.. area=..]")
