@@ -7,31 +7,40 @@ from websockets.frames import CloseCode
 
 from mission_control.bridges.drone_bridge import DroneBridge
 from mission_control.bridges.vlm_bridge import VLMBridge
+from mission_control.core.action_status import ActionStatus
 from mission_control.core.config import Config
 from mission_control.core.mission_context import MissionContext
 from mission_control.managers.prompt_manager import PromptManager
 from mission_control.utils.parsers import parse_prompt_arguments
 
-
-# TODO:
-#  - clean up VLMBridge
 # FUTURE:
-#  - simple html showing photo, reasoning, and proposed move with few options from the user.
+#  - simple html showing photo, reasoning, and proposed move with few options to choose for the user.
 
 
 class MissionControl:
     def __init__(self):
-        self.config = Config()
-        self.mission_context = MissionContext()
+        self.config = Config()                      # Configuration variables - dirs, ports, hosts...
+        self.mission_context = MissionContext()     # Holds useful info like last photo taken.
 
-        self.prompt_manager = PromptManager(self.config, self.mission_context)
+        self.stop = asyncio.Event()                 # todo: idk yet lmao
 
-        self.stop = asyncio.Event()
+        self.prompt_manager = PromptManager(        # e.g. prompt generating.
+            self.config,
+            self.mission_context
+        )
 
-        self.drone = DroneBridge(self.config, self.mission_context)
-        self.vlm = VLMBridge(self.config, self.mission_context, self.drone)
+        self.drone = DroneBridge(                   # Server <-> drone communication.
+            self.config,
+            self.mission_context
+        )
 
-        # Dispatcher
+        self.vlm = VLMBridge(                       # Server <-> VLM communication.
+            self.config,
+            self.mission_context,
+            self.drone
+        )
+
+        # Dispatcher - maps command name with proper function/method.
         self.commands : Dict[str, Callable[[str, str], Awaitable[None]]] = {
             "search": self._handle_search,
 
@@ -46,15 +55,20 @@ class MissionControl:
             "chat_retrieve": lambda _, args: self.vlm.chat_retrieve(args),
             "chat_reset": lambda c, a: self.vlm.chat_reset(),
 
-            "prompt": self._handle_prompt_cmd
+            "prompt": self._handle_prompt_cmd,
+
+            "q": lambda c, a: self._signal_handler(),
+            "quit": lambda c, a: self._signal_handler(),
+            "exit": lambda c, a: self._signal_handler()
         }
 
     async def _handle_search(self, cmd, args):
-        """ Handle search command. """
+        """ Handle search command - parse the arguments and send them further. """
         kind, kv = parse_prompt_arguments(args)
         await self.search(kind, kv)
 
     async def _handle_prompt_cmd(self, cmd, args):
+        """ Handle prompt command - parse the arguments and send them further. """
         kind, kv = parse_prompt_arguments(args)
         self.prompt_manager.generate_and_save(kind, kv)
 
@@ -70,16 +84,36 @@ class MissionControl:
         (accept, report collision, or stop).
         """
         print("\n--- SEARCHING... ---")
+        # Initial prompt.
         self.prompt_manager.generate_and_save(kind, kv)
+
+        # Request first photo and telemetry.
         await self.drone.send_message("photo_with_telemetry")
+
+        # Initialize the chat with vlm - it sends initial prompt
+        #  and receives first answer.
         ret = await self.vlm.chat_init()
         await self.vlm.chat_save("autosave")
-        count = 1
-        while ret not in {0, 3} and count != kv["glimpses"]:
+
+        moves_performed = 1
+        move_limit = kv["glimpses"]
+
+        #TODO: What happens if the goal is found?
+        # Should we add another action status?
+        while (ret in [ActionStatus.CONFIRMED, ActionStatus.WARNING]
+               and moves_performed < move_limit):
+            # Request photo and telemetry.
             await self.drone.send_message("photo_with_telemetry")
+
+            # Send it to vlm and wait for the user interaction.
             ret = await self.vlm.send_to_vlm()
+
+            # Autosave the chat.
             await self.vlm.chat_save("autosave")
-            count += 1
+
+            # Count the move as performed only if it was accepted by the user.
+            if ret == ActionStatus.CONFIRMED:
+                moves_performed += 1
 
     async def stdin_repl(self):
         """ Handling commands received from the user.
@@ -87,26 +121,12 @@ class MissionControl:
             Parses input and forwards it to the proper method.
         """
 
-
-        """
-        Komendy:
-          SEND_PHOTO           - poproś drona o zdjęcie
-          BOTH <komentarz...>  - zapisz komentarz i poproś o zdjęcie
-          PROMPT FS-1 [key=val ...]
-          PROMPT FS-2 [key=val ...]
-            Parametry:
-              object=<nazwa>
-              glimpses=<int>
-              area=<int>        (tylko FS-1)
-          q                     - zakończ
-        """
-
         loop = asyncio.get_running_loop()
 
         print_help()
 
-
         while not self.stop.is_set():
+            # Take the input from the user.
             try:
                 # TODO: fix
                 line = await loop.run_in_executor(None, input, "> ")
@@ -116,28 +136,23 @@ class MissionControl:
             if not line:
                 continue
 
-            # Unify input
+            # Unify.
             cmd = line.lower()
 
-            #Split commands from arguments.
+            #Split command from arguments.
             parts = cmd.split(" ", 1)
             command = parts[0]
             args = parts[1] if len(parts) > 1 else ""
 
-            # Close the server.
-            if command in ("q", "quit", "exit"):
-                self._signal_handler()
-                break
-
-            # Take and use the method from those defined in __init__
+            # Take and use the method from those defined in __init__.
             handler = self.commands.get(command)
 
             if handler:
                 try:
                     await handler(command, args)
-                except ValueError:
+                except ValueError:                  # Incorrect arguments.
                     print_help()
-                except Exception as e:
+                except Exception as e:              # TODO: does any of these functions throw valerr?
                     print(f"[ERROR] Command failed: {e}")
             else:
                 print_help()
@@ -153,7 +168,7 @@ class MissionControl:
             except NotImplementedError:
                 pass
 
-        # Start the WebSocket connection.
+        # Start the WebSocket connection and listen for the drone.
         try:
             await self.drone.start()
         except OSError:
@@ -174,7 +189,7 @@ class MissionControl:
         for task in pending:
             task.cancel()
             try:
-                await task  # Wait for the confirmation
+                await task  # Wait for the confirmation.
             except asyncio.CancelledError:
                 pass
 
@@ -187,7 +202,6 @@ class MissionControl:
             print("\n[WS] shutdown requested (signal). Closing clients…")
             self.stop.set()
 
-''' --------------------------- OTHER FUNCTIONS -------------------------- '''
 
 def print_help():
     print("Commands: PHOTO_WITH_TELEMETRY | SEND_PHOTO | TELEMETRY | "
