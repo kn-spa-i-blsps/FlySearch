@@ -15,18 +15,19 @@ from mission_control.utils.image_processing import crop_img_square
 
 class DroneBridge:
     """ Handles WebSocket communication between the server and the drone. """
+
     def __init__(self, config : Config, mission_context: MissionContext):
         self.client = None
         self.config = config
         self.mission_context = mission_context
         self.server = None
-        self.collision_warning_str = "Your move would cause a collision. Make other move."
 
     async def start(self):
         """ Starts WebSocket server in the background.
 
             Raises error if occurs.
         """
+
         print(f"[WS] Starting server on {self.config.host}:{self.config.port}...")
 
         # Open WebSocket server.
@@ -54,6 +55,7 @@ class DroneBridge:
 
     async def stop(self):
         """ Closes the server and disconnects connected drone. """
+
         print("[WS] Stopping server...")
 
         # Closing the server.
@@ -85,10 +87,12 @@ class DroneBridge:
         :return:
             True if successful, False otherwise.
         """
+
         ws = self.client
         if ws is None:
             print("No drone connected!")
             return False
+
         try:
             await ws.send(cmd.upper())
             print(f"[WS] {cmd.upper()} sent to the drone.")
@@ -105,6 +109,7 @@ class DroneBridge:
         :return:
             True if successful, False otherwise.
         """
+
         ws = self.client
         if ws is None:
             print("[WS] No drone connected - command NOT sent.")
@@ -137,8 +142,83 @@ class DroneBridge:
             print("[WS] COMMAND send failed:", e)
             return False
 
+    # SAVING PHOTOS/JSON IS BLOCKING - WITH MULTIPLE DRONES OR BIG DATA COULD BE BAD
+    # may need change into run_in_executor
+
+    async def _handle_binary_photo(self, ws, message):
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        file_base = f"img_{ts}"
+        file_name = f"{file_base}.jpg"
+        path = os.path.join(self.config.upload_dir, file_name)
+        with open(path, "wb") as f:
+            f.write(message)
+        print(f"[WS] saved binary -> {path}")
+        await ws.send(f"[SERVER] SAVED {path}")
+
+    async def _handle_telemetry(self, data, photo_name=None):
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        file_base = f"telemetry_{ts}"
+        file_name = f"{file_base}.json"
+        path = os.path.join(self.config.telemetry_dir, file_name)
+
+        payload = {
+            "received_at": ts,
+            "associated_photo": photo_name,
+            "data": data
+        }
+
+        with open(path, "w", encoding="utf-8") as f:
+            try:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+                print(f"[WS] saved telemetry -> {path}")
+            except Exception as e:
+                print(f"[WS] error saving telemetry: {e}")
+
+        self.mission_context.last_telemetry_path_cache = path
+
+    async def _handle_telemetry_photo(self, ws, photo_base64, telemetry):
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Photo
+        if not photo_base64:
+            print("[WS] 'PHOTO_WITH_TELEMETRY' received but 'photo' field is missing.")
+            await ws.send("[SERVER] ERROR: Photo data missing in combined message.")
+            return
+
+        try:
+            photo_data = base64.b64decode(photo_base64)
+        except TypeError as e:
+            print(f"[WS] Failed to decode Base64 photo data: {e}")
+            await ws.send("[SERVER] ERROR: Invalid photo data encoding.")
+            return
+
+        img_file_base = f"img_{ts}"
+        img_file_name = f"{img_file_base}.jpg"
+        img_path = os.path.join(self.config.upload_dir, img_file_name)
+
+        # Crop the image to be square (as in original paper).
+        try:
+            img_cropped, side = crop_img_square(photo_data)
+
+            img_cropped.save(img_path, format="JPEG", quality=90)
+            print(f"[WS] saved *square* photo -> {img_path} ({side}x{side})")
+        except Exception as e:
+            print(f"[WS] square crop failed, saving raw photo: {e}")
+            with open(img_path, "wb") as f:
+                f.write(photo_data)
+                print(f"[WS] saved photo (raw) -> {img_path}")
+
+        # We are caching paths for easier access after, when sending to VLM.
+        self.mission_context.last_photo_path_cache = img_path
+
+        # Telemetry
+        await self._handle_telemetry(telemetry, img_file_name)
+
+        await ws.send("[SERVER] Photo and telemetry received.")
+
     async def handler(self, ws):
         """ Handle received messages from the drone. """
+
         peer = ws.remote_address # IP address and port of the connected drone.
         if self.client is not None:
             print(f"[WS] REJECTED connection from {peer} (System busy)")
@@ -151,16 +231,10 @@ class DroneBridge:
         try:
             # Wait for incoming messages.
             async for message in ws:
+                # All _handle_* methods will save incoming messages in proper places.
                 # binary photo - 'photo' command sends photo from rpi that way (idk why, probably will change)
                 if isinstance(message, (bytes, bytearray)):
-                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    file_base = f"img_{ts}"
-                    file_name = f"{file_base}.jpg"
-                    path = os.path.join(self.config.upload_dir, file_name)
-                    with open(path, "wb") as f:
-                        f.write(message)
-                    print(f"[WS] saved binary -> {path}")
-                    await ws.send(f"[SERVER] SAVED {path}")
+                    await self._handle_binary_photo(ws, message)
                     continue
 
                 # If the message is not a photo, try to decode it as JSON.
@@ -176,93 +250,21 @@ class DroneBridge:
                     print(f"[WS] Ignored non-dict JSON: {obj}")
                     continue
 
-                # TODO: is it useful?
-                if obj.get("type") == "ACK" and obj.get("of") == "COMMAND":
-                    print(f"[ACK ← RPi] COMMAND seq={obj.get('seq')} ok={obj.get('ok')} err={obj.get('error')}")
-                    continue
 
-                # Get the telemetry from the drone. Data is NOT saved in cache, and so not used when talking with vlm.
-                if obj.get("type") == "TELEMETRY":
-                    data = obj.get("data", {})
-                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    file_base = f"telemetry_{ts}"
-                    file_name = f"{file_base}.json"
-                    path = os.path.join(self.config.telemetry_dir, file_name)
+                match obj:
+                    # TODO: is it useful?
+                    case {"type": "ACK", "of": "COMMAND", "seq": seq, "ok": ok, "error": err}:
+                        print(f"[ACK ← RPi] COMMAND seq={seq} "
+                              f"ok={ok} err={err}")
 
-                    payload = {
-                        "received_at": ts,
-                        "associated_photo": None,
-                        "data": data
-                    }
+                    case {"type": "TELEMETRY", "data": data}:
+                        await self._handle_telemetry(data)
 
-                    with open(path, "w", encoding="utf-8") as f:
-                        json.dump(payload, f, ensure_ascii=False, indent=2)
-                    print(f"[WS] saved telemetry(JSON) -> {path}")
-                    await ws.send(f"[SERVER] SAVED {path}")
-                    continue
+                    case {"type": "PHOTO_WITH_TELEMETRY", "photo": photo, "telemetry": telemetry}:
+                        await self._handle_telemetry_photo(ws, photo, telemetry)
 
-                # Get the data (telemetry and photo) from the drone.
-                if obj.get("type") == "PHOTO_WITH_TELEMETRY":
-
-                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-                    photo_base64 = obj.get("photo")
-                    telemetry_data = obj.get("telemetry", {})
-
-                    # Photo
-                    if not photo_base64:
-                        print("[WS] 'PHOTO_WITH_TELEMETRY' received but 'photo' field is missing.")
-                        await ws.send("[SERVER] ERROR: Photo data missing in combined message.")
-                        continue
-
-                    try:
-                        photo_data = base64.b64decode(photo_base64)
-                    except TypeError as e:
-                        print(f"[WS] Failed to decode Base64 photo data: {e}")
-                        await ws.send("[SERVER] ERROR: Invalid photo data encoding.")
-                        continue
-
-                    img_file_base = f"img_{ts}"
-                    img_file_name = f"{img_file_base}.jpg"
-                    img_path = os.path.join(self.config.upload_dir, img_file_name)
-
-                    try:
-                        img_cropped, side = crop_img_square(photo_data)
-
-                        img_cropped.save(img_path, format="JPEG", quality=90)
-                        print(f"[WS] saved *square* photo -> {img_path} ({side}x{side})")
-                    except Exception as e:
-                        print(f"[WS] square crop failed, saving raw photo: {e}")
-                        with open(img_path, "wb") as f:
-                            f.write(photo_data)
-                            print(f"[WS] saved photo (raw) -> {img_path}")
-
-                    # Telemetry
-                    tel_file_base = f"telemetry_{ts}"
-                    tel_file_name = f"{tel_file_base}.json"
-                    tel_path = os.path.join(self.config.telemetry_dir, tel_file_name)
-
-                    # We are caching paths for easier access after when sending to VLM.
-                    self.mission_context.last_photo_path_cache = img_path
-                    self.mission_context.last_telemetry_path_cache = tel_path
-
-                    payload = {
-                        "received_at": ts,
-                        "associated_photo": img_file_name,
-                        "data": telemetry_data
-                    }
-
-                    with open(tel_path, "w", encoding="utf-8") as f:
-                        try:
-                            json.dump(payload, f, ensure_ascii=False, indent=2)
-                            print(f"[WS] saved telemetry -> {tel_path}")
-                        except Exception as e:
-                            print(f"[WS] error saving telemetry: {e}")
-
-                    await ws.send("[SERVER] Photo and telemetry received.")
-                    continue
-
-                continue
+                    case _:
+                        print(f"[WS] message not matching any case.")
 
         except websockets.ConnectionClosed:
             print(f"[WS] disconnected: {peer}.")

@@ -22,7 +22,7 @@ class MissionControl:
         self.config = Config()                      # Configuration variables - dirs, ports, hosts...
         self.mission_context = MissionContext()     # Holds useful info e.g. current conversation with the VLM.
 
-        self.stop = asyncio.Event()                 # todo: idk yet lmao
+        self.stop = asyncio.Event()                 # Interrupt flag.
 
         self.prompt_manager = PromptManager(        # e.g. prompt generating.
             self.config,
@@ -37,7 +37,6 @@ class MissionControl:
         self.vlm = VLMBridge(                       # Server <-> VLM communication.
             self.config,
             self.mission_context,
-            self.drone
         )
 
         # Dispatcher - maps command name with proper function/method.
@@ -47,19 +46,20 @@ class MissionControl:
             "send_photo": lambda cmd, _: self.drone.send_message(cmd),
             "telemetry": lambda cmd, _: self.drone.send_message(cmd),
             "photo_with_telemetry": lambda cmd, _: self.drone.send_message(cmd),
+            "send_command": self.drone.confirm_and_send,
 
-            "send_to_vlm": lambda c, a: self.vlm.send_to_vlm(),
+            "send_to_vlm": self.vlm.send_to_vlm,
 
-            "chat_init": lambda c, a: self.vlm.chat_init(),
+            "chat_init": self.vlm.chat_init,
             "chat_save": lambda _, args: self.vlm.chat_save(args),
             "chat_retrieve": lambda _, args: self.vlm.chat_retrieve(args),
-            "chat_reset": lambda c, a: self.vlm.chat_reset(),
+            "chat_reset": self.vlm.chat_reset,
 
             "prompt": self._handle_prompt_cmd,
 
-            "q": lambda c, a: self._signal_handler(),
-            "quit": lambda c, a: self._signal_handler(),
-            "exit": lambda c, a: self._signal_handler()
+            "q":    self._signal_handler,
+            "quit": self._signal_handler,
+            "exit": self._signal_handler
         }
 
     async def _handle_search(self, cmd, args):
@@ -71,6 +71,64 @@ class MissionControl:
         """ Handle prompt command - parse the arguments and send them further. """
         kind, kv = parse_prompt_arguments(args)
         self.prompt_manager.generate_and_save(kind, kv)
+
+    async def confirm_and_send(self):
+
+        parsed = self.mission_context.parsed_response
+        if parsed.found:
+            ret = await self.confirm_send(found=parsed.found, move=parsed.move)
+        else:
+            move = parsed.move
+            ret = await self.confirm_send(move=move)
+
+        # User confirmed this move.
+        if ret == ActionStatus.CONFIRMED:
+            if parsed.found:
+                await self.drone.send_command(found=True)
+            else:
+                await self.drone.send_command(move=parsed.move)
+
+        # User blocked this move but want to continue search.
+        elif ret == ActionStatus.WARNING:
+            await self.collision_warning()
+
+        # Canceled.
+        elif ret == ActionStatus.CANCELLED:
+            print("Cancelled by operator.")
+
+        return ret
+
+    async def collision_warning(self):
+        """
+        Triggers a collision warning context update to the VLM.
+        Used when the operator deems a move risky.
+        """
+        await self.vlm.send_to_vlm(is_warning=True)
+
+    async def confirm_send(self, move=None, found=False):
+        print("\n--- COMMAND PREVIEW ---")
+        if found:
+            print("ACTION: FOUND")
+            return ActionStatus.FOUND
+        else:
+            x, y, z = move
+            print(f"MOVE: (x={x}, y={y}, z={z})")
+        print("Press Enter to send, or type 'no' to cancel,"
+              " or 'w' to warn vlm (continue search, stop this move.")
+        loop = asyncio.get_running_loop()
+        while True:
+            try:
+                ans = await loop.run_in_executor(None, input, "> ")
+            except (EOFError, KeyboardInterrupt):
+                ans = "no"
+
+            if ans.strip().lower() in ("", "y", "yes"):
+                return ActionStatus.CONFIRMED
+            elif ans.strip().lower() in ("w", "warning", "warn"):
+                return ActionStatus.WARNING
+            elif ans.strip().lower() in ("no", "n"):
+                return ActionStatus.CANCELLED
+
 
     async def search(self, kind, kv):
         """ Orchestrates an automated search test sequence.
@@ -87,33 +145,39 @@ class MissionControl:
         # Initial prompt.
         self.prompt_manager.generate_and_save(kind, kv)
 
-        # Request first photo and telemetry.
-        await self.drone.send_message("photo_with_telemetry")
-
-        # Initialize the chat with vlm - it sends initial prompt
-        #  and receives first answer.
-        ret = await self.vlm.chat_init()
+        # Init vlm chat.
+        await self.vlm.chat_init()
         await self.vlm.chat_save("autosave")
 
-        moves_performed = 1
+        ret = ActionStatus.CONFIRMED
+        moves_performed = 0
         move_limit = kv["glimpses"]
 
-        #TODO: What happens if the goal is found?
-        # Should we add another action status?
         while (ret in [ActionStatus.CONFIRMED, ActionStatus.WARNING]
                and moves_performed < move_limit):
             # Request photo and telemetry.
             await self.drone.send_message("photo_with_telemetry")
 
-            # Send it to vlm and wait for the user interaction.
-            ret = await self.vlm.send_to_vlm()
+            # Send it to vlm.
+            await self.vlm.send_to_vlm(is_warning=(ret == ActionStatus.WARNING))
 
             # Autosave the chat.
             await self.vlm.chat_save("autosave")
 
-            # Count the move as performed only if it was accepted by the user.
+            # Take parsed response and ask for confirmation.
+            parsed = self.mission_context.parsed_response
+            # TODO: is parsed.found = false and parsed.move = None when it should be
+            ret = await self.confirm_send(found=parsed.found, move=parsed.move)
+
             if ret == ActionStatus.CONFIRMED:
+                # If confirmed, send the move to the drone.
+                await self.drone.send_command(found=parsed.found, move=parsed.move)
                 moves_performed += 1
+            elif ret == ActionStatus.FOUND:
+                # If found, print the message and end the loop.
+                print("FOUND")
+
+    # TODO: probably you can't perform search other way than by 'search' lmao (maybe good tho)
 
     async def stdin_repl(self):
         """ Handling commands received from the user.
@@ -204,7 +268,8 @@ class MissionControl:
 
 
 def print_help():
-    print("Commands: PHOTO_WITH_TELEMETRY | SEND_PHOTO | TELEMETRY | "
+    print("Commands: SEARCH FS-1|FS-2 [object=.. glimpses=.. area=..]")
+    print("PHOTO_WITH_TELEMETRY | SEND_PHOTO | TELEMETRY | "
           "PROMPT FS-1|FS-2 [object=.. glimpses=.. area=..] | q")
     print("          CHAT_INIT | CHAT_RESET | CHAT_SAVE <name> | "
           "CHAT_RETRIEVE <name> | SEND_TO_VLM")

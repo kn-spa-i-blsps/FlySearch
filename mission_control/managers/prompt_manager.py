@@ -9,20 +9,23 @@ from prompt_generation.prompts import Prompts, PROMPT_FACTORIES
 
 
 class PromptManager:
+    """ Class for prompt management - generating, saving..."""
+
     def __init__(self, config : Config, mission_context : MissionContext):
         self.config = config
         self.mission_context = mission_context
 
     def _generate_prompt(self, kind: str, kv: Dict[str, str]) -> Dict[str, str]:
-        """
-        kind: 'FS-1' lub 'FS-2'
-        kv:   dict with parameters (object, glimpses, area)
+        """ Generate prompt using prompt factories.
+
+            :param kind: kind of prompt - FS-1 | FS-2
+            :param kv: parameters for prompt generation (glimpses, object, [area])
         """
 
         params = {
             "object": kv.get("object", "helipad"),
             "glimpses": int(kv.get("glimpses", "6")),
-            "area": int(kv.get("area", "80")),  # dla FS-1
+            "area": int(kv.get("area", "80")),          # area is only for FS-1
         }
         t = Prompts(kind)
         factory = PROMPT_FACTORIES[t]
@@ -33,6 +36,8 @@ class PromptManager:
         return {"kind": kind, "text": text, **params}
 
     def _save_prompt(self, prompt_meta: Dict[str, str]) -> Dict[str, str]:
+        """ Save prompt as JSON and txt and return JSON with paths to both. """
+
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         base = f"{prompt_meta['kind'].lower()}_{ts}"
         txt_path = os.path.join(self.config.prompts_dir, base + ".txt")
@@ -51,6 +56,7 @@ class PromptManager:
 
     def generate_and_save(self, kind, kv):
         """ Generates and saves a system prompt based on the specified 'kind' and parameters 'kv'. """
+
         try:
             meta = self._generate_prompt(kind, kv)
             saved = self._save_prompt(meta)

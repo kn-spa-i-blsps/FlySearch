@@ -5,8 +5,6 @@ from websockets.frames import CloseCode
 
 from conversation.abstract_conversation import Role
 from conversation.conversations import LLM_BACKEND_FACTORIES
-from mission_control.bridges.drone_bridge import DroneBridge
-from mission_control.core.action_status import ActionStatus
 from mission_control.core.config import Config
 from mission_control.core.mission_context import MissionContext
 from mission_control.utils.image_processing import add_grid
@@ -15,72 +13,32 @@ from response_parsers.xml_response_parser import parse_xml_response, ParsingErro
 
 
 class VLMBridge:
-    """ Bridge for the communication between the server and the drone. """
+    """ Bridge for the communication between the server and the VLM. """
 
-    def __init__(self, config : Config, mission_context : MissionContext, drone : DroneBridge):
+    def __init__(self, config : Config, mission_context : MissionContext):
         self.config = config
         self.mission_context = mission_context
-        self.drone = drone
+        self.collision_warning_str = "Your move would cause a collision. Make other move."
 
-    async def _confirm_send(self, move=None, found=False):
-        print("\n--- COMMAND PREVIEW ---")
-        if found:
-            print("ACTION: FOUND")
-            return 3
-        else:
-            x, y, z = move
-            print(f"MOVE: (x={x}, y={y}, z={z})")
-        print("Press Enter to send, or type 'no' to cancel.")
-        loop = asyncio.get_running_loop()
-        try:
-            ans = await loop.run_in_executor(None, input, "> ")
-        except (EOFError, KeyboardInterrupt):
-            ans = "no"
-
-        if ans.strip().lower() in ("", "y", "yes"):
-            return 1
-        elif ans.strip().lower() in ("w", "warning"):
-            return 2
-        else:
-            return 0
-
-    async def send_to_vlm(self, is_init=False, is_warning=False):
+    # TODO: we need to probably raise exceptions (everywhere :(( )
+    async def send_to_vlm(self, is_warning=False):
         """
         Prepares and sends the current context (image, telemetry, prompts) to the Vision Language Model.
 
         Args:
-            is_init (bool): If True, initializes a new chat session with the system prompt.
             is_warning (bool): If True, injects a collision warning prompt to force a corrective decision.
 
-        Flow:
-        1. Validates global state (model, chat session, cached data).
-        2. Processes the cached telemetry and image (applying grid overlays).
-        3. Constructs the payload (Text + Image) and calls the API.
-        4. Parses the XML response from the VLM.
-        5. requests operator confirmation before executing the suggested move.
+        Returns ActionStatus.
         """
         # --- Chat Initialization Checks ---
-        if is_init:
-            if self.mission_context.conversation is not None:
-                print("Chat already exists. Use CHAT_DELETE to delete the chat first.")
-                return ActionStatus.ERROR
-
-            if self.mission_context.last_prompt_text_cache is None:
-                print("No prompt generated yet. Use PROMPT FS-1|FS-2 [object=.. glimpses=.. area=..].")
-                return ActionStatus.ERROR
-
-            factory = LLM_BACKEND_FACTORIES[self.config.model_backend](self.config.model_name)
-            conversation = factory.get_conversation()
-            conversation.begin_transaction(Role.USER)
-        else:
-            if self.mission_context.conversation is None:
-                print("Chat with vlm is not initialized. Use CHAT_INIT first.")
-                return ActionStatus.ERROR
+        if self.mission_context.conversation is None:
+            print("Chat with vlm is not initialized. Use CHAT_INIT first.")
+            return
 
         # --- Data Availability Checks ---
         if self.mission_context.last_photo_path_cache is None or self.mission_context.last_telemetry_path_cache is None:
             print("No photo or telemetry cached - it may be because no photo/telemetry was requested yet.")
-            return ActionStatus.ERROR
+            return
 
         # --- Telemetry Processing ---
         try:
@@ -89,45 +47,40 @@ class VLMBridge:
             drone_height = telemetry_data[1]
         except FileNotFoundError:
             print(f"Error: No telemetry found '{self.mission_context.last_telemetry_path_cache}'. Data may be deleted.")
-            return ActionStatus.ERROR
+            return
         except Exception as e:
             print(f"Error during telemetry opening: {e}")
-            return ActionStatus.ERROR
+            return
 
         # --- Image Processing ---
         try:
             img_new = add_grid(self.mission_context.last_photo_path_cache, drone_height)
         except FileNotFoundError:
             print(f"Error: No photo found '{self.mission_context.last_photo_path_cache}'. Photo may be deleted.")
-            return ActionStatus.ERROR
+            return
         except Exception as e:
             print(f"Error during photo opening/processing: {e}")
-            return ActionStatus.ERROR
+            return
 
         # --- VLM API Call ---
         try:
-            if is_init:
-                # Init: System prompt + annotated image + telemetry context
-                self.mission_context.conversation.add_text_message(self.mission_context.last_prompt_text_cache)
-            elif is_warning:
-                # Warning: Warning text + annotated image + telemetry context
-                self.mission_context.conversation.add_text_message(self.drone.collision_warning_str)
+            if is_warning:
+                # Warning: Warning text + image with a grid + telemetry context
+                self.mission_context.conversation.add_text_message(self.collision_warning_str)
 
-            # Standard Step: Annotated image + telemetry context
+            # Standard Step: image with a grid + telemetry context
             self.mission_context.conversation.add_image_message(img_new)
             self.mission_context.conversation.add_text_message(telemetry_prompt_text)
 
             self.mission_context.conversation.commit_transaction(send_to_vlm=True)
 
+            # Is it blocking operation??
             response = self.mission_context.conversation.get_latest_message()
         except Exception as e:
             print(f"Message sending to VLM failed: {e}")
-            if is_init: self.mission_context.conversation = None
-            return ActionStatus.ERROR
+            return
 
         raw = response.text or ""
-
-        print(raw if raw.strip() else "<empty>")
 
         # --- Response Parsing and Execution ---
         try:
@@ -135,47 +88,26 @@ class VLMBridge:
         except ParsingError as e:
             print("[VLM] parse error:", e)
             print("Command NOT sent")
-            return ActionStatus.ERROR
+            return
 
-        # Operator confirmation and command execution
-        if parsed.found:
-            raw_status = await self._confirm_send(found=True)
-        else:
-            move = parsed.move
-            raw_status = await self._confirm_send(move=move)
-
-        # Konwersja inta na Enum (zakładając, że _confirm_send zwraca int)
-        try:
-            ret = ActionStatus(raw_status)
-        except ValueError:
-            print(f"Unknown status received: {raw_status}")
-            ret = ActionStatus.ERROR
-
-        # Obsługa logiki na podstawie nazwanych stanów
-        if ret == ActionStatus.CONFIRMED:
-            # Jeśli parsed.found jest True, nie mamy zmiennej 'move', więc musimy obsłużyć to warunkowo
-            if parsed.found:
-                await self.drone.send_command(found=True)
-            else:
-                await self.drone.send_command(move=parsed.move)
-
-        elif ret == ActionStatus.WARNING:
-            await self.collision_warning()
-
-        elif ret == ActionStatus.CANCELLED:
-            print("Cancelled by operator.")
-        return ret
-
-    async def collision_warning(self):
-        """
-        Triggers a collision warning context update to the VLM.
-        Used when the operator deems a move risky.
-        """
-        await self.send_to_vlm(is_warning=True)
+        self.mission_context.parsed_response = parsed
 
     async def chat_init(self):
-        """ Wrapper to initialize the chat session with the VLM."""
-        return await self.send_to_vlm(is_init=True)
+        """"""
+        if self.mission_context.conversation is not None:
+            print("Chat already exists. Use CHAT_DELETE to delete the chat first.")
+            return
+
+        if self.mission_context.last_prompt_text_cache is None:
+            print("No prompt generated yet. Use PROMPT FS-1|FS-2 [object=.. glimpses=.. area=..].")
+            return
+
+        # Get the proper LLM backend using factories.
+        factory = LLM_BACKEND_FACTORIES[self.config.model_backend](self.config.model_name)
+        self.mission_context.conversation = factory.get_conversation()
+        self.mission_context.conversation.begin_transaction(Role.USER)  # Chat initialization.
+        self.mission_context.conversation.add_text_message(self.mission_context.last_prompt_text_cache)
+        return
 
     async def chat_save(self, chat_id):
         """ Serializes and saves the current chat history - prompts and images to disk.

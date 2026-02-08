@@ -7,6 +7,7 @@ class MissionContext:
 
     # Object for the conversation with the VLM.
     conversation = None
+    parsed_response = None
 
     # Cache of last saved photo, telemetry and prompt (for easy access).
     last_photo_path_cache = None
