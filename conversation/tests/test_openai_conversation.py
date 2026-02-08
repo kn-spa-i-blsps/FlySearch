@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 
 from PIL import Image
-from conversation.openai_conversation import OpenAIConversation
+from conversation.openai.openai_conversation import OpenAIConversation
 from conversation.abstract_conversation import Role
 
 

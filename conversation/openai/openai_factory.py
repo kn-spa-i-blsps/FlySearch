@@ -3,10 +3,10 @@ import os
 from openai import OpenAI, _types
 
 from conversation.base_conversation_factory import BaseConversationFactory
-from conversation.openai_conversation import OpenAIConversation
+from conversation.openai.openai_conversation import OpenAIConversation
 
 
-class GPTFactory(BaseConversationFactory):
+class OpenAIFactory(BaseConversationFactory):
     def __init__(self, model_name: str):
         self.client = OpenAI(api_key=os.environ["OPEN_AI_KEY"])
         self.model_name = model_name.removeprefix("oai-")

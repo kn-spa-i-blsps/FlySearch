@@ -12,7 +12,7 @@ except ImportError:
 
 
 if GEMINI_AVALIABLE:
-    from conversation.gemini_conversation import GeminiConversation
+    from conversation.gemini.gemini_conversation import GeminiConversation
 
     class _GeminiFactory(BaseConversationFactory):
         def __init__(self, model_name: str):
