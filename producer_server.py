@@ -1,8 +1,14 @@
 import time
-
-import websocket, pathlib, subprocess, os, argparse, json, base64, uuid
 from datetime import datetime
-import picamera
+
+import argparse
+import base64
+import json
+import os
+import pathlib
+import uuid
+import websocket
+from picamera2 import Picamera2
 
 try:
     from pixhawk_telemetry_utils import get_telemetry_json
@@ -45,7 +51,7 @@ def main():
     session_file = commands_dir / f"session_{session_id}.jsonl"
     latest_file  = commands_dir / "latest_command.json"
 
-    video_path = str(img_dir / f"video_{session_id}.h264")
+    video_path = str(img_dir / f"video_{session_id}.mp4")
 
     seq = {"n": 0}
     def next_seq():
@@ -68,22 +74,26 @@ def main():
         tmp.replace(path)
 
     print("[RPi] Initializing PiCamera...")
-    with picamera.PiCamera() as camera:
+    picam2 = Picamera2()
 
-        camera.resolution = (int(args.width), int(args.height))
-        camera.framerate = 24
+    config = picam2.create_video_configuration(
+        main={"size": (int(args.width), int(args.height)), "format": "YUV420"},
+        lores={"size": (1920, 1080), "format": "YUV420"}
+    )
+    picam2.configure(config)
+    picam2.start()
 
-        camera.annotate_text = f"Session: {session_id}"
+    recording_started = False
 
-        time.sleep(2)
-
+    try:
         print(f"[RPi] Starting video recording: {video_path}")
-        camera.start_recording(video_path)
+        picam2.start_recording(video_path)
+        recording_started = True
 
         def take_photo():
             print("[RPi] Capturing high-quality photo...")
             try:
-                camera.capture(photo_path, use_video_port=False, quality=int(args.quality))
+                picam2.capture_file(photo_path)
                 print(f"[RPi] Photo saved to {photo_path}")
             except Exception as e:
                 print(f"[RPi] Capture error: {e}")
@@ -267,14 +277,17 @@ def main():
             on_data=lambda _ws,data,opcode,fin: print(f"[RPi] on_data: {'text' if opcode==1 else 'binary' if opcode==2 else opcode}, len={len(data)}"),
             on_message=on_message
         )
-        try:
-            ws.run_forever()
-        except KeyboardInterrupt:
-            print("Stopping...")
-        finally:
+
+        ws.run_forever()
+    except KeyboardInterrupt:
+        print("Stopping...")
+    finally:
+        if recording_started:
             print("[RPi] Stopping video recording...")
-            camera.stop_recording()
-            print("[RPi] Video saved.")
+            picam2.stop_recording()
+            print("[RPi] Video recording stopped.")
+        picam2.stop()
+        print("[RPi] Camera stopped.")
 
 if __name__ == "__main__":
     main()
