@@ -1,7 +1,7 @@
 '''
-The prompt generation logic with the templates below have been directly copied from the official Github repository of the Flysearch project: https://github.com/gmum/flysearch '''
+The prompt generation logic with the templates below have been directly copied and slightly modified from the official Github repository of the Flysearch project: https://github.com/gmum/flysearch '''
 
-def fs1_prompt(glimpses: int, object_name: str, search_area_rectangle_length: int) -> str:
+def fs1_prompt(glimpses: int, object_name: str, search_area_rectangle_length: int, minimum_altitude: int) -> str:
     return f'''<Context>
     You are in command of a UAV, tasked with finding {object_name}.
 </Context>
@@ -41,13 +41,14 @@ def fs1_prompt(glimpses: int, object_name: str, search_area_rectangle_length: in
 
     <Limitations>
         You shouldn't move into coordinates that are outside of your view. Otherwise, you may hit something which is not ideal.
+        You cannot fly below the altitude of {minimum_altitude}. Otherwise, you might hit something which is not ideal either. 
         You can make at most {glimpses - 1} moves. Your altitude cannot exceed 120 meters. Your search area is {search_area_rectangle_length}x{search_area_rectangle_length}m from the drone's starting position. 
     </Limitations>
 </Controls>
 '''
 
 
-def fs2_prompt(glimpses: int, object_name: str, **_) -> str:
+def fs2_prompt(glimpses: int, object_name: str, minimum_altitude: int, **_) -> str:
     return f'''<Context>
     You are in command of a UAV, tasked with finding {object_name}.
 </Context>
@@ -88,6 +89,7 @@ def fs2_prompt(glimpses: int, object_name: str, **_) -> str:
     <Limitations>
         You shouldn't move into coordinates that are outside of your view. Otherwise, you may hit something which is not ideal.
         You can make at most {glimpses - 1} moves. Your altitude cannot exceed 300 meters. 
+        You cannot fly below the altitude of {minimum_altitude}. Otherwise, you might hit something which is not ideal either. 
         
         The search area is limited to what would be visible from the starting position if there were no buildings or obstacles. The object is within this area. You may not fly outside of it.
     </Limitations>
