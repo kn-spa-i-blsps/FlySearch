@@ -10,6 +10,8 @@ x-producer-vols: &producer_vols
   - ../:/app
   - ../commands:/commands
   - /run/udev:/run/udev:ro
+  - /dev:/dev
+  - /sys:/sys
 
 x-producer-common: &producer_common
   image: flysearch:latest
@@ -55,16 +57,19 @@ services:
     environment:
       <<: *producer_env
       MAV_DEVICE: "/dev/ttyAMA0"
+
+    # allow opening camera/media devices without privileged
+    device_cgroup_rules:
+      - "c 81:* rmw"     # /dev/video* and /dev/v4l-subdev* (video4linux)
+      - "c 235:* rmw"    # /dev/media* (media controller)
+      - 'c 253:* rmw'
+
+    group_add:
+      - video
+
+    # keep your serial device explicit
     devices:
-      - /dev/video0:/dev/video0
       - /dev/ttyAMA0:/dev/ttyAMA0
-      - /dev/media0:/dev/media0
-      - /dev/media1:/dev/media1
-      - /dev/media2:/dev/media2
-      - /dev/media3:/dev/media3
-      - /dev/v4l-subdev0:/dev/v4l-subdev0
-      - /dev/v4l-subdev1:/dev/v4l-subdev1
-      - /dev/v4l-subdev2:/dev/v4l-subdev2
     
   # no-drone / laptop-friendly for tests without drone
   producer_test:
@@ -78,5 +83,3 @@ services:
       - ../:/app
       - ../commands:/commands
       - /run/udev:/run/udev:ro
-      - /dev:/dev
-      - /sys:/sys
