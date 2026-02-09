@@ -28,6 +28,7 @@ UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 PROMPTS_DIR = os.environ.get("PROMPTS_DIR", "prompts")
 TELEMETRY_DIR = os.environ.get("TELEMETRY_DIR", "telemetry")
 MAX_WS_MB = int(os.environ.get("MAX_WS_MB", "25"))
+FOV_ANGLE = int(os.environ.get("FOV_ANGLE", "90"))
 API_KEY = os.environ.get("API_KEY", "key")
 if not API_KEY:
     print("FATAL ERROR: API_KEY environment variable not set.")
@@ -378,6 +379,7 @@ async def stdin_repl():
                     img=img,
                     w_dots=5,
                     h_dots=5,
+                    camera_fov_degrees=FOV_ANGLE,
                     drone_height=prompt[1]
                 )
                 img_grid.save("tmp.png")
@@ -465,6 +467,7 @@ async def stdin_repl():
                     img=img,
                     w_dots=5,
                     h_dots=5,
+                    camera_fov_degrees=FOV_ANGLE,
                     drone_height=prompt[1]
                 )
                 img_grid.save("tmp.png")
