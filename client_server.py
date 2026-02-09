@@ -199,13 +199,14 @@ def _generate_prompt(kind: str, kv: Dict[str, str]) -> Dict[str, str]:
         "object": kv.get("object", "helipad"),
         "glimpses": int(kv.get("glimpses", "6")),
         "area": int(kv.get("area", "80")),  # dla FS-1
+        "minimum_altitude": int(kv.get("minimum_altitude", "10")),
     }
     t = Prompts(kind)
     factory = PROMPT_FACTORIES[t]
     if t == Prompts.FS1:
-        text = factory(params["glimpses"], params["object"], params["area"])
+        text = factory(params["glimpses"], params["object"], params["area"], params["minimum_altitude"])
     else:
-        text = factory(params["glimpses"], params["object"])
+        text = factory(params["glimpses"], params["object"], params["minimum_altitude"])
     return {"kind": kind, "text": text, **params}
 
 def _save_prompt(prompt_meta: Dict[str, str]) -> Dict[str, str]:
@@ -298,6 +299,7 @@ async def stdin_repl():
         Parametry:
           object=<nazwa>
           glimpses=<int>
+          minimum_altitude=<int>
           area=<int>        (tylko FS-1)
       q                     - zakończ
     """
