@@ -19,10 +19,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     python3 \
     python3-dev \
+    libffi-dev \
     libjpeg-dev \
     zlib1g-dev \
     python3-venv \
     python3-pip \
+    python3-cffi \
     fswebcam \
     && rm -rf /var/lib/apt/lists/*
 
@@ -50,8 +52,8 @@ WORKDIR /app
 # Install Python deps in a cache-friendly way
 COPY requirements.txt /app/requirements.txt
 RUN python3 -m venv --system-site-packages "${VIRTUAL_ENV}" \
-  && pip install --no-cache-dir --upgrade pip \
-  && pip install --no-cache-dir -r /app/requirements.txt
+  && "${VIRTUAL_ENV}/bin/python" -m pip install --no-cache-dir --upgrade pip \
+  && "${VIRTUAL_ENV}/bin/python" -m pip install --no-cache-dir -r /app/requirements.txt
 
 # Refresh font cache (optional, but useful if you render text)
 RUN fc-cache -fv
