@@ -68,6 +68,8 @@ services:
       MAV_DEVICE: ""
     privileged: true
     volumes:
-      - *producer_vols
+      - ../:/app
+      - ../commands:/commands
+      - /run/udev:/run/udev:ro
       - /dev:/dev
       - /sys:/sys
