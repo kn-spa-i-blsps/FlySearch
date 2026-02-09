@@ -1,27 +1,26 @@
 import websocket, pathlib, subprocess, os, argparse, json, base64, uuid 
 from datetime import datetime 
+from capture import capture_bytes
 
 try:
     from pixhawk_telemetry_utils import get_telemetry_json
 except Exception as e:
     get_telemetry_json = None
-    print(f"[RPi] WARN: pixhawk_telemetry not available: {e} – will send empty telemetry.")
+    print(f"[RPi] WARN: pixhawk_telemetry not available: {e} - will send empty telemetry.")
 
 try:
     from pixhawk_vector_move import send_vector_command
 except Exception as e:
     send_vector_command = None
-    print(f"[RPi] WARN: pixhawk_vector_move not available: {e} – will NOT execute moves.")
+    print(f"[RPi] WARN: pixhawk_vector_move not available: {e} - will NOT execute moves.")
 
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--server",  default=os.environ.get("SERVER_URL", "ws://127.0.0.1:8080"))
     p.add_argument("--capture", default=os.environ.get("CAPTURE_PY", "/app/capture.py"))
-    p.add_argument("--img",     default=os.environ.get("IMG_DIR", "/img"))
-    p.add_argument("--fname",   default=os.environ.get("FNAME", "photo.jpg"))
-    p.add_argument("--width",   default=os.environ.get("WIDTH", 500))
-    p.add_argument("--height",  default=os.environ.get("HEIGHT", 500))
-    p.add_argument("--quality", default=os.environ.get("QUALITY", 90))
+    p.add_argument("--width",   default=int(os.environ.get("WIDTH", 500)), type=int)
+    p.add_argument("--height",  default=int(os.environ.get("HEIGHT", 500)), type=int)
+    p.add_argument("--quality", default=int(os.environ.get("QUALITY", 90)), type=int)
     p.add_argument("--commands", default=os.environ.get("COMMANDS_DIR", "/commands"))
     p.add_argument("--mav_device",  default=os.environ.get("MAV_DEVICE", "/dev/ttyAMA0"))
     p.add_argument("--mav_baud",    default=int(os.environ.get("MAV_BAUD", "57600")), type=int)
@@ -32,10 +31,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-
-    img_dir = pathlib.Path(args.img); img_dir.mkdir(parents=True, exist_ok=True)
     commands_dir = pathlib.Path(args.commands); commands_dir.mkdir(parents=True, exist_ok=True)
-    photo_path = str(img_dir / args.fname)
 
     shortid = uuid.uuid4().hex[:8]
     session_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{shortid}"
@@ -43,6 +39,7 @@ def main():
     latest_file  = commands_dir / "latest_command.json"
 
     seq = {"n": 0}
+
     def next_seq():
         seq["n"] += 1
         return seq["n"]
@@ -62,14 +59,8 @@ def main():
             json.dump(obj, f, ensure_ascii=False, indent=2)
         tmp.replace(path)
 
-    def take_photo():
-        env = os.environ.copy()
-        env["IMG_DIR"] = str(img_dir)
-        env["FNAME"] = args.fname
-        env["WIDTH"] = str(args.width)
-        env["HEIGHT"] = str(args.height)
-        env["QUALITY"] = str(args.quality)
-        subprocess.run(["python3", args.capture], env=env, check=True)
+    def take_photo_bytes():
+        return capture_bytes(width=args.width, height=args.height, quality=args.quality)
 
     def gather_telemetry() -> dict:
         """
@@ -104,7 +95,7 @@ def main():
     
     def grid_xyz_to_ned(move):
         """
-        Mapowanie z promptu VLM: (x=E, y=N, z=UP)  →  NED: (N, E, D).
+        Mapping from the VLM prompt: (x=E, y=N, z=UP)  →  NED: (N, E, D).
         """
         x, y, z = float(move[0]), float(move[1]), float(move[2])
         N = y
@@ -114,21 +105,21 @@ def main():
 
     def maybe_execute_move(move):
         """
-        Jeżeli EXECUTE_MOVES=1 i mamy pixhawk_vector_move, wyślij komendę do Pixhawka.
-        Zwraca True/False (czy wysłano do FC).
+        If EXECUTE_MOVES=1 i and pixhawk_vector_move exists, send the command to Pixhawk.
+        Returns True/False (whether the command was sent to FC).
         """
         if not args.exec_moves:
-            print("[RPi] EXECUTE_MOVES=0 → tylko loguję komendę, bez wysyłania do FC.")
+            print("[RPi] EXECUTE_MOVES=0 → just logging the command, without sending to FC.")
             return False
         if send_vector_command is None:
-            print("[RPi] pixhawk_vector_move not available → nie wysyłam do FC.")
+            print("[RPi] pixhawk_vector_move not available → command not sent to FC.")
             return False
         try:
             ned = grid_xyz_to_ned(move)
             ok = send_vector_command(
                 #device=args.mav_device,
                 #baud=args.mav_baud,
-                vector=ned,               # (N, E, D) w metrach
+                vector=ned,               # (N, E, D) in meters
                 #method_id=args.move_method  # 0..3
             )
             print(f"[RPi] FC execute move ned={ned} method={args.move_method} ok={ok}")
@@ -142,10 +133,9 @@ def main():
         print("Received:", (preview[:160] + "...") if isinstance(preview, str) and len(preview) > 160 else preview)
 
         if message == "SEND_PHOTO":
-            take_photo()
-            with open(photo_path, "rb") as f:
-                ws.send(f.read(), opcode=websocket.ABNF.OPCODE_BINARY)
-            print(f"Sent photo: {photo_path}")
+            photo = take_photo_bytes()
+            ws.send(photo, opcode=websocket.ABNF.OPCODE_BINARY)
+            print(f"Sent photo")
             return
 
         elif message == "TELEMETRY":
@@ -153,7 +143,7 @@ def main():
                 with open("telemetry.json", "r", encoding="utf-8") as tf:
                     tmpl = json.load(tf)
             except FileNotFoundError:
-                print("[RPi] telemetry.json not found – sending empty {}")
+                print("[RPi] telemetry.json not found - sending empty {}")
                 tmpl = {}
             ws.send(json.dumps({"type": "TELEMETRY", "data": tmpl}))
             print("[RPi] Sent TELEMETRY json")
@@ -161,10 +151,8 @@ def main():
 
         elif message == "PHOTO_WITH_TELEMETRY":
             try:
-                take_photo()
-                with open(photo_path, "rb") as f:
-                    photo_data = f.read()
-                photo_base64 = base64.b64encode(photo_data).decode('utf-8')
+                photo = take_photo_bytes()
+                photo_base64 = base64.b64encode(photo).decode('utf-8')
             except Exception as e:
                 print(f"[RPi] PHOTO_WITH_TELEMETRY: photo error: {e}")
                 photo_base64 = None

@@ -1,0 +1,8 @@
+websockets
+websocket-client
+google-generativeai
+google-api-core
+Pillow
+numpy
+pymavlink
+pyserial
