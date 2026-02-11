@@ -1,81 +1,118 @@
 #!/usr/bin/env python3
-import os
-import subprocess
+import io, os, subprocess
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
-def make_square(path: Path, quality: int = 90) -> None:
+try:
+    from PIL import Image  # Pillow must be installed
+except ImportError:
+    Image = None
+    print("[square] Pillow not installed; leaving image as-is.")
+
+
+def _make_square_image(img: "Image.Image") -> "Image.Image":
     """Crop image at 'path' to a centered square (in-place)."""
-    try:
-        from PIL import Image  # Pillow must be installed
-    except ImportError:
-        print("[square] Pillow not installed; leaving image as-is.")
-        return
-
-    img = Image.open(path)
     w, h = img.size
-
     if w == h:
-        print(f"[square] Image already square: {w}x{h}")
-        return
-
+        print(f"[square] Image already cropped to square: {w}x{w}")
+        return img
     side = min(w, h)
-    left   = (w - side) // 2
-    top    = (h - side) // 2
-    right  = left + side
-    bottom = top  + side
-
-    img_cropped = img.crop((left, top, right, bottom))
-    img_cropped.save(path, quality=quality)
+    left = (w - side) // 2
+    top = (h - side) // 2
+    right = left + side
+    bottom = top + side
     print(f"[square] Cropped to square: {side}x{side}")
+    return img.crop((left, top, right, bottom))
 
-def main():
-    # Env variables → can be overridden by Docker/WS client
-    DIR = Path(os.environ.get("IMG_DIR", "/img"))
-    FNAME = os.environ.get("FNAME") or f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-    W = int(os.environ.get("WIDTH", "640"))     # dopasowane do testu
-    H = int(os.environ.get("HEIGHT", "480"))
-    Q = int(os.environ.get("QUALITY", "90"))
 
-    DIR.mkdir(parents=True, exist_ok=True)
-    path = DIR / FNAME
+def _encode_pil_jpeg(img: "Image.Image", quality: int) -> bytes:
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=quality)
+    return buf.getvalue()
 
-    # 1) Attempt Picamera2 (CSI camera)
+
+def _capture_picamera_bytes(picam2, width: int, height: int, quality: int, square: bool) -> Optional[bytes]:
     try:
-        from picamera2 import Picamera2  # type: ignore
-        cam = Picamera2()
-        cfg = cam.create_still_configuration(main={"size": (W, H)})
-        cam.configure(cfg)
-        cam.start()
-        cam.capture_file(str(path))
-        cam.stop()
-        print(f"Image saved at: {path} (Picamera2)")
-        return
+        frame = picam2.capture_array("main")
+        if Image is None:
+            raise RuntimeError("Pillow required to encode Picamera2 frame to JPEG")
+        img = Image.fromarray(frame)
+        if square:
+            img = _make_square_image(img)
+        return _encode_pil_jpeg(img, quality)
     except Exception as e:
-        print(f"[capture] Picamera2 unavailable/failed: {e}")
+        print(f"[capture] Picamera2 capture failed: {e}")
+        return None
 
-    # 2) Fallback: fswebcam (USB V4L2 camera) — WORKING CONFIG
-    video_dev = os.environ.get("VIDEO_DEVICE", "/dev/video0")
 
+def _capture_fswebcam_bytes(width: int, height: int, quality: int, video_dev: str, square: bool) -> bytes:
     cmd = [
         "fswebcam",
         "-d", video_dev,
-        "-r", f"{W}x{H}",
-        "-S", "10",           # skip 10 frames → fixes black images
+        "-r", f"{width}x{height}",
+        "-S", "10",
         "--no-banner",
-        str(path),
+        "--jpeg", str(quality),
+        "--stdout",
     ]
+    print(f"[capture] Running fswebcam: {' '.join(cmd)}")
+    result = subprocess.run(cmd, check=True, capture_output=True)
+    data = result.stdout
+    if square and Image is not None:
+        try:
+            img = Image.open(io.BytesIO(data))
+            img = _make_square_image(img)
+            data = _encode_pil_jpeg(img, quality)
+        except Exception as e:
+            print(f"[capture] square crop skipped (fswebcam): {e}")
+    return data
 
-    print(f"[capture] Running fallback: {' '.join(cmd)}")
+
+def capture_bytes(width: int, height: int, quality: int = 90, video_dev: str = "/dev/video0",
+                  square: bool = True) -> bytes:
+    """
+    Capture a JPEG and return it as bytes. Tries Picamera2 first, then fswebcam.
+    If Pillow is missing, square crop is skipped.
+    """
+    if square and Image is None:
+        print("[capture] Pillow not installed; skipping square crop.")
+        square = False
+
+    data = _capture_picamera_bytes(width, height, quality, square)
+    if data is not None:
+        return data
+
     try:
-        subprocess.run(cmd, check=True)
-        print(f"Image saved at: {path} (fswebcam)")
-        make_square(path, Q)
-        return
+        return _capture_fswebcam_bytes(width, height, quality, video_dev, square)
     except FileNotFoundError:
         raise SystemExit("[capture] ERROR: fswebcam not found. Install: sudo apt install fswebcam")
     except subprocess.CalledProcessError as e:
         raise SystemExit(f"[capture] fswebcam failed (exit code={e.returncode})")
+
+
+def main():
+    """When called directly, capture.py will save the photo under DIR / FNAME.
+    By default, when imported in producer_server.py, photo is sent directly to server
+    and is not saved on RaspberryPi.
+    """
+
+    # Env variables → can be overridden by Docker/WS client
+    DIR = Path(os.environ.get("IMG_DIR", "/img"))
+    FNAME = os.environ.get("FNAME") or f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+    W = int(os.environ.get("WIDTH", "640"))
+    H = int(os.environ.get("HEIGHT", "480"))
+    Q = int(os.environ.get("QUALITY", "90"))
+    VIDEO_DEV = os.environ.get("VIDEO_DEVICE", "/dev/video0")
+
+    DIR.mkdir(parents=True, exist_ok=True)
+    path = DIR / FNAME
+
+    data = capture_bytes(width=W, height=H, quality=Q, video_dev=VIDEO_DEV, square=True)
+    with path.open("wb") as f:
+        f.write(data)
+    print(f"Image saved at: {path}")
+
 
 if __name__ == "__main__":
     main()
