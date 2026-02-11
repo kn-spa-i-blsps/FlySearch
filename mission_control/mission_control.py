@@ -11,7 +11,7 @@ from mission_control.core.action_status import ActionStatus
 from mission_control.core.config import Config
 from mission_control.core.mission_context import MissionContext
 from mission_control.managers.prompt_manager import PromptManager
-from mission_control.utils.parsers import parse_prompt_arguments
+from mission_control.utils.parsers import parse_prompt_arguments, parse_search_arguments
 
 
 # FUTURE:
@@ -158,7 +158,7 @@ class MissionControl:
                     print_help()
 
     ''' -------------- WHOLE SEARCH SEQUENCE -------------- '''
-    async def search(self, kind, kv):
+    async def search(self, name, kind, kv):
         """ Orchestrates an automated search test sequence.
 
         This function handles the end-to-end flow: generating the initial prompt,
@@ -175,7 +175,7 @@ class MissionControl:
 
         # Init vlm chat.
         await self.vlm.chat_init()
-        await self.vlm.chat_save("autosave")
+        await self.vlm.chat_save(name)
 
         ret = ActionStatus.CONFIRMED
         moves_performed = 0
@@ -190,7 +190,7 @@ class MissionControl:
             await self.vlm.send_to_vlm(is_warning=(ret == ActionStatus.WARNING))
 
             # Autosave the chat.
-            await self.vlm.chat_save("autosave")
+            await self.vlm.chat_save(name)
 
             # Take parsed response and ask for confirmation.
             parsed = self.mission_context.parsed_response
@@ -232,8 +232,8 @@ class MissionControl:
 
     async def _handle_search(self, args):
         """ Handle search command - parse the arguments and send them further. """
-        kind, kv = parse_prompt_arguments(args)
-        await self.search(kind, kv)
+        name, kind, kv = parse_search_arguments(args)
+        await self.search(name, kind, kv)
 
     async def _handle_prompt_cmd(self, args):
         """ Handle prompt command - parse the arguments and send them further. """
@@ -249,7 +249,7 @@ class MissionControl:
 
 def print_help():
     print("Perform search:")
-    print("    SEARCH FS-1|FS-2 [object=.. glimpses=.. area=..]")
+    print("    SEARCH NAME FS-1|FS-2 [object=.. glimpses=.. area=..]")
 
     print("Chat management:")
     print("    CHAT_INIT | CHAT_RESET | CHAT_SAVE <name> | CHAT_RETRIEVE <name>")
