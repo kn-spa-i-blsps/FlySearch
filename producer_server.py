@@ -1,14 +1,15 @@
-import time
-from datetime import datetime
-
 import argparse
 import base64
 import json
 import os
 import pathlib
 import uuid
+from datetime import datetime
+
 import websocket
 from picamera2 import Picamera2
+from picamera2.encoders import H264Encoder
+from picamera2.outputs import PyavOutput
 
 try:
     from pixhawk_telemetry_utils import get_telemetry_json
@@ -51,8 +52,8 @@ def main():
     session_file = commands_dir / f"session_{session_id}.jsonl"
     latest_file  = commands_dir / "latest_command.json"
 
-    video_path = str(img_dir / f"video_{session_id}.mp4")
-
+    encoder = H264Encoder(bitrate=10000000)
+    output = PyavOutput(str(img_dir / f"video_{session_id}.mp4"))
     seq = {"n": 0}
     def next_seq():
         seq["n"] += 1
@@ -86,8 +87,8 @@ def main():
     recording_started = False
 
     try:
-        print(f"[RPi] Starting video recording: {video_path}")
-        picam2.start_recording(video_path)
+        print(f"[RPi] Starting video recording: {output}")
+        picam2.start_recording(encoder, output)
         recording_started = True
 
         def take_photo():
