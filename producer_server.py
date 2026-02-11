@@ -31,6 +31,7 @@ def parse_args():
     p.add_argument("--width",   default=int(os.environ.get("WIDTH", 500)), type=int)
     p.add_argument("--height",  default=int(os.environ.get("HEIGHT", 500)), type=int)
     p.add_argument("--quality", default=int(os.environ.get("QUALITY", 90)), type=int)
+    p.add_argument("--img", default=os.environ.get("IMG_DIR", "/img"))
     p.add_argument("--commands", default=os.environ.get("COMMANDS_DIR", "/commands"))
     p.add_argument("--mav_device",  default=os.environ.get("MAV_DEVICE", "/dev/ttyAMA0"))
     p.add_argument("--mav_baud",    default=int(os.environ.get("MAV_BAUD", "57600")), type=int)
