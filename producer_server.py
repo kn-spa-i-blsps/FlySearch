@@ -93,7 +93,7 @@ def main():
         recording_started = True
 
         def take_photo_bytes():
-            return capture_bytes(width=args.width, height=args.height, quality=args.quality)
+            return capture_bytes(width=args.width, height=args.height, quality=args.quality, picam2=picam2)
 
         def gather_telemetry() -> dict:
             """
