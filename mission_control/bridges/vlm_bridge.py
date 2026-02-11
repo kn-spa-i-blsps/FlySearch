@@ -20,7 +20,6 @@ class VLMBridge:
         self.mission_context = mission_context
         self.collision_warning_str = "Your move would cause a collision. Make other move."
 
-    # TODO: we need to probably raise exceptions (everywhere :(( )
     async def send_to_vlm(self, is_warning=False):
         """
         Prepares and sends the current context (image, telemetry, prompts) to the Vision Language Model.
@@ -62,7 +61,7 @@ class VLMBridge:
             print(f"Error during photo opening/processing: {e}")
             return
 
-        # --- VLM API Call ---
+        # --- Add messages ---
         try:
             if is_warning:
                 # Warning: Warning text + image with a grid + telemetry context
@@ -72,6 +71,7 @@ class VLMBridge:
             self.mission_context.conversation.add_image_message(img_new)
             self.mission_context.conversation.add_text_message(telemetry_prompt_text)
 
+            # Send message
             self.mission_context.conversation.commit_transaction(send_to_vlm=True)
 
             # Is it blocking operation??
@@ -92,6 +92,7 @@ class VLMBridge:
 
         self.mission_context.parsed_response = parsed
 
+    ''' ---------- CHAT MANAGEMENT ---------- '''
     async def chat_init(self):
         """"""
         if self.mission_context.conversation is not None:
