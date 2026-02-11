@@ -77,8 +77,8 @@ def main():
     picam2 = Picamera2()
 
     config = picam2.create_video_configuration(
-        main={"size": (int(args.width), int(args.height)), "format": "YUV420"},
-        lores={"size": (480, 480), "format": "YUV420"}
+        main={"size": (int(args.width), int(args.height)), "format": "YUV420"}
+        #lores={"size": (480, 480), "format": "YUV420"}
     )
     picam2.configure(config)
     picam2.start()
