@@ -45,7 +45,6 @@ def main():
 
     img_dir = pathlib.Path(args.img); img_dir.mkdir(parents=True, exist_ok=True)
     commands_dir = pathlib.Path(args.commands); commands_dir.mkdir(parents=True, exist_ok=True)
-    photo_path = str(img_dir / args.fname)
 
     shortid = uuid.uuid4().hex[:8]
     session_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{shortid}"
