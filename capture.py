@@ -10,7 +10,6 @@ except ImportError:
     Image = None
     print("[square] Pillow not installed; leaving image as-is.")
 
-
 def _make_square_image(img: "Image.Image") -> "Image.Image":
     """Crop image at 'path' to a centered square (in-place)."""
     w, h = img.size
@@ -21,18 +20,17 @@ def _make_square_image(img: "Image.Image") -> "Image.Image":
     left = (w - side) // 2
     top = (h - side) // 2
     right = left + side
-    bottom = top + side
+    bottom = top  + side
     print(f"[square] Cropped to square: {side}x{side}")
     return img.crop((left, top, right, bottom))
-
 
 def _encode_pil_jpeg(img: "Image.Image", quality: int) -> bytes:
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=quality)
     return buf.getvalue()
 
-
 def _capture_picamera_bytes(picam2, width: int, height: int, quality: int, square: bool) -> Optional[bytes]:
+
     try:
         frame = picam2.capture_array("main")
         if Image is None:
@@ -44,7 +42,6 @@ def _capture_picamera_bytes(picam2, width: int, height: int, quality: int, squar
     except Exception as e:
         print(f"[capture] Picamera2 capture failed: {e}")
         return None
-
 
 def _capture_fswebcam_bytes(width: int, height: int, quality: int, video_dev: str, square: bool) -> bytes:
     cmd = [
@@ -68,9 +65,7 @@ def _capture_fswebcam_bytes(width: int, height: int, quality: int, video_dev: st
             print(f"[capture] square crop skipped (fswebcam): {e}")
     return data
 
-
-def capture_bytes(width: int, height: int, quality: int = 90, video_dev: str = "/dev/video0",
-                  square: bool = True) -> bytes:
+def capture_bytes(width: int, height: int, quality: int = 90, video_dev: str = "/dev/video0", square: bool = True) -> bytes:
     """
     Capture a JPEG and return it as bytes. Tries Picamera2 first, then fswebcam.
     If Pillow is missing, square crop is skipped.
@@ -89,7 +84,6 @@ def capture_bytes(width: int, height: int, quality: int = 90, video_dev: str = "
         raise SystemExit("[capture] ERROR: fswebcam not found. Install: sudo apt install fswebcam")
     except subprocess.CalledProcessError as e:
         raise SystemExit(f"[capture] fswebcam failed (exit code={e.returncode})")
-
 
 def main():
     """When called directly, capture.py will save the photo under DIR / FNAME.
@@ -112,7 +106,6 @@ def main():
     with path.open("wb") as f:
         f.write(data)
     print(f"Image saved at: {path}")
-
 
 if __name__ == "__main__":
     main()

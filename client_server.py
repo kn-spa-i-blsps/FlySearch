@@ -28,6 +28,7 @@ UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 PROMPTS_DIR = os.environ.get("PROMPTS_DIR", "prompts")
 TELEMETRY_DIR = os.environ.get("TELEMETRY_DIR", "telemetry")
 MAX_WS_MB = int(os.environ.get("MAX_WS_MB", "25"))
+FOV_ANGLE = int(os.environ.get("FOV_ANGLE", "90"))
 API_KEY = os.environ.get("API_KEY", "key")
 if not API_KEY:
     print("FATAL ERROR: API_KEY environment variable not set.")
@@ -199,13 +200,14 @@ def _generate_prompt(kind: str, kv: Dict[str, str]) -> Dict[str, str]:
         "object": kv.get("object", "helipad"),
         "glimpses": int(kv.get("glimpses", "6")),
         "area": int(kv.get("area", "80")),  # dla FS-1
+        "minimum_altitude": int(kv.get("minimum_altitude", "10")),
     }
     t = Prompts(kind)
     factory = PROMPT_FACTORIES[t]
     if t == Prompts.FS1:
-        text = factory(params["glimpses"], params["object"], params["area"])
+        text = factory(params["glimpses"], params["object"], params["area"], params["minimum_altitude"])
     else:
-        text = factory(params["glimpses"], params["object"])
+        text = factory(params["glimpses"], params["object"], params["minimum_altitude"])
     return {"kind": kind, "text": text, **params}
 
 def _save_prompt(prompt_meta: Dict[str, str]) -> Dict[str, str]:
@@ -298,6 +300,7 @@ async def stdin_repl():
         Parametry:
           object=<nazwa>
           glimpses=<int>
+          minimum_altitude=<int>
           area=<int>        (tylko FS-1)
       q                     - zakończ
     """
@@ -376,6 +379,7 @@ async def stdin_repl():
                     img=img,
                     w_dots=5,
                     h_dots=5,
+                    camera_fov_degrees=FOV_ANGLE,
                     drone_height=prompt[1]
                 )
                 img_grid.save("tmp.png")
@@ -463,6 +467,7 @@ async def stdin_repl():
                     img=img,
                     w_dots=5,
                     h_dots=5,
+                    camera_fov_degrees=FOV_ANGLE,
                     drone_height=prompt[1]
                 )
                 img_grid.save("tmp.png")

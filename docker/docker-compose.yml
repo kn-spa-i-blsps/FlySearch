@@ -1,3 +1,32 @@
+x-producer-env: &producer_env
+  SERVER_URL: "${SERVER_URL}"
+  COMMANDS_DIR: "${COMMANDS_DIR:-/commands}"
+  WIDTH: "${WIDTH:-500}"
+  HEIGHT: "${HEIGHT:-500}"
+  QUALITY: "${QUALITY:-90}"
+  MAV_BAUD: "57600"
+
+x-producer-vols: &producer_vols
+  - ../:/app
+  - ../commands:/commands
+  - /run/udev:/run/udev:ro
+  - /dev:/dev
+  - /sys:/sys
+
+x-producer-common: &producer_common
+  image: flysearch:latest
+  build: 
+    context: ..
+    dockerfile: Dockerfile
+  command: >
+    python3 /app/producer_server.py
+    --server ${SERVER_URL}
+  working_dir: /app
+  volumes: *producer_vols
+  environment: *producer_env
+  tty: true 
+  stdin_open: true
+
 services:
   server:
     build: 
@@ -15,46 +44,43 @@ services:
         WS_PORT: "${WS_PORT:-8080}"
         UPLOAD_DIR: "/app/uploads"
         MAX_WS_MB: "${MAX_WS_MB:-25}"
+        FOV_ANGLE: "${FOV_ANGLE:-90}"
         API_KEY: "${API_KEY}"
     tty: true
     stdin_open: true
     ports: ["8080:8080"]
     profiles: ["server"]
-
+    
+  # drone / RPi hardware for actual workflow
   producer:
-    image: flysearch:latest
-    build: 
-      context: ..
-      dockerfile: Dockerfile
-    command: >
-      python3 /app/producer_server.py
-      --server ${SERVER_URL}
-      --fname ${FNAME:-photo.jpg}
-    working_dir: /app
+    <<: *producer_common
+    profiles: ["producer"]
+    environment:
+      <<: *producer_env
+      MAV_DEVICE: "/dev/ttyAMA0"
+
+    # allow opening camera/media devices without privileged
+    device_cgroup_rules:
+      - "c 81:* rmw"     # /dev/video* and /dev/v4l-subdev* (video4linux)
+      - "c 235:* rmw"    # /dev/media* (media controller)
+      - 'c 253:* rmw'
+
+    group_add:
+      - video
+
+    # keep your serial device explicit
+    devices:
+      - /dev/ttyAMA0:/dev/ttyAMA0
+    
+  # no-drone / laptop-friendly for tests without drone
+  producer_test:
+    <<: *producer_common
+    profiles: ["producer_test"]
+    environment:
+      <<: *producer_env
+      MAV_DEVICE: ""
+    privileged: true
     volumes:
       - ../:/app
-      - ../img:/img
       - ../commands:/commands
       - /run/udev:/run/udev:ro
-    environment:
-      SERVER_URL: "${SERVER_URL}"
-      IMG_DIR: "${IMG_DIR:-/img}"
-      COMMANDS_DIR: "${COMMANDS_DIR:-/commands}"
-      CAPTURE_PY: "${CAPTURE_PY:-/app/capture.py}"
-      FNAME: "${FNAME:-photo.jpg}"
-      WIDTH: "${WIDTH:-500}"
-      HEIGHT: "${HEIGHT:-500}"
-      QUALITY: "${QUALITY:-90}"
-      MAV_DEVICE: "/dev/ttyAMA0"
-      MAV_BAUD: "57600"
-    tty: true 
-    stdin_open: true
-    # na start wygodnie:
-    
-    # po testach usuń privileged i dopisz konkretne device'y:
-    devices:
-      - /dev/video0:/dev/video0
-      - /dev/ttyAMA0:/dev/ttyAMA0
-    #  - /dev/media1:/dev/media1
-    #  - /dev/video0:/dev/video0
-    profiles: ["producer"]
