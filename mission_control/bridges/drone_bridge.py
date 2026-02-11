@@ -17,11 +17,12 @@ class DroneBridge:
     """ Handles WebSocket communication between the server and the drone. """
 
     def __init__(self, config : Config, mission_context: MissionContext):
-        self.client = None
-        self.config = config
-        self.mission_context = mission_context
-        self.server = None
+        self.client = None                      # connected drone.
+        self.config = config                    # Configuration variables - dirs, ports, hosts...
+        self.mission_context = mission_context  # Place to put where the photo or telemetry is saved.
+        self.server = None                      # WebSocket server.
 
+    ''' ---------- WEBSOCKET LOGIC ---------- '''
     async def start(self):
         """ Starts WebSocket server in the background.
 
@@ -81,6 +82,65 @@ class DroneBridge:
 
         print("[WS] Server stopped.")
 
+    async def handler(self, ws):
+        """ Handle received messages from the drone. """
+
+        peer = ws.remote_address # IP address and port of the connected drone.
+        if self.client is not None:
+            print(f"[WS] REJECTED connection from {peer} (System busy)")
+            await ws.send("[SERVER] ERROR: System busy. Another drone is already connected.")
+            return
+
+        self.client = ws
+        print(f"[WS] connected: {peer}")
+
+        try:
+            # Wait for incoming messages.
+            async for message in ws:
+                # All _handle_* methods will save incoming messages in proper places.
+                # binary photo - 'photo' command sends photo from rpi that way (idk why, probably will change)
+                if isinstance(message, (bytes, bytearray)):
+                    await self._handle_binary_photo(ws, message)
+                    continue
+
+                # If the message is not a photo, try to decode it as JSON.
+                # Clean whitespace prefixes/suffixes.
+                text = message.strip()
+                try:
+                    obj = json.loads(text)
+                except json.JSONDecodeError:
+                    print(f"[WS] Ignored message (not JSON nor binary): {text}")
+                    continue
+
+                if not isinstance(obj, dict):
+                    print(f"[WS] Ignored non-dict JSON: {obj}")
+                    continue
+
+                match obj:
+                    case {"type": "ACK", "of": "COMMAND", "seq": seq, "ok": ok, "error": err}:
+                        print(f"[ACK ← RPi] COMMAND seq={seq} "
+                              f"ok={ok} err={err}")
+
+                    case {"type": "TELEMETRY", "data": data}:
+                        await self._handle_telemetry(data)
+
+                    case {"type": "PHOTO_WITH_TELEMETRY", "photo": photo, "telemetry": telemetry}:
+                        await self._handle_telemetry_photo(ws, photo, telemetry)
+
+                    case _:
+                        print(f"[WS] message not matching any case.")
+
+        except websockets.ConnectionClosed:
+            print(f"[WS] disconnected: {peer}.")
+
+        except Exception as e:
+            print(f"[WS] error: {e}.")
+
+        finally:
+            # Always reset the client.
+            self.client = None
+
+    ''' ---------- AVAILABLE COMMANDS ---------- '''
     async def send_message(self, cmd):
         """ Transmits a message to the connected drone via WebSocket.
 
@@ -145,6 +205,7 @@ class DroneBridge:
     # SAVING PHOTOS/JSON IS BLOCKING - WITH MULTIPLE DRONES OR BIG DATA COULD BE BAD
     # may need change into run_in_executor
 
+    ''' ---------- HELPER METHODS ----------'''
     async def _handle_binary_photo(self, ws, message):
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         file_base = f"img_{ts}"
@@ -215,63 +276,3 @@ class DroneBridge:
         await self._handle_telemetry(telemetry, img_file_name)
 
         await ws.send("[SERVER] Photo and telemetry received.")
-
-    async def handler(self, ws):
-        """ Handle received messages from the drone. """
-
-        peer = ws.remote_address # IP address and port of the connected drone.
-        if self.client is not None:
-            print(f"[WS] REJECTED connection from {peer} (System busy)")
-            await ws.send("[SERVER] ERROR: System busy. Another drone is already connected.")
-            return
-
-        self.client = ws
-        print(f"[WS] connected: {peer}")
-
-        try:
-            # Wait for incoming messages.
-            async for message in ws:
-                # All _handle_* methods will save incoming messages in proper places.
-                # binary photo - 'photo' command sends photo from rpi that way (idk why, probably will change)
-                if isinstance(message, (bytes, bytearray)):
-                    await self._handle_binary_photo(ws, message)
-                    continue
-
-                # If the message is not a photo, try to decode it as JSON.
-                # Clean whitespace prefixes/suffixes.
-                text = message.strip()
-                try:
-                    obj = json.loads(text)
-                except json.JSONDecodeError:
-                    print(f"[WS] Ignored message (not JSON nor binary): {text}")
-                    continue
-
-                if not isinstance(obj, dict):
-                    print(f"[WS] Ignored non-dict JSON: {obj}")
-                    continue
-
-
-                match obj:
-                    # TODO: is it useful?
-                    case {"type": "ACK", "of": "COMMAND", "seq": seq, "ok": ok, "error": err}:
-                        print(f"[ACK ← RPi] COMMAND seq={seq} "
-                              f"ok={ok} err={err}")
-
-                    case {"type": "TELEMETRY", "data": data}:
-                        await self._handle_telemetry(data)
-
-                    case {"type": "PHOTO_WITH_TELEMETRY", "photo": photo, "telemetry": telemetry}:
-                        await self._handle_telemetry_photo(ws, photo, telemetry)
-
-                    case _:
-                        print(f"[WS] message not matching any case.")
-
-        except websockets.ConnectionClosed:
-            print(f"[WS] disconnected: {peer}.")
-
-        except Exception as e:
-            print(f"[WS] error: {e}.")
-
-        finally:
-            # Always reset the client.
-            self.client = None
