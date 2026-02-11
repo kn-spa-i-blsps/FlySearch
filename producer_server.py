@@ -52,7 +52,7 @@ def main():
     latest_file  = commands_dir / "latest_command.json"
 
     encoder = H264Encoder(bitrate=10000000)
-    output = PyavOutput(str(img_dir / f"video_{session_id}.mp4"))
+    output = "video.mp4"
     seq = {"n": 0}
     def next_seq():
         seq["n"] += 1
