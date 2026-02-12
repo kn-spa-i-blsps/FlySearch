@@ -10,6 +10,7 @@ from mission_control.bridges.vlm_bridge import VLMBridge
 from mission_control.core.action_status import ActionStatus
 from mission_control.core.config import Config
 from mission_control.core.mission_context import MissionContext
+from mission_control.managers.chat_manager import ChatSessionManager
 from mission_control.managers.prompt_manager import PromptManager
 from mission_control.utils.parsers import parse_prompt_arguments, parse_search_arguments
 
@@ -48,15 +49,20 @@ class MissionControl:
             self.mission_context,
         )
 
+        self.chat_manager = ChatSessionManager(     # Chat management - saving etc.
+            self.config,
+            self.mission_context
+        )
+
         # Dispatcher - maps command name with proper function/method.
         self.commands: Dict[str, Callable[[str, str], Awaitable[None]]] = {
 
             "search": lambda _, args: self._handle_search(args),
 
-            "chat_init": lambda c, a: self.vlm.chat_init(),
-            "chat_save": lambda _, args: self.vlm.chat_save(args),
-            "chat_retrieve": lambda _, args: self.vlm.chat_retrieve(args),
-            "chat_reset": lambda c, a: self.vlm.chat_reset(),
+            "chat_init": lambda c, a: self.chat_manager.create_new_session(),
+            "chat_save": lambda _, args: self.chat_manager.save_session(args),
+            "chat_retrieve": lambda _, args: self.chat_manager.restore_session(args),
+            "chat_reset": lambda c, a: self._handle_chat_reset(),
 
             "prompt": lambda _, args: self._handle_prompt_cmd(args),
 
@@ -174,8 +180,8 @@ class MissionControl:
         self.prompt_manager.generate_and_save(kind, kv)
 
         # Init vlm chat.
-        await self.vlm.chat_init()
-        await self.vlm.chat_save(name)
+        await self.chat_manager.create_new_session()
+        await self.chat_manager.save_session(name)
 
         ret = ActionStatus.CONFIRMED
         moves_performed = 0
@@ -190,7 +196,7 @@ class MissionControl:
             await self.vlm.send_to_vlm(is_warning=(ret == ActionStatus.WARNING))
 
             # Autosave the chat.
-            await self.vlm.chat_save(name)
+            await self.chat_manager.save_session(name)
 
             # Take parsed response and ask for confirmation.
             parsed = self.mission_context.parsed_response
@@ -216,19 +222,19 @@ class MissionControl:
             print(f"MOVE: (x={x}, y={y}, z={z})")
         print("Press Enter to send, or type 'no' to cancel,"
               " or 'w' to warn vlm (continue search, stop this move.")
-        with patch_stdout():
-            while True:
-                try:
-                    ans = await self.cli.prompt_async("> ")
-                except (EOFError, KeyboardInterrupt):
-                    ans = "no"
 
-                if ans.strip().lower() in ("", "y", "yes"):
-                    return ActionStatus.CONFIRMED
-                elif ans.strip().lower() in ("w", "warning", "warn"):
-                    return ActionStatus.WARNING
-                elif ans.strip().lower() in ("no", "n"):
-                    return ActionStatus.CANCELLED
+        while True:
+            try:
+                ans = await self.cli.prompt_async("> ")
+            except (EOFError, KeyboardInterrupt):
+                ans = "no"
+
+            if ans.strip().lower() in ("", "y", "yes"):
+                return ActionStatus.CONFIRMED
+            elif ans.strip().lower() in ("w", "warning", "warn"):
+                return ActionStatus.WARNING
+            elif ans.strip().lower() in ("no", "n"):
+                return ActionStatus.CANCELLED
 
     async def _handle_search(self, args):
         """ Handle search command - parse the arguments and send them further. """
@@ -240,7 +246,24 @@ class MissionControl:
         kind, kv = parse_prompt_arguments(args)
         self.prompt_manager.generate_and_save(kind, kv)
 
-    def _signal_handler(self):
+    async def _handle_chat_reset(self):
+        loop = asyncio.get_event_loop()
+
+        print("Are you sure you want to reset this chat? You can use CHAT_SAVE to save it first.")
+        print("Type 'yes' to reset.")
+
+        try:
+            ans = await self.cli.prompt_async("> ")
+        except (EOFError, KeyboardInterrupt):
+            ans = "no"
+
+        if ans.lower() == "yes":
+            await self.chat_manager.reset_session()
+            print("Chat deleted.")
+        else:
+            print("Chat not deleted.")
+
+    async def _signal_handler(self):
         """ Function for soft handling of SIGINT """
         if not self.stop.is_set():
             print("\n[WS] shutdown requested (signal). Closing clients…")
@@ -249,7 +272,7 @@ class MissionControl:
 
 def print_help():
     print("Perform search:")
-    print("    SEARCH NAME FS-1|FS-2 [object=.. glimpses=.. area=..]")
+    print("    SEARCH <name> <FS-1|FS-2> [object=.. glimpses=.. area=..]")
 
     print("Chat management:")
     print("    CHAT_INIT | CHAT_RESET | CHAT_SAVE <name> | CHAT_RETRIEVE <name>")
