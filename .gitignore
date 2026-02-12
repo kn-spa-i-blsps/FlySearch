@@ -12,5 +12,6 @@ vlm_raw/
 response_parsers/__pycache__/
 .venv/
 tmp.png
-video.mp4
+video/
+
 
