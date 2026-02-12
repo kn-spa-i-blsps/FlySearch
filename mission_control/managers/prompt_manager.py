@@ -5,7 +5,7 @@ from typing import Dict
 
 from mission_control.core.config import Config
 from mission_control.core.mission_context import MissionContext
-from prompt_generation.prompts import Prompts, PROMPT_FACTORIES
+from mission_control.prompt_generation.prompts import Prompts, PROMPT_FACTORIES
 
 
 class PromptManager:

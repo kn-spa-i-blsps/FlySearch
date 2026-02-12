@@ -5,7 +5,7 @@ comments/
 telemetry/
 saved_chats/
 __pycache__/
-prompt_generation/__pycache__/
+mission_control/prompt_generation/__pycache__/
 vlm_raw/
 response_parsers/__pycache__/
 .venv/

@@ -23,3 +23,7 @@ class VLMConnectionError(VLMError):
 
 class VLMParseError(VLMError):
     pass
+
+# --- Additional Exceptions ---
+class ParsingError(ValueError):
+    pass

@@ -1,5 +1,9 @@
 import json
-from typing import Dict
+import re
+from dataclasses import dataclass
+from typing import Dict, Tuple
+
+from mission_control.core.exceptions import ParsingError
 
 
 def parse_telemetry(path):
@@ -59,3 +63,36 @@ def parse_search_arguments(cmd):
             k, v = token.split("=", 1)
             kv[k.strip().lower()] = v.strip()
     return name, kind, kv
+
+
+@dataclass
+class ModelResponse:
+    found: bool = False
+    move: Tuple[float, float, float] = (0, 0, 0)
+
+def parse_xml_response(model_response: str) -> ModelResponse:
+    xml_response_pattern = re.compile(r"^.*?<action>(.*?)</action>.*$", flags=re.DOTALL)
+    model_response = model_response.lower().strip()
+    match = xml_response_pattern.match(model_response)
+
+    if not match:
+        if "found" in model_response:
+            # If the response contains 'found' but doesn't match the XML pattern, assume it's a found action
+            return ModelResponse(found=True)
+
+        raise ParsingError(f"Invalid XML response: {model_response}")
+
+    action = match.group(1).strip()
+
+    if "found" in action:
+        return ModelResponse(found=True)
+
+    try:
+        action = action.replace("(", "").replace(")", "")
+        action = action.split(",")
+        # east_diff, north_diff, up_diff
+        action = float(action[0]), float(action[1]), float(action[2])
+    except (ValueError, IndexError):
+        raise ParsingError(f"Invalid action format: {action}")
+
+    return ModelResponse(move=action)

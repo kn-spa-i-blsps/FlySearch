@@ -3,8 +3,7 @@ from websockets.frames import CloseCode
 from mission_control.core.config import Config
 from mission_control.core.mission_context import MissionContext
 from mission_control.utils.image_processing import add_grid
-from mission_control.utils.parsers import parse_telemetry
-from response_parsers.xml_response_parser import parse_xml_response, ParsingError
+from mission_control.utils.parsers import parse_telemetry, parse_xml_response, ParsingError
 
 
 class VLMBridge:
