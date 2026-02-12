@@ -10,7 +10,7 @@ from capture import capture_bytes
 import websocket
 from picamera2 import Picamera2
 from picamera2.encoders import H264Encoder
-from picamera2.outputs import PyavOutput
+from picamera2.outputs import PyavOutput, FileOutput
 
 try:
     from pixhawk_telemetry_utils import get_telemetry_json
@@ -52,10 +52,10 @@ def main():
     latest_file  = commands_dir / "latest_command.json"
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    video_path = video_dir / f"video_{ts}.mp4"
+    video_path = video_dir / f"video_{ts}.h264"
 
     encoder = H264Encoder(bitrate=10000000)
-    output = PyavOutput(str(video_path))
+    output = FileOutput(str(video_path))
     seq = {"n": 0}
     def next_seq():
         seq["n"] += 1
