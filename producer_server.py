@@ -80,8 +80,8 @@ def main():
     picam2 = Picamera2()
 
     config = picam2.create_video_configuration(
-        main={"size": (int(args.width), int(args.height)), "format": "RGB888"},
-        lores={"size": (640, 480), "format": "YUV420"},
+        main={"size": (640, 480), "format": "YUV420"},
+        lores={"size": (480, 480), "format": "RGB888"},
         buffer_count=2,
         queue=False
     )
@@ -92,11 +92,11 @@ def main():
 
     try:
         print(f"[RPi] Starting video recording: {output}")
-        picam2.start_recording(encoder, output, name="lores")
+        picam2.start_recording(encoder, output)
         recording_started = True
 
         def take_photo_bytes():
-            return capture_bytes(width=args.width, height=args.height, quality=args.quality, picam2=picam2, stream_name="main")
+            return capture_bytes(width=args.width, height=args.height, quality=args.quality, picam2=picam2, stream_name="lores")
 
         def gather_telemetry() -> dict:
             """
