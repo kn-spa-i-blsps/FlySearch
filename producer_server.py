@@ -52,9 +52,10 @@ def main():
     latest_file  = commands_dir / "latest_command.json"
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output = video_dir / f"video_{ts}.mp4"
+    video_path = video_dir / f"video_{ts}.mp4"
 
     encoder = H264Encoder(bitrate=10000000)
+    output = PyavOutput(str(video_path))
     seq = {"n": 0}
     def next_seq():
         seq["n"] += 1
