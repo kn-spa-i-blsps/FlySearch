@@ -2,7 +2,7 @@ import io
 
 from PIL import Image
 
-import add_guardrails as gd
+from mission_control.utils import add_guardrails as gd
 
 
 def crop_img_square(photo_data):
