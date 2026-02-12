@@ -16,13 +16,13 @@ try:
     from pixhawk_telemetry_utils import get_telemetry_json
 except Exception as e:
     get_telemetry_json = None
-    print(f"[RPi] WARN: pixhawk_telemetry not available: {e} – will send empty telemetry.")
+    print(f"[RPi] WARN: pixhawk_telemetry not available: {e} - will send empty telemetry.")
 
 try:
     from pixhawk_vector_move import send_vector_command
 except Exception as e:
     send_vector_command = None
-    print(f"[RPi] WARN: pixhawk_vector_move not available: {e} – will NOT execute moves.")
+    print(f"[RPi] WARN: pixhawk_vector_move not available: {e} - will NOT execute moves.")
 
 def parse_args():
     p = argparse.ArgumentParser()
@@ -31,7 +31,7 @@ def parse_args():
     p.add_argument("--width",   default=int(os.environ.get("WIDTH", 500)), type=int)
     p.add_argument("--height",  default=int(os.environ.get("HEIGHT", 500)), type=int)
     p.add_argument("--quality", default=int(os.environ.get("QUALITY", 90)), type=int)
-    p.add_argument("--img", default=os.environ.get("IMG_DIR", "/img"))
+    p.add_argument("--video", default=os.environ.get("VIDEO_DIR", "/video"))
     p.add_argument("--commands", default=os.environ.get("COMMANDS_DIR", "/commands"))
     p.add_argument("--mav_device",  default=os.environ.get("MAV_DEVICE", "/dev/ttyAMA0"))
     p.add_argument("--mav_baud",    default=int(os.environ.get("MAV_BAUD", "57600")), type=int)
@@ -43,7 +43,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    img_dir = pathlib.Path(args.img); img_dir.mkdir(parents=True, exist_ok=True)
+    video_dir = pathlib.Path(args.video); video_dir.mkdir(parents=True, exist_ok=True)
     commands_dir = pathlib.Path(args.commands); commands_dir.mkdir(parents=True, exist_ok=True)
 
     shortid = uuid.uuid4().hex[:8]
@@ -51,8 +51,10 @@ def main():
     session_file = commands_dir / f"session_{session_id}.jsonl"
     latest_file  = commands_dir / "latest_command.json"
 
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output = video_dir / f"video_{ts}.mp4"
+
     encoder = H264Encoder(bitrate=10000000)
-    output = "video.mp4"
     seq = {"n": 0}
     def next_seq():
         seq["n"] += 1
