@@ -81,7 +81,7 @@ def main():
 
     config = picam2.create_video_configuration(
         main={"size": (int(args.width), int(args.height)), "format": "YUV420"},
-        lores={"size": (480, 480), "format": "YUV420"},
+        lores={"size": (480, 480), "format": "RGB888"},
         buffer_count=2,
         queue=False
     )
