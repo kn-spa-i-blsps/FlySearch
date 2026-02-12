@@ -1,6 +1,7 @@
 x-producer-env: &producer_env
   SERVER_URL: "${SERVER_URL}"
   COMMANDS_DIR: "${COMMANDS_DIR:-/commands}"
+  VIDEO_DIR: "${VIDEO_DIR:-/video}"
   WIDTH: "${WIDTH:-500}"
   HEIGHT: "${HEIGHT:-500}"
   QUALITY: "${QUALITY:-90}"
@@ -9,6 +10,7 @@ x-producer-env: &producer_env
 x-producer-vols: &producer_vols
   - ../:/app
   - ../commands:/commands
+  - ../video:/video
   - /run/udev:/run/udev:ro
   - /dev:/dev
   - /sys:/sys
@@ -83,4 +85,5 @@ services:
     volumes:
       - ../:/app
       - ../commands:/commands
+      - ../video:/video
       - /run/udev:/run/udev:ro
