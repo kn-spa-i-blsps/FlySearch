@@ -29,23 +29,14 @@ def _encode_pil_jpeg(img: "Image.Image", quality: int) -> bytes:
     img.save(buf, format="JPEG", quality=quality)
     return buf.getvalue()
 
-def _capture_picamera_bytes(width: int, height: int, quality: int, square: bool) -> Optional[bytes]:
-    try:
-        from picamera2 import Picamera2  
-    except Exception as e:
-        print(f"[capture] Picamera2 unavailable: {e}")
-        return None
+def _capture_picamera_bytes(picam2, quality: int, square: bool, stream_name: str = "main") -> Optional[bytes]:
 
     try:
-        cam = Picamera2()
-        cfg = cam.create_still_configuration(main={"size": (width, height)})
-        cam.configure(cfg)
-        cam.start()
-        frame = cam.capture_array("main")
-        cam.stop()
+        img = picam2.capture_image(stream_name)
         if Image is None:
             raise RuntimeError("Pillow required to encode Picamera2 frame to JPEG")
-        img = Image.fromarray(frame)
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
         if square:
             img = _make_square_image(img)
         return _encode_pil_jpeg(img, quality)
@@ -75,18 +66,29 @@ def _capture_fswebcam_bytes(width: int, height: int, quality: int, video_dev: st
             print(f"[capture] square crop skipped (fswebcam): {e}")
     return data
 
-def capture_bytes(width: int, height: int, quality: int = 90, video_dev: str = "/dev/video0", square: bool = True) -> bytes:
+def capture_bytes(
+    width: int,
+    height: int,
+    quality: int = 90,
+    video_dev: str = "/dev/video0",
+    square: bool = True,
+    picam2=None,
+    stream_name: str = "main",
+) -> bytes:
     """
     Capture a JPEG and return it as bytes. Tries Picamera2 first, then fswebcam.
     If Pillow is missing, square crop is skipped.
     """
+    quality = max(1, min(95, int(quality)))
+
     if square and Image is None:
         print("[capture] Pillow not installed; skipping square crop.")
         square = False
 
-    data = _capture_picamera_bytes(width, height, quality, square)
-    if data is not None:
-        return data
+    if picam2 is not None:
+        data = _capture_picamera_bytes(picam2, quality, square, stream_name=stream_name)
+        if data is not None:
+            return data
 
     try:
         return _capture_fswebcam_bytes(width, height, quality, video_dev, square)
@@ -98,9 +100,9 @@ def capture_bytes(width: int, height: int, quality: int = 90, video_dev: str = "
 def main():
     """When called directly, capture.py will save the photo under DIR / FNAME.
     By default, when imported in producer_server.py, photo is sent directly to server
-    and is not saved on RaspberryPi.  
+    and is not saved on RaspberryPi.
     """
-    
+
     # Env variables → can be overridden by Docker/WS client
     DIR = Path(os.environ.get("IMG_DIR", "/img"))
     FNAME = os.environ.get("FNAME") or f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
