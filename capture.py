@@ -32,10 +32,9 @@ def _encode_pil_jpeg(img: "Image.Image", quality: int) -> bytes:
 def _capture_picamera_bytes(picam2, quality: int, square: bool, stream_name: str = "main") -> Optional[bytes]:
 
     try:
-        frame = picam2.capture_array(stream_name)
+        img = picam2.capture_image(stream_name)
         if Image is None:
             raise RuntimeError("Pillow required to encode Picamera2 frame to JPEG")
-        img = Image.fromarray(frame)
         if img.mode not in ("RGB", "L"):
             img = img.convert("RGB")
         if square:
