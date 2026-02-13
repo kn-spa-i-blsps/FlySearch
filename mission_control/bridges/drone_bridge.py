@@ -9,6 +9,8 @@ import websockets
 from websockets.frames import CloseCode
 
 from mission_control.core.config import Config
+from mission_control.core.exceptions import NoDroneConnectedError, DroneCommandFailedError, DroneError, \
+    DroneConnectionLostError, DroneAlreadyConnectedError, DroneInvalidDataError
 from mission_control.core.mission_context import MissionContext
 from mission_control.utils.image_processing import crop_img_square
 
@@ -26,7 +28,8 @@ class DroneBridge:
     async def start(self):
         """ Starts WebSocket server in the background.
 
-            Raises error if occurs.
+            Raises:
+                OSError: If the server cannot be started (e.g., port in use).
         """
 
         print(f"[WS] Starting server on {self.config.host}:{self.config.port}...")
@@ -89,7 +92,7 @@ class DroneBridge:
         if self.client is not None:
             print(f"[WS] REJECTED connection from {peer} (System busy)")
             await ws.send("[SERVER] ERROR: System busy. Another drone is already connected.")
-            return
+            raise DroneAlreadyConnectedError("Another drone is already connected.")
 
         self.client = ws
         print(f"[WS] connected: {peer}")
@@ -130,11 +133,13 @@ class DroneBridge:
                     case _:
                         print(f"[WS] message not matching any case.")
 
-        except websockets.ConnectionClosed:
+        except websockets.ConnectionClosed as e:
             print(f"[WS] disconnected: {peer}.")
+            raise DroneConnectionLostError(f"Connection with drone at {peer} lost.") from e
 
         except Exception as e:
             print(f"[WS] error: {e}.")
+            raise DroneError(f"Error during communication with drone: {e}") from e
 
         finally:
             print("[WS] Client set to None - handler ended.")
@@ -145,38 +150,34 @@ class DroneBridge:
     async def send_message(self, cmd):
         """ Transmits a message to the connected drone via WebSocket.
 
-        :return:
-            True if successful, False otherwise.
+        :raises:
+            NoDroneConnectedError: If no drone is connected.
+            DroneCommandFailedError: If the message could not be sent.
         """
-
-        ws = self.client
-        if ws is None:
-            print("No drone connected!")
-            return False
+        if self.client is None:
+            raise NoDroneConnectedError("No drone is connected.")
 
         try:
-            await ws.send(cmd.upper())
+            await self.client.send(cmd.upper())
             print(f"[WS] {cmd.upper()} sent to the drone.")
-            return True
         except Exception as e:
             print(f"[WS] send failed: {e}")
-            return False
+            raise DroneCommandFailedError(f"Failed to send message '{cmd.upper()}'") from e
 
-    async def send_command(self, *, found: bool = False, move=None) -> bool:
+    async def send_command(self, *, found: bool = False, move=None):
         """ Send command to the drone.
 
           - found=True  ->  {"type":"COMMAND","action":"FOUND", ...}
           - move=(x,y,z)->  {"type":"COMMAND","move":[x,y,z], ...}
-        :return:
-            True if successful, False otherwise.
+        :raises:
+            NoDroneConnectedError: If no drone is connected.
+            DroneCommandFailedError: If the command could not be sent.
+            ValueError: If the move parameters are invalid or no command content is provided.
         """
+        if self.client is None:
+            raise NoDroneConnectedError("No drone is connected.")
 
-        ws = self.client
-        if ws is None:
-            print("[WS] No drone connected - command NOT sent.")
-            return False
-
-        payload : Dict[str, Any] = {
+        payload: Dict[str, Any] = {
             "type": "COMMAND",
             "ts": datetime.now().strftime("%Y%m%d_%H%M%S_%f"),
         }
@@ -185,23 +186,21 @@ class DroneBridge:
             payload["action"] = "FOUND"
         elif move is not None:
             try:
-                x, y, z = float(move[0]), float(move[1]), float(move[2])
-            except Exception as e:
+                x, y, z = map(float, move)
+            except (ValueError, IndexError, TypeError) as e:
                 print(f"[WS] Invalid move triple {move}: {e}")
-                return False
+                raise ValueError(f"Invalid move parameters: {move}") from e
             payload["move"] = [x, y, z]
         else:
-            print("[WS] No command content (neither 'found' nor 'move'). Not sending.")
-            return False
+            raise ValueError("No command content provided (neither 'found' nor 'move').")
 
         # Sending payload as a JSON.
         try:
-            await ws.send(json.dumps(payload))
+            await self.client.send(json.dumps(payload))
             print("[WS] COMMAND sent to the drone.")
-            return True
         except Exception as e:
             print("[WS] COMMAND send failed:", e)
-            return False
+            raise DroneCommandFailedError("Failed to send COMMAND to the drone") from e
 
     # SAVING PHOTOS/JSON IS BLOCKING - WITH MULTIPLE DRONES OR BIG DATA COULD BE BAD
     # may need change into run_in_executor
@@ -243,16 +242,12 @@ class DroneBridge:
 
         # Photo
         if not photo_base64:
-            print("[WS] 'PHOTO_WITH_TELEMETRY' received but 'photo' field is missing.")
-            await ws.send("[SERVER] ERROR: Photo data missing in combined message.")
-            return
+            raise DroneInvalidDataError("Received 'PHOTO_WITH_TELEMETRY' but 'photo' field is missing.")
 
         try:
             photo_data = base64.b64decode(photo_base64)
-        except TypeError as e:
-            print(f"[WS] Failed to decode Base64 photo data: {e}")
-            await ws.send("[SERVER] ERROR: Invalid photo data encoding.")
-            return
+        except (TypeError, ValueError) as e:
+            raise DroneInvalidDataError(f"Failed to decode Base64 photo data: {e}") from e
 
         img_file_base = f"img_{ts}"
         img_file_name = f"{img_file_base}.jpg"

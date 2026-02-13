@@ -1,6 +1,7 @@
 from websockets.frames import CloseCode
 
 from mission_control.core.config import Config
+from mission_control.core.exceptions import VLMConnectionError, VLMParseError, VLMPreconditionsNotMetError
 from mission_control.core.mission_context import MissionContext
 from mission_control.utils.image_processing import add_grid
 from mission_control.utils.parsers import parse_telemetry, parse_xml_response, ParsingError
@@ -21,36 +22,33 @@ class VLMBridge:
         Args:
             is_warning (bool): If True, injects a collision warning prompt to force a corrective decision.
 
-        Returns ActionStatus.
+        Raises:
+            VLMConnectionError: If there is an issue with the VLM connection.
+            VLMParseError: If the VLM response cannot be parsed.
+            VLMPreconditionsNotMetError: If preconditions for sending data to VLM are not met.
+            FileNotFoundError: If the photo or telemetry file is not found.
         """
-        if not self._validate_preconditions():
-            return
+
+        # All exceptions are raised up the stream.
+        self._validate_preconditions()
 
         input_data = self._prepare_input()
-        if input_data is None:
-            return
 
         img, telemetry_text = input_data
 
         raw_response = self._execute_transaction(img, telemetry_text, is_warning)
-        if raw_response is None:
-            return
 
         self._parse_and_store_result(raw_response)
 
     def _validate_preconditions(self):
         # --- Chat Initialization Checks ---
         if self.mission_context.conversation is None:
-            print("Chat with vlm is not initialized. Use CHAT_INIT first.")
-            return False
+            raise VLMPreconditionsNotMetError("Chat with VLM is not initialized. Use CHAT_INIT first.")
 
         # --- Data Availability Checks ---
         if (self.mission_context.last_photo_path_cache is None
                 or self.mission_context.last_telemetry_path_cache is None):
-            print("No photo or telemetry cached - it may be because no photo/telemetry was requested yet.")
-            return False
-
-        return True
+            raise VLMPreconditionsNotMetError("No photo or telemetry cached. Cannot send data to VLM.")
 
     def _prepare_input(self):
         # --- Telemetry Processing ---
@@ -58,22 +56,22 @@ class VLMBridge:
             telemetry_data = parse_telemetry(self.mission_context.last_telemetry_path_cache)
             telemetry_prompt_text = telemetry_data[0]
             drone_height = telemetry_data[1]
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             print(f"Error: No telemetry found '{self.mission_context.last_telemetry_path_cache}'. Data may be deleted.")
-            return None
+            raise e
         except Exception as e:
             print(f"Error during telemetry opening: {e}")
-            return None
+            raise
 
         # --- Image Processing ---
         try:
             img_new = add_grid(self.mission_context.last_photo_path_cache, drone_height)
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             print(f"Error: No photo found '{self.mission_context.last_photo_path_cache}'. Photo may be deleted.")
-            return None
+            raise e
         except Exception as e:
             print(f"Error during photo opening/processing: {e}")
-            return None
+            raise
 
         return img_new, telemetry_prompt_text
 
@@ -94,8 +92,7 @@ class VLMBridge:
             # Is it blocking operation??
             response = self.mission_context.conversation.get_latest_message()
         except Exception as e:
-            print(f"Message sending to VLM failed: {e}")
-            return None
+            raise VLMConnectionError(f"Message sending to VLM failed: {e}") from e
 
         return response.text
 
@@ -104,8 +101,6 @@ class VLMBridge:
         try:
             parsed = parse_xml_response(raw)
         except ParsingError as e:
-            print("[VLM] parse error:", e)
-            print("Command NOT sent")
-            return
+            raise VLMParseError(f"VLM response parsing error: {e}") from e
 
         self.mission_context.parsed_response = parsed

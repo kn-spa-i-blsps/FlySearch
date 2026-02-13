@@ -28,6 +28,18 @@ class TestParsers(unittest.TestCase):
         self.assertEqual(height, 10) # Default value
         self.assertEqual(message, "Your current altitude is 10 meters above ground level.")
 
+    @patch("builtins.open", side_effect=FileNotFoundError)
+    def test_parse_telemetry_file_not_found(self, mock_file):
+        """Test that FileNotFoundError is raised if the telemetry file does not exist."""
+        with self.assertRaises(FileNotFoundError):
+            parse_telemetry('non_existent_path.json')
+
+    @patch("builtins.open", new_callable=mock_open, read_data='{invalid json')
+    def test_parse_telemetry_invalid_json(self, mock_file):
+        """Test that json.JSONDecodeError is raised for invalid JSON."""
+        with self.assertRaises(json.JSONDecodeError):
+            parse_telemetry('invalid_json.json')
+
     def test_parse_prompt_arguments_success(self):
         """Test successful parsing of prompt arguments."""
         kind, kv = parse_prompt_arguments("FS-1 object=helipad area=100")
@@ -73,6 +85,20 @@ class TestParsers(unittest.TestCase):
         response = parse_xml_response("<action>(1.2, -3.4, 5.6)</action>")
         self.assertFalse(response.found)
         self.assertEqual(response.move, (1.2, -3.4, 5.6))
+
+    def test_parse_xml_response_flexible_formatting(self):
+        """Test that XML parsing is flexible with whitespace, case, and other tags."""
+        # Case-insensitivity
+        response_case = parse_xml_response("<ACTION>FOUND</ACTION>")
+        self.assertTrue(response_case.found)
+
+        # Whitespace
+        response_space = parse_xml_response("  <action>  (1, 2, 3)   </action>  ")
+        self.assertEqual(response_space.move, (1.0, 2.0, 3.0))
+
+        # Other XML tags
+        response_other_tags = parse_xml_response("<response><thought>I should move.</thought><action>(-1, 0, 0)</action></response>")
+        self.assertEqual(response_other_tags.move, (-1.0, 0.0, 0.0))
 
     def test_parse_xml_response_no_xml_but_found(self):
         """Test parsing a non-XML response that contains 'found'."""

@@ -9,6 +9,7 @@ from mission_control.bridges.drone_bridge import DroneBridge
 from mission_control.bridges.vlm_bridge import VLMBridge
 from mission_control.core.action_status import ActionStatus
 from mission_control.core.config import Config
+from mission_control.core.exceptions import DroneError, VLMError, ChatError
 from mission_control.core.mission_context import MissionContext
 from mission_control.managers.chat_manager import ChatSessionManager
 from mission_control.managers.prompt_manager import PromptManager
@@ -155,10 +156,12 @@ class MissionControl:
                 if handler:
                     try:
                         await handler(command, args)
+                    except (DroneError, VLMError, ChatError) as e:
+                        print(f"[ERROR] {e}")
                     except ValueError:                  # Incorrect arguments.
                         print_help()
                     except Exception as e:
-                        print(f"[ERROR] Command failed: {e}")
+                        print(f"[ERROR] An unexpected command failure occurred: {e}")
                 else:
                     print_help()
 
@@ -175,40 +178,48 @@ class MissionControl:
         (accept, report collision, or stop).
         """
         print("\n--- SEARCHING... ---")
-        # Initial prompt.
-        self.prompt_manager.generate_and_save(kind, kv)
+        try:
+            # Initial prompt.
+            self.prompt_manager.generate_and_save(kind, kv)
 
-        # Init vlm chat.
-        await self.chat_manager.create_new_session()
-        await self.chat_manager.save_session(name)
-
-        ret = ActionStatus.CONFIRMED
-        moves_performed = 0
-        move_limit = kv["glimpses"]
-
-        while (ret in [ActionStatus.CONFIRMED, ActionStatus.WARNING]
-               and moves_performed < move_limit):
-            # Request photo and telemetry.
-            await self.drone.send_message("photo_with_telemetry")
-
-            # Send it to vlm.
-            await self.vlm.send_to_vlm(is_warning=(ret == ActionStatus.WARNING))
-
-            # Autosave the chat.
+            # Init vlm chat.
+            await self.chat_manager.create_new_session()
             await self.chat_manager.save_session(name)
 
-            # Take parsed response and ask for confirmation.
-            parsed = self.mission_context.parsed_response
+            ret = ActionStatus.CONFIRMED
+            moves_performed = 0
+            move_limit = kv["glimpses"]
 
-            ret = await self._confirm_send(found=parsed.found, move=parsed.move)
+            while (ret in [ActionStatus.CONFIRMED, ActionStatus.WARNING]
+                   and moves_performed < move_limit):
+                # Request photo and telemetry.
+                await self.drone.send_message("photo_with_telemetry")
 
-            if ret == ActionStatus.CONFIRMED:
-                # If confirmed, send the move to the drone.
-                await self.drone.send_command(found=parsed.found, move=parsed.move)
-                moves_performed += 1
-            elif ret == ActionStatus.FOUND:
-                # If found, print the message and end the loop.
-                print("FOUND")
+                # Send it to vlm.
+                await self.vlm.send_to_vlm(is_warning=(ret == ActionStatus.WARNING))
+
+                # Autosave the chat.
+                await self.chat_manager.save_session(name)
+
+                # Take parsed response and ask for confirmation.
+                parsed = self.mission_context.parsed_response
+
+                ret = await self._confirm_send(found=parsed.found, move=parsed.move)
+
+                if ret == ActionStatus.CONFIRMED:
+                    # If confirmed, send the move to the drone.
+                    await self.drone.send_command(found=parsed.found, move=parsed.move)
+                    moves_performed += 1
+                elif ret == ActionStatus.FOUND:
+                    # If found, print the message and end the loop.
+                    print("FOUND")
+        except (DroneError, VLMError, ChatError) as e:
+            print(f"\n[SEARCH FAILED] An error occurred: {e}")
+            print("Aborting search.")
+        except Exception as e:
+            print(f"\n[SEARCH FAILED] An unexpected error occurred: {e}")
+            print("Aborting search.")
+
 
     ''' -------------- HELPER METHODS --------------'''
     async def _confirm_send(self, move=None, found=False):

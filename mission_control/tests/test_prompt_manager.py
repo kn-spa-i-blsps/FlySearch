@@ -42,6 +42,11 @@ class TestPromptManager(unittest.TestCase):
         self.assertEqual(prompt_meta['glimpses'], 6)
         self.assertEqual(prompt_meta['area'], 80)
 
+    def test_generate_prompt_invalid_kind_raises_error(self):
+        """Test that generating a prompt with an invalid kind raises an error."""
+        with self.assertRaises(ValueError):
+            self.prompt_manager._generate_prompt('invalid_kind', {})
+
     @patch('os.path.join', return_value='/fake/prompts/dir/fs-1_20230101_120000.txt')
     @patch('builtins.open', new_callable=mock_open)
     @patch('json.dump')
@@ -85,6 +90,20 @@ class TestPromptManager(unittest.TestCase):
         # Check the mission context cache
         self.assertEqual(self.mock_mission_context.last_prompt_text_cache, 'This is a test prompt.')
 
+    @patch('mission_control.managers.prompt_manager.datetime')
+    @patch('builtins.open', new_callable=mock_open)
+    def test_save_prompt_io_error_raises_error(self, mock_file_open, mock_datetime):
+        """Test that _save_prompt raises an IOError on file write error."""
+        mock_now = MagicMock()
+        mock_now.strftime.return_value = "20230101_120000"
+        mock_datetime.now.return_value = mock_now
+        
+        mock_file_open.side_effect = IOError("Disk full")
+        
+        prompt_meta = {'kind': 'FS-1', 'text': '...'}
+        with self.assertRaises(IOError):
+            self.prompt_manager._save_prompt(prompt_meta)
+
     @patch.object(PromptManager, '_generate_prompt')
     @patch.object(PromptManager, '_save_prompt')
     def test_generate_and_save(self, mock_save, mock_generate):
@@ -96,6 +115,17 @@ class TestPromptManager(unittest.TestCase):
         
         mock_generate.assert_called_once_with('FS-1', {})
         mock_save.assert_called_once_with({'kind': 'FS-1', 'text': '...'})
+
+    @patch('builtins.print')
+    @patch.object(PromptManager, '_generate_prompt', side_effect=Exception("Generation failed"))
+    @patch.object(PromptManager, '_save_prompt')
+    def test_generate_and_save_exception_handling(self, mock_save, mock_generate, mock_print):
+        """Test that generate_and_save handles exceptions gracefully."""
+        self.prompt_manager.generate_and_save('FS-1', {})
+        
+        mock_generate.assert_called_once_with('FS-1', {})
+        mock_print.assert_called_once_with("Error in _generate_prompt or _save_prompt: Generation failed")
+        mock_save.assert_not_called()
 
 if __name__ == '__main__':
     unittest.main()

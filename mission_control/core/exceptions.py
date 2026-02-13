@@ -13,6 +13,15 @@ class NoDroneConnectedError(DroneError):
 class DroneCommandFailedError(DroneError):
     pass
 
+class DroneConnectionLostError(DroneError):
+    pass
+
+class DroneAlreadyConnectedError(DroneError):
+    pass
+
+class DroneInvalidDataError(DroneError):
+    pass
+
 # --- VLM's Exceptions ---
 class VLMError(MissionControlError):
     """ Base for VLM's exceptions. """
@@ -22,6 +31,24 @@ class VLMConnectionError(VLMError):
     pass
 
 class VLMParseError(VLMError):
+    pass
+
+class VLMPreconditionsNotMetError(VLMError):
+    """ Raised when preconditions for sending data to VLM are not met. """
+    pass
+
+# --- Chat's Exceptions ---
+class ChatError(MissionControlError):
+    """ Base for chat manager's exceptions. """
+    pass
+
+class ChatSessionError(ChatError):
+    pass
+
+class ChatSaveError(ChatError):
+    pass
+
+class ChatRestoreError(ChatError):
     pass
 
 # --- Additional Exceptions ---
