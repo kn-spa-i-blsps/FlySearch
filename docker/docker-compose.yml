@@ -82,7 +82,6 @@ services:
       - /dev/v4l-subdev0:/dev/v4l-subdev0
       - /dev/v4l-subdev1:/dev/v4l-subdev1
       - /dev/v4l-subdev2:/dev/v4l-subdev2
-      - /dev/v4l-subdev3:/dev/v4l-subdev3
 
     
   # no-drone / laptop-friendly for tests without drone
