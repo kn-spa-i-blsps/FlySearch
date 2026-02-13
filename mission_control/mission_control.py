@@ -18,12 +18,6 @@ from mission_control.utils.parsers import parse_prompt_arguments, parse_search_a
 
 # FUTURE:
 #  - simple html showing photo, reasoning, and proposed move with few options to choose for the user.
-#  - move chat management to the other class?
-
-# TODO:
-#  - our own exceptions. Api methods should raise exceptions. Mission control should catch them and handle them.
-#     example: NoDroneConnected("Can't perform search - no drone is connected")
-
 
 class MissionControl:
     def __init__(self):
