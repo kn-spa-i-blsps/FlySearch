@@ -71,9 +71,9 @@ class MissionControl:
                 is_warning=True
             ),
 
-            "q":    lambda c, a: self._signal_handler(),
-            "quit": lambda c, a: self._signal_handler(),
-            "exit": lambda c, a: self._signal_handler()
+            "q":    lambda c, a: self._signal_handler_wrapper(),
+            "quit": lambda c, a: self._signal_handler_wrapper(),
+            "exit": lambda c, a: self._signal_handler_wrapper()
         }
 
     ''' -------------- ASYNC LOOP METHOD -------------- '''
@@ -208,10 +208,10 @@ class MissionControl:
                     # If found, print the message and end the loop.
                     print("FOUND")
         except (DroneError, VLMError, ChatError) as e:
-            print(f"\n[SEARCH FAILED] An error occurred: {e}")
+            print(f"[SEARCH FAILED] An error occurred: {e}")
             print("Aborting search.")
         except Exception as e:
-            print(f"\n[SEARCH FAILED] An unexpected error occurred: {e}")
+            print(f"[SEARCH FAILED] An unexpected error occurred: {e}")
             print("Aborting search.")
 
 
@@ -267,10 +267,13 @@ class MissionControl:
         else:
             print("Chat not deleted.")
 
-    async def _signal_handler(self):
+    async def _signal_handler_wrapper(self):
+        self._signal_handler()
+
+    def _signal_handler(self):
         """ Function for soft handling of SIGINT """
         if not self.stop.is_set():
-            print("\n[WS] shutdown requested (signal). Closing clients…")
+            print("[WS] shutdown requested (signal). Closing clients…")
             self.stop.set()
 
 
