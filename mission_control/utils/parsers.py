@@ -48,7 +48,7 @@ def parse_search_arguments(cmd):
     """
 
     parts = cmd.split()
-    if len(parts) < 1:
+    if len(parts) not in [4, 5]:
         print("Usage: SEARCH <NAME> <FS-1|FS-2> [object=.. glimpses=.. area=..]")
         raise ValueError
     name = parts[0].upper()
@@ -68,7 +68,7 @@ def parse_search_arguments(cmd):
 @dataclass
 class ModelResponse:
     found: bool = False
-    move: Tuple[float, float, float] = (0, 0, 0)
+    move: Tuple[float, float, float] = None
 
 def parse_xml_response(model_response: str) -> ModelResponse:
     xml_response_pattern = re.compile(r"^.*?<action>(.*?)</action>.*$", flags=re.DOTALL)

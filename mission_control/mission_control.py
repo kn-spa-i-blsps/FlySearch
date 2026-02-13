@@ -22,7 +22,6 @@ from mission_control.utils.parsers import parse_prompt_arguments, parse_search_a
 # TODO:
 #  - our own exceptions. Api methods should raise exceptions. Mission control should catch them and handle them.
 #     example: NoDroneConnected("Can't perform search - no drone is connected")
-#  - check default values in parsed.move i parsed.found
 
 
 class MissionControl:

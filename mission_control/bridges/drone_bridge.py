@@ -137,6 +137,7 @@ class DroneBridge:
             print(f"[WS] error: {e}.")
 
         finally:
+            print("[WS] Client set to None - handler ended.")
             # Always reset the client.
             self.client = None
 

@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+from PIL import Image
 
 from conversation.abstract_conversation import Role
 from conversation.conversations import LLM_BACKEND_FACTORIES
@@ -110,8 +112,37 @@ class ChatSessionManager:
         Reads 'history.json', loads referenced images from the disk,
         and initializes the VLM chat with the restored history.
         """
+        chat_dir = self.config.chats_dir / chat_id
+        json_path = chat_dir / "history.json"
 
-        raise NotImplementedError
+        if not json_path.exists():
+            print(f"Error: Chat history not found at {json_path}")
+            return
+
+        with open(json_path, 'r', encoding='utf-8') as f:
+            history = json.load(f)
+
+        factory = LLM_BACKEND_FACTORIES[self.config.model_backend](self.config.model_name)
+        conversation = factory.get_conversation()
+
+        for message in history:
+            role = Role(message['role'])
+            conversation.begin_transaction(role)
+            for part in message['parts']:
+                if part['type'] == 'text':
+                    conversation.add_text_message(part['data'])
+                elif part['type'] == 'image':
+                    image_path = chat_dir / part['path']
+                    if image_path.exists():
+                        img = Image.open(image_path)
+                        conversation.add_image_message(img)
+                    else:
+                        print(f"Warning: Image not found at {image_path}")
+            conversation.end_transaction()
+        
+        self.mission_context.conversation = conversation
+        print(f"Chat session '{chat_id}' restored successfully.")
+
 
     async def reset_session(self):
         """ Resets the active chat session (clears memory).
