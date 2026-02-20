@@ -109,7 +109,7 @@ class ChatSessionManager:
                             conversation.add_image_message(img)
                         else:
                             print(f"Warning: Image not found at {image_path}, skipping.")
-                conversation.end_transaction()
+                conversation.commit_transaction(send_to_vlm=False)
         except (KeyError, ValueError) as e:
             raise ChatRestoreError(f"Corrupted data in chat history file: {e}") from e
         except IOError as e:

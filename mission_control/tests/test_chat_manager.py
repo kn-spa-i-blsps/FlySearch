@@ -175,10 +175,10 @@ class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
         calls = [
             call.begin_transaction(Role.USER),
             call.add_text_message("Restored prompt"),
-            call.end_transaction(),
+            call.commit_transaction(send_to_vlm=False),
             call.begin_transaction(Role.ASSISTANT),
             call.add_image_message(mock_image),
-            call.end_transaction()
+            call.commit_transaction(send_to_vlm=False)
         ]
         mock_conversation.assert_has_calls(calls, any_order=False)
         mock_image_open.assert_called_once_with(image_path)
