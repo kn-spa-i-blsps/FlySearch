@@ -2,10 +2,14 @@ x-producer-env: &producer_env
   SERVER_URL: "${SERVER_URL}"
   COMMANDS_DIR: "${COMMANDS_DIR:-/commands}"
   VIDEO_DIR: "${VIDEO_DIR:-/video}"
-  WIDTH: "${WIDTH:-500}"
-  HEIGHT: "${HEIGHT:-500}"
+  VIDEO_DEVICE: "${VIDEO_DEVICE:-/dev/video0}"
+  WIDTH: "${WIDTH:-480}"
+  HEIGHT: "${HEIGHT:-480}"
   QUALITY: "${QUALITY:-90}"
-  MAV_BAUD: "57600"
+  MAV_BAUD: "${MAV_BAUD:-57600}"
+  TELEM_TIMEOUT: "${TELEM_TIMEOUT:-2.0}"
+  MOVE_METHOD: "${MOVE_METHOD:-0}"
+  EXECUTE_MOVES: "${EXECUTE_MOVES:-1}"
 
 x-producer-vols: &producer_vols
   - ../:/app
@@ -44,13 +48,16 @@ services:
         PYTHONUNBUFFERED: "1"
         WS_HOST: "${WS_HOST:-0.0.0.0}"
         WS_PORT: "${WS_PORT:-8080}"
-        UPLOAD_DIR: "/app/uploads"
+        UPLOAD_DIR: "${UPLOAD_DIR:-/app/uploads}"
         MAX_WS_MB: "${MAX_WS_MB:-25}"
         FOV_ANGLE: "${FOV_ANGLE:-90}"
         OPEN_AI_KEY: "${OPEN_AI_KEY}"
         GEMINI_AI_KEY: "${GEMINI_AI_KEY}"
         MODEL_BACKEND: "${MODEL_BACKEND}"
         MODEL_NAME: "${MODEL_NAME}"
+        CHATS_DIR: "${CHATS_DIR:-/app/saved-chats}"
+        PROMPTS_DIR: "${PROMPTS_DIR:-/app/prompts}"
+        TELEMETRY_DIR: "${TELEMETRY_DIR:-/app/telemetry}"
     tty: true
     stdin_open: true
     ports: ["8080:8080"]
@@ -62,7 +69,7 @@ services:
     profiles: ["producer"]
     environment:
       <<: *producer_env
-      MAV_DEVICE: "/dev/ttyAMA0"
+      MAV_DEVICE: "${MAV_DEVICE:-/dev/ttyAMA0}"
 
     # allow opening camera/media devices without privileged
     device_cgroup_rules:
