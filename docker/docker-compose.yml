@@ -47,7 +47,10 @@ services:
         UPLOAD_DIR: "/app/uploads"
         MAX_WS_MB: "${MAX_WS_MB:-25}"
         FOV_ANGLE: "${FOV_ANGLE:-90}"
-        API_KEY: "${API_KEY}"
+        OPEN_AI_KEY: "${OPEN_AI_KEY}"
+        GEMINI_AI_KEY: "${GEMINI_AI_KEY}"
+        MODEL_BACKEND: "${MODEL_BACKEND}"
+        MODEL_NAME: "${MODEL_NAME}"
     tty: true
     stdin_open: true
     ports: ["8080:8080"]
