@@ -10,7 +10,7 @@ Procedure to run `mission_control` (laptop/server) and `drone_control` (RPi/prod
 4. On laptop, start server (`mission_control`):
 ```bash
 cd docker
-docker compose --profile server up --build
+docker compose --profile server run --rm --service-ports server
 ```
 5. Optional remote access: in a new laptop terminal, run:
 ```bash
