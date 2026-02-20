@@ -55,7 +55,7 @@ services:
         GEMINI_AI_KEY: "${GEMINI_AI_KEY}"
         MODEL_BACKEND: "${MODEL_BACKEND}"
         MODEL_NAME: "${MODEL_NAME}"
-        CHATS_DIR: "${CHATS_DIR:-/app/saved-chats}"
+        CHATS_DIR: "${CHATS_DIR:-/app/saved_chats}"
         PROMPTS_DIR: "${PROMPTS_DIR:-/app/prompts}"
         TELEMETRY_DIR: "${TELEMETRY_DIR:-/app/telemetry}"
     tty: true
