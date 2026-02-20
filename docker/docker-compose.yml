@@ -21,7 +21,7 @@ x-producer-common: &producer_common
     context: ..
     dockerfile: Dockerfile
   command: >
-    python3 /app/producer_server.py
+    python3 /app/drone_control/main.py
     --server ${SERVER_URL}
   working_dir: /app
   volumes: *producer_vols
@@ -35,7 +35,7 @@ services:
       context: ..
       dockerfile: Dockerfile
     image: flysearch:latest
-    command: python3 -u /app/client_server.py
+    command: python3 -u /app/mission_control/main.py
     working_dir: /app
     volumes:
       - ../:/app

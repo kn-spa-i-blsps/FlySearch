@@ -41,7 +41,7 @@ class MessageRouter:
         if parsed.kind == IN_SEND_PHOTO:
             photo_data = self.acquisition.capture_photo_bytes()
             ws.send(photo_data, opcode=websocket.ABNF.OPCODE_BINARY)
-            print(f"Sent photo: {self.acquisition.photo_sensor.photo_path}")
+            print("Sent photo bytes")
             return
 
         if parsed.kind == IN_TELEMETRY:

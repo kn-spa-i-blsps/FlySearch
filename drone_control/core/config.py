@@ -8,12 +8,11 @@ from typing import Optional
 @dataclass
 class Config:
     server: str
-    img_dir: Path
-    fname: str
     width: int
     height: int
     quality: int
     video_device: str
+    video_dir: str
     commands_dir: Path
     telemetry_template: Path
     mav_device: str
@@ -28,12 +27,15 @@ class Config:
         parser.add_argument("--server", default=os.environ.get("SERVER_URL", "ws://127.0.0.1:8080"))
         # Backward-compatible no-op argument kept so legacy launch commands still parse.
         parser.add_argument("--capture", default=os.environ.get("CAPTURE_PY", ""), help=argparse.SUPPRESS)
-        parser.add_argument("--img", default=os.environ.get("IMG_DIR", "/img"))
-        parser.add_argument("--fname", default=os.environ.get("FNAME", "photo.jpg"))
+        # Backward-compatible no-op argument kept so legacy launch commands still parse.
+        parser.add_argument("--img", default=os.environ.get("IMG_DIR", ""), help=argparse.SUPPRESS)
+        # Backward-compatible no-op argument kept so legacy launch commands still parse.
+        parser.add_argument("--fname", default=os.environ.get("FNAME", ""), help=argparse.SUPPRESS)
         parser.add_argument("--width", default=int(os.environ.get("WIDTH", "500")), type=int)
         parser.add_argument("--height", default=int(os.environ.get("HEIGHT", "500")), type=int)
         parser.add_argument("--quality", default=int(os.environ.get("QUALITY", "90")), type=int)
         parser.add_argument("--video_device", default=os.environ.get("VIDEO_DEVICE", "/dev/video0"))
+        parser.add_argument("--video_dir", default=os.environ.get("VIDEO_DIR", "/video"))
         parser.add_argument("--commands", default=os.environ.get("COMMANDS_DIR", "/commands"))
         parser.add_argument("--mav_device", default=os.environ.get("MAV_DEVICE", "/dev/ttyAMA0"))
         parser.add_argument("--mav_baud", default=int(os.environ.get("MAV_BAUD", "57600")), type=int)
@@ -46,12 +48,11 @@ class Config:
 
         cfg = cls(
             server=args.server,
-            img_dir=Path(args.img),
-            fname=args.fname,
             width=args.width,
             height=args.height,
             quality=args.quality,
             video_device=args.video_device,
+            video_dir=args.video_dir,
             commands_dir=Path(args.commands),
             telemetry_template=Path(args.telemetry_template),
             mav_device=args.mav_device,
@@ -64,5 +65,4 @@ class Config:
         return cfg
 
     def ensure_directories(self) -> None:
-        self.img_dir.mkdir(parents=True, exist_ok=True)
         self.commands_dir.mkdir(parents=True, exist_ok=True)

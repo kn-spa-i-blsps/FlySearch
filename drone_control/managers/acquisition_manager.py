@@ -14,8 +14,7 @@ class AcquisitionManager:
         self.telemetry_sensor = telemetry_sensor
 
     def capture_photo_bytes(self) -> bytes:
-        self.photo_sensor.capture()
-        return self.photo_sensor.read_bytes()
+        return self.photo_sensor.capture_bytes()
 
     def load_telemetry_template(self, path: Path) -> dict[str, Any]:
         try:
@@ -28,8 +27,7 @@ class AcquisitionManager:
     def build_photo_with_telemetry(self) -> dict[str, Any]:
         photo_base64 = None
         try:
-            self.photo_sensor.capture()
-            photo_data = self.photo_sensor.read_bytes()
+            photo_data = self.photo_sensor.capture_bytes()
             photo_base64 = base64.b64encode(photo_data).decode("utf-8")
         except Exception as exc:
             print(f"[RPi] PHOTO_WITH_TELEMETRY: photo error: {exc}")

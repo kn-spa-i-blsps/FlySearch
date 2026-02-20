@@ -19,8 +19,6 @@ def build_server(argv: list[str] | None = None) -> ServerBridge:
     session_logger = SessionLogManager(runtime_context)
 
     photo_sensor = PhotoSensor(
-        img_dir=config.img_dir,
-        file_name=config.fname,
         width=config.width,
         height=config.height,
         quality=config.quality,
