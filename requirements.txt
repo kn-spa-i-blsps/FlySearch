@@ -1,0 +1,12 @@
+websockets
+websocket-client
+google-generativeai
+google-api-core
+google-genai
+Pillow
+numpy
+pymavlink
+pyserial
+openai
+prompt_toolkit
+pytest
