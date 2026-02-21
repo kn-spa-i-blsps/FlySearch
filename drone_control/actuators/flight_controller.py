@@ -4,6 +4,9 @@ from drone_control.utils.coords import grid_xyz_to_ned
 
 
 class FlightController(Actuator):
+    """Actuator-facing adapter between MOVE commands and Pixhawk MAVLink execution.
+        Receives move vectors from CommandManager and decides whether to execute or log them.
+        Written for the specific flight stack (Pixhawk/MAVLink)."""
     name = "flight_controller"
 
     def __init__(self, *, exec_moves: bool, move_method: int, mav_device: str, mav_baud: int):
@@ -22,6 +25,7 @@ class FlightController(Actuator):
         }
 
     def maybe_execute_move(self, move: tuple[float, float, float]) -> bool:
+        """Main execution entrypoint for a move vector from upstream command handling"""
         if not self.exec_moves:
             print("[RPi] EXECUTE_MOVES=0 -> command logged only, no FC execute.")
             return False

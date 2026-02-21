@@ -2,6 +2,9 @@ import math
 import time
 from typing import Any
 
+"""Low-level movement backend implementation.
+    It connects via MAVLink and send vector-based motion commands (dx, dy, dx)
+    using one of several control strategies."""
 try:
     from pymavlink import mavutil  # type: ignore
 except Exception as exc:  # pragma: no cover - depends on runtime image
@@ -15,16 +18,16 @@ DEFAULT_VEL_SEND_RATE_HZ = 5.0
 DEFAULT_ACCEL_MAG = 0.5
 DEFAULT_ACCEL_SEND_RATE_HZ = 5.0
 
-
 def _connect(device: str, baud: int, heartbeat_timeout: float = 5.0) -> Any:
+    """Open connection to MAVLink device."""
     if mavutil is None:
         raise RuntimeError(f"pymavlink unavailable: {_MAV_IMPORT_ERROR}")
     master = mavutil.mavlink_connection(device, baud=baud)
     master.wait_heartbeat(timeout=heartbeat_timeout)
     return master
 
-
 def _get_mode(master: Any) -> str:
+    """Get current mode from MAVLink device."""
     hb = master.recv_match(type="HEARTBEAT", blocking=True, timeout=1.0)
     if hb is None:
         hb = master.messages.get("HEARTBEAT")
@@ -36,14 +39,14 @@ def _get_mode(master: Any) -> str:
     except Exception:
         return "UNKNOWN"
 
-
 def _is_guided(master: Any) -> bool:
+    """Check if guided mode is enabled."""
     mode = _get_mode(master)
     print(f"[vector_move] Current mode: {mode}")
     return mode == "GUIDED"
 
-
 def _method_position_offset(master: Any, dx: float, dy: float, dz: float) -> bool:
+    """Method 0: Send single-position offset target: "move by (dx, dy, dx)"."""
     type_mask = 0b0000111111111000
     try:
         master.mav.set_position_target_local_ned_send(
@@ -70,8 +73,8 @@ def _method_position_offset(master: Any, dx: float, dy: float, dz: float) -> boo
         print("[M0] Error:", exc)
         return False
 
-
 def _method_velocity_ned(master: Any, dx: float, dy: float, dz: float) -> bool:
+    """Method 1: convert (dx, dy, dz) to a constant velocity in LOCAL_NED (in world frame) and send it repeatedly for the required duration."""
     dist = math.sqrt(dx * dx + dy * dy + dz * dz)
     if dist < 1e-3:
         print("[M1] Vector ~0, nothing to do.")
@@ -119,8 +122,8 @@ def _method_velocity_ned(master: Any, dx: float, dy: float, dz: float) -> bool:
 
     return True
 
-
 def _method_velocity_body(master: Any, dx: float, dy: float, dz: float) -> bool:
+    """Method 2: Similar idea as Method 1, but velocity is in BODY_NED (drone frame)."""
     dist = math.sqrt(dx * dx + dy * dy + dz * dz)
     if dist < 1e-3:
         print("[M2] Vector ~0, nothing to do.")
@@ -173,8 +176,8 @@ def _method_velocity_body(master: Any, dx: float, dy: float, dz: float) -> bool:
 
     return True
 
-
 def _method_accel_ned(master: Any, dx: float, dy: float, dz: float) -> bool:
+    """Method 3: Convert (dx, dy, dz) into a constant acceleration vector."""
     if not _is_guided(master):
         return False
 
@@ -232,7 +235,6 @@ def _method_accel_ned(master: Any, dx: float, dy: float, dz: float) -> bool:
 
     return True
 
-
 def send_vector_command(
     *,
     vector: tuple[float, float, float],
@@ -240,6 +242,7 @@ def send_vector_command(
     baud: int = 57600,
     method_id: int = 0,
 ) -> bool:
+    """Connects to Pixhawk and dispatches to one of methods 0..3 based on method_id."""
     dx, dy, dz = vector
 
     try:
