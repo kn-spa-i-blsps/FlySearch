@@ -10,6 +10,7 @@ IN_COMMAND = "COMMAND"
 
 @dataclass
 class InboundMessage:
+    """Normalized incoming WS message."""
     kind: str
     raw: Any
     json_obj: dict[str, Any] | None = None
