@@ -7,6 +7,7 @@ from drone_control.sensors.base import Sensor
 
 
 class PhotoSensor(Sensor):
+    """Capture one camera frame and return it as raw JPEG bytes."""
     name = "photo"
 
     def __init__(

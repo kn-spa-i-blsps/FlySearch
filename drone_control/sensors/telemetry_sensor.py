@@ -8,6 +8,7 @@ from drone_control.sensors.base import Sensor
 
 
 class TelemetrySensor(Sensor):
+    """Fetch live MAVLink telemetry data."""
     name = "telemetry"
 
     def __init__(
