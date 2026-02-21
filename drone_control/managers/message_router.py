@@ -19,6 +19,7 @@ from drone_control.protocols.outbound import (
 
 
 class MessageRouter:
+    """Dispatcher for incoming WS messages"""
     def __init__(
         self,
         *,
@@ -45,8 +46,8 @@ class MessageRouter:
             return
 
         if parsed.kind == IN_TELEMETRY:
-            tmpl = self.acquisition.load_telemetry_template(self.telemetry_template_path)
-            ws.send(json.dumps(build_telemetry_payload(tmpl)))
+            telemetry = self.acquisition.capture_telemetry()
+            ws.send(json.dumps(build_telemetry_payload(telemetry)))
             print("[RPi] Sent TELEMETRY json")
             return
 
