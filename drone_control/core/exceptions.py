@@ -4,7 +4,3 @@ class DroneControlError(Exception):
 
 class SensorError(DroneControlError):
     """Raised when sensor acquisition fails."""
-
-
-class CommandHandlingError(DroneControlError):
-    """Raised when command handling fails."""

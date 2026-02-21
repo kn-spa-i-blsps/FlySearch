@@ -7,6 +7,7 @@ from typing import Optional
 
 @dataclass
 class Config:
+    """Builds runtime configuration from CLI args + env vars"""
     server: str
     width: int
     height: int
@@ -25,14 +26,8 @@ class Config:
     def from_cli(cls, argv: Optional[list[str]] = None) -> "Config":
         parser = argparse.ArgumentParser()
         parser.add_argument("--server", default=os.environ.get("SERVER_URL", "ws://127.0.0.1:8080"))
-        # Backward-compatible no-op argument kept so legacy launch commands still parse.
-        parser.add_argument("--capture", default=os.environ.get("CAPTURE_PY", ""), help=argparse.SUPPRESS)
-        # Backward-compatible no-op argument kept so legacy launch commands still parse.
-        parser.add_argument("--img", default=os.environ.get("IMG_DIR", ""), help=argparse.SUPPRESS)
-        # Backward-compatible no-op argument kept so legacy launch commands still parse.
-        parser.add_argument("--fname", default=os.environ.get("FNAME", ""), help=argparse.SUPPRESS)
-        parser.add_argument("--width", default=int(os.environ.get("WIDTH", "500")), type=int)
-        parser.add_argument("--height", default=int(os.environ.get("HEIGHT", "500")), type=int)
+        parser.add_argument("--width", default=int(os.environ.get("WIDTH", "480")), type=int)
+        parser.add_argument("--height", default=int(os.environ.get("HEIGHT", "480")), type=int)
         parser.add_argument("--quality", default=int(os.environ.get("QUALITY", "90")), type=int)
         parser.add_argument("--video_device", default=os.environ.get("VIDEO_DEVICE", "/dev/video0"))
         parser.add_argument("--video_dir", default=os.environ.get("VIDEO_DIR", "/video"))

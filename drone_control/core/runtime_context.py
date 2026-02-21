@@ -6,6 +6,7 @@ from drone_control.utils.time import build_session_id
 
 @dataclass
 class RuntimeContext:
+    """Defines per-process runtime state for command logging."""
     session_id: str
     session_file: Path
     latest_file: Path
