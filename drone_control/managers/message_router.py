@@ -29,7 +29,6 @@ class MessageRouter:
     ):
         self.acquisition = acquisition
         self.command_manager = command_manager
-        self.telemetry_template_path = telemetry_template_path
 
     def on_message(self, ws: websocket.WebSocketApp, message: Any) -> None:
         preview = message if isinstance(message, str) else f"<{len(message)} bytes>"

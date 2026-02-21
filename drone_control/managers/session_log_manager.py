@@ -4,6 +4,7 @@ from drone_control.utils.time import now_ts
 
 
 class SessionLogManager:
+    """Handles persistent command logging."""
     def __init__(self, runtime_context: RuntimeContext):
         self.runtime_context = runtime_context
 

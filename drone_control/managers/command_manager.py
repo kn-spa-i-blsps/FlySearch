@@ -6,6 +6,7 @@ from drone_control.protocols.outbound import build_command_ack
 
 
 class CommandManager:
+    """Handles incoming control commands from mission side and triggers actuator execution."""
     def __init__(self, *, logger: SessionLogManager, flight_controller: FlightController):
         self.logger = logger
         self.flight_controller = flight_controller
