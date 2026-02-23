@@ -44,7 +44,7 @@ class TestParsers(unittest.TestCase):
         """Test successful parsing of prompt arguments."""
         kind, kv = parse_prompt_arguments("FS-1 object=helipad area=100")
         self.assertEqual(kind, "FS-1")
-        self.assertEqual(kv, {"object": "helipad", "area": "100"})
+        self.assertEqual(kv, {"object": "helipad", "area": 100})
 
     def test_parse_prompt_arguments_no_kv(self):
         """Test parsing prompt arguments with no key-value pairs."""
@@ -67,12 +67,22 @@ class TestParsers(unittest.TestCase):
         name, kind, kv = parse_search_arguments("test_search FS-2 object=car glimpses=5")
         self.assertEqual(name, "TEST_SEARCH")
         self.assertEqual(kind, "FS-2")
-        self.assertEqual(kv, {"object": "car", "glimpses": "5"})
+        self.assertEqual(kv, {"object": "car", "glimpses": 5})
 
     def test_parse_search_arguments_invalid(self):
         """Test that parsing invalid search arguments raises ValueError."""
         with self.assertRaises(ValueError):
             parse_search_arguments("test_search") # Missing kind
+
+    def test_parse_search_arguments_missing_glimpses(self):
+        """Test that SEARCH requires a glimpses argument."""
+        with self.assertRaises(ValueError):
+            parse_search_arguments("test_search FS-1 object=helipad area=80")
+
+    def test_parse_search_arguments_invalid_glimpses(self):
+        """Test that non-integer glimpses raises ValueError."""
+        with self.assertRaises(ValueError):
+            parse_search_arguments("test_search FS-1 object=helipad glimpses=abc")
 
     def test_parse_xml_response_found(self):
         """Test parsing a 'found' response."""

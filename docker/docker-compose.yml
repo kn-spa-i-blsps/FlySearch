@@ -1,10 +1,45 @@
+x-producer-env: &producer_env
+  SERVER_URL: "${SERVER_URL}"
+  COMMANDS_DIR: "${COMMANDS_DIR:-/commands}"
+  VIDEO_DIR: "${VIDEO_DIR:-/video}"
+  VIDEO_DEVICE: "${VIDEO_DEVICE:-/dev/video0}"
+  WIDTH: "${WIDTH:-480}"
+  HEIGHT: "${HEIGHT:-480}"
+  QUALITY: "${QUALITY:-90}"
+  MAV_BAUD: "${MAV_BAUD:-57600}"
+  TELEM_TIMEOUT: "${TELEM_TIMEOUT:-2.0}"
+  MOVE_METHOD: "${MOVE_METHOD:-0}"
+  EXECUTE_MOVES: "${EXECUTE_MOVES:-1}"
+
+x-producer-vols: &producer_vols
+  - ../:/app
+  - ../commands:/commands
+  - ../video:/video
+  - /run/udev:/run/udev:ro
+  - /dev:/dev
+  - /sys:/sys
+
+x-producer-common: &producer_common
+  image: flysearch:latest
+  build: 
+    context: ..
+    dockerfile: Dockerfile
+  command: >
+    python3 -m drone_control.main
+    --server ${SERVER_URL}
+  working_dir: /app
+  volumes: *producer_vols
+  environment: *producer_env
+  tty: true 
+  stdin_open: true
+
 services:
   server:
     build: 
       context: ..
       dockerfile: Dockerfile
     image: flysearch:latest
-    command: python3 -u /app/client_server.py
+    command: python3 -u -m mission_control.main
     working_dir: /app
     volumes:
       - ../:/app
@@ -13,48 +48,63 @@ services:
         PYTHONUNBUFFERED: "1"
         WS_HOST: "${WS_HOST:-0.0.0.0}"
         WS_PORT: "${WS_PORT:-8080}"
-        UPLOAD_DIR: "/app/uploads"
+        UPLOAD_DIR: "${UPLOAD_DIR:-/app/uploads}"
         MAX_WS_MB: "${MAX_WS_MB:-25}"
-        API_KEY: "${API_KEY}"
+        FOV_ANGLE: "${FOV_ANGLE:-90}"
+        OPEN_AI_KEY: "${OPEN_AI_KEY}"
+        GEMINI_AI_KEY: "${GEMINI_AI_KEY}"
+        MODEL_BACKEND: "${MODEL_BACKEND}"
+        MODEL_NAME: "${MODEL_NAME}"
+        CHATS_DIR: "${CHATS_DIR:-/app/saved_chats}"
+        PROMPTS_DIR: "${PROMPTS_DIR:-/app/prompts}"
+        TELEMETRY_DIR: "${TELEMETRY_DIR:-/app/telemetry}"
     tty: true
     stdin_open: true
     ports: ["8080:8080"]
     profiles: ["server"]
-
+    
+  # drone / RPi hardware for actual workflow
   producer:
-    image: flysearch:latest
-    build: 
-      context: ..
-      dockerfile: Dockerfile
-    command: >
-      python3 /app/producer_server.py
-      --server ${SERVER_URL}
-      --fname ${FNAME:-photo.jpg}
-    working_dir: /app
+    <<: *producer_common
+    profiles: ["producer"]
+    environment:
+      <<: *producer_env
+      MAV_DEVICE: "${MAV_DEVICE:-/dev/ttyAMA0}"
+
+    # allow opening camera/media devices without privileged
+    device_cgroup_rules:
+      - "c 81:* rmw"     # /dev/video* and /dev/v4l-subdev* (video4linux)
+      - "c 235:* rmw"    # /dev/media* (media controller)
+      - 'c 253:* rmw'
+
+    group_add:
+      - video
+
+    # keep your serial device explicit
+    devices:
+      - /dev/ttyAMA0:/dev/ttyAMA0
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/media0:/dev/media0
+      - /dev/media1:/dev/media1
+      - /dev/media2:/dev/media2
+      - /dev/media3:/dev/media3
+      - /dev/v4l-subdev0:/dev/v4l-subdev0
+      - /dev/v4l-subdev1:/dev/v4l-subdev1
+      - /dev/v4l-subdev2:/dev/v4l-subdev2
+    
+  # no-drone / laptop-friendly for tests without drone
+  producer_test:
+    <<: *producer_common
+    profiles: ["producer_test"]
+    environment:
+      <<: *producer_env
+      MAV_DEVICE: ""
+    privileged: true
     volumes:
       - ../:/app
-      - ../img:/img
       - ../commands:/commands
+      - ../video:/video
       - /run/udev:/run/udev:ro
-    environment:
-      SERVER_URL: "${SERVER_URL}"
-      IMG_DIR: "${IMG_DIR:-/img}"
-      COMMANDS_DIR: "${COMMANDS_DIR:-/commands}"
-      CAPTURE_PY: "${CAPTURE_PY:-/app/capture.py}"
-      FNAME: "${FNAME:-photo.jpg}"
-      WIDTH: "${WIDTH:-500}"
-      HEIGHT: "${HEIGHT:-500}"
-      QUALITY: "${QUALITY:-90}"
-      MAV_DEVICE: "/dev/ttyAMA0"
-      MAV_BAUD: "57600"
-    tty: true 
-    stdin_open: true
-    # na start wygodnie:
-    
-    # po testach usuń privileged i dopisz konkretne device'y:
-    devices:
-      - /dev/video0:/dev/video0
-      - /dev/ttyAMA0:/dev/ttyAMA0
-    #  - /dev/media1:/dev/media1
-    #  - /dev/video0:/dev/video0
-    profiles: ["producer"]
+      - /dev:/dev
+      - /sys:/sys
