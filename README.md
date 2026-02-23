@@ -122,13 +122,13 @@ Use the server terminal (the `mission_control` CLI).
 Recommended command:
 
 ```text
-SEARCH <name> <FS-1|FS-2> object=<target> glimpses=<max_moves> [area=<meters_for_FS-1>]
+SEARCH <name> <FS-1|FS-2> object=<target> glimpses=<max_moves> [area=<meters_for_FS-1>] minimum_altitude=<minimum_altitude>
 ```
 
 Example:
 
 ```text
-SEARCH test_fs1 FS-1 object=helipad glimpses=6 area=80
+SEARCH test_fs1 FS-1 object=helipad glimpses=6 area=80 minimum_altitude=10
 ```
 
 The `SEARCH` flow already implements the full FlySearch loop:
@@ -154,7 +154,7 @@ The `SEARCH` flow already implements the full FlySearch loop:
 ### Useful manual commands (same CLI)
 
 ```text
-PROMPT FS-1 object=helipad glimpses=6 area=80
+PROMPT FS-1 object=helipad glimpses=6 area=80 minimum_altitude=10
 CHAT_INIT
 PHOTO_WITH_TELEMETRY
 SEND_TO_VLM
