@@ -272,3 +272,6 @@ class DroneBridge:
         await self._handle_telemetry(telemetry, img_file_name)
 
         await ws.send("[SERVER] Photo and telemetry received.")
+
+        if self.mission_context.photo_received_event:
+            self.mission_context.photo_received_event.set()
