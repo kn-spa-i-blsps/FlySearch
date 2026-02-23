@@ -34,11 +34,13 @@ def parse_prompt_arguments(cmd):
         print("Kind must be FS-1 or FS-2")
         raise ValueError
 
-    kv: Dict[str, str] = {}
+    kv: Dict[str, int | str] = {}
     for token in parts[1:]:
         if "=" in token:
             k, v = token.split("=", 1)
             kv[k.strip().lower()] = v.strip()
+    _coerce_positive_int(kv, "glimpses")
+    _coerce_positive_int(kv, "area")
     return kind, kv
 
 def parse_search_arguments(cmd):
@@ -57,12 +59,36 @@ def parse_search_arguments(cmd):
         print("Kind must be FS-1 or FS-2")
         raise ValueError
 
-    kv: Dict[str, str] = {}
+    kv: Dict[str, int | str] = {}
     for token in parts[2:]:
         if "=" in token:
             k, v = token.split("=", 1)
             kv[k.strip().lower()] = v.strip()
+    if "glimpses" not in kv:
+        print("SEARCH requires glimpses=<max_moves>")
+        raise ValueError
+
+    _coerce_positive_int(kv, "glimpses")
+    _coerce_positive_int(kv, "area")
     return name, kind, kv
+
+
+def _coerce_positive_int(kv: Dict[str, int | str], key: str) -> None:
+    """Convert numeric CLI options to positive integers in place."""
+    if key not in kv:
+        return
+
+    try:
+        value = int(str(kv[key]).strip())
+    except (TypeError, ValueError):
+        print(f"{key} must be an integer.")
+        raise ValueError
+
+    if value <= 0:
+        print(f"{key} must be greater than 0.")
+        raise ValueError
+
+    kv[key] = value
 
 
 @dataclass

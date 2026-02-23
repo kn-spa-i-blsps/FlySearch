@@ -182,7 +182,7 @@ class MissionControl:
 
             ret = ActionStatus.CONFIRMED
             moves_performed = 0
-            move_limit = kv["glimpses"]
+            move_limit = int(kv["glimpses"])
 
             while (ret in [ActionStatus.CONFIRMED, ActionStatus.WARNING]
                    and moves_performed < move_limit):
