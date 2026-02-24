@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 
 
@@ -13,3 +14,5 @@ class MissionContext:
     last_photo_path_cache = None        # DroneBridge
     last_telemetry_path_cache = None    # DroneBridge
     last_prompt_text_cache = None       # PromptManager
+
+    photo_received_event: asyncio.Event = None

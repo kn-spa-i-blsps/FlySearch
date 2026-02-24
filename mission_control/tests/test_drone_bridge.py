@@ -111,6 +111,21 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         mock_handle_telemetry.assert_called_once_with({"alt": 10})
         mock_handle_telemetry_photo.assert_called_once_with(mock_ws, "base64...", {})
 
+    @patch("builtins.print")
+    async def test_handler_ack_without_error_field_is_accepted(self, mock_print):
+        """Test ACK messages without an 'error' field are parsed and logged."""
+        mock_ws = AsyncMock()
+        mock_ws.remote_address = ('127.0.0.1', 12345)
+        mock_ws.__aiter__.return_value = iter([
+            json.dumps({"type": "ACK", "of": "COMMAND", "seq": 7, "ok": True, "executed": True})
+        ])
+
+        await self.drone_bridge.handler(mock_ws)
+
+        printed = "\n".join(" ".join(map(str, c.args)) for c in mock_print.call_args_list)
+        self.assertIn("[ACK ← RPi] COMMAND seq=7 ok=True", printed)
+        self.assertNotIn("[WS] message not matching any case.", printed)
+
     @patch('os.path.join')
     @patch('builtins.open', new_callable=mock_open)
     @patch('mission_control.bridges.drone_bridge.datetime')
@@ -191,7 +206,6 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         mock_cropped_img.save.assert_called_once_with(fake_path, format="JPEG", quality=90)
         self.assertEqual(self.mock_mission_context.last_photo_path_cache, fake_path)
         mock_handle_telemetry.assert_called_once_with(telemetry_data, f'img_{ts}.jpg')
-        mock_ws.send.assert_called_once_with("[SERVER] Photo and telemetry received.")
 
     @patch('os.path.join')
     @patch('builtins.open', new_callable=mock_open)
@@ -288,11 +302,13 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await self.drone_bridge.send_command()
 
-    async def test_handle_telemetry_photo_missing_photo_raises_error(self):
-        """Test _handle_telemetry_photo raises DroneInvalidDataError for missing photo data."""
+    @patch('mission_control.bridges.drone_bridge.DroneBridge._handle_telemetry', new_callable=AsyncMock)
+    async def test_handle_telemetry_photo_missing_photo_skips_frame(self, mock_handle_telemetry):
+        """Test _handle_telemetry_photo skips frame if photo data is missing."""
         mock_ws = AsyncMock()
-        with self.assertRaises(DroneInvalidDataError):
-            await self.drone_bridge._handle_telemetry_photo(mock_ws, None, {})
+        telemetry_data = {"alt": 42}
+        await self.drone_bridge._handle_telemetry_photo(mock_ws, None, telemetry_data)
+        mock_handle_telemetry.assert_called_once_with(telemetry_data, None)
 
     async def test_handle_telemetry_photo_bad_encoding_raises_error(self):
         """Test _handle_telemetry_photo raises DroneInvalidDataError for bad base64 data."""

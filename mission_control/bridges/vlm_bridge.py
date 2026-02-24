@@ -1,5 +1,6 @@
 from websockets.frames import CloseCode
 
+from conversation.abstract_conversation import Role
 from mission_control.core.config import Config
 from mission_control.core.exceptions import VLMConnectionError, VLMParseError, VLMPreconditionsNotMetError
 from mission_control.core.mission_context import MissionContext
@@ -78,6 +79,12 @@ class VLMBridge:
     def _execute_transaction(self, img, telemetry_text, is_warning):
         # --- Add messages ---
         try:
+            try:
+                self.mission_context.conversation.begin_transaction(Role.USER)
+            except Exception as begin_error:
+                if "Transaction already started" not in str(begin_error):
+                    raise
+
             if is_warning:
                 # Warning: Warning text + image with a grid + telemetry context
                 self.mission_context.conversation.add_text_message(self.collision_warning_str)
@@ -92,9 +99,25 @@ class VLMBridge:
             # Is it blocking operation??
             response = self.mission_context.conversation.get_latest_message()
         except Exception as e:
+            try:
+                self.mission_context.conversation.rollback_transaction()
+            except Exception:
+                pass
             raise VLMConnectionError(f"Message sending to VLM failed: {e}") from e
 
-        return response.text
+        if isinstance(response, tuple) and len(response) >= 2:
+            return str(response[1])
+
+        if isinstance(response, str):
+            return response
+
+        text = getattr(response, "text", None)
+        if text is not None:
+            return str(text)
+
+        raise VLMConnectionError(
+            f"Unexpected response type from conversation.get_latest_message(): {type(response).__name__}"
+        )
 
     def _parse_and_store_result(self, raw):
         # --- Response Parsing and Execution ---

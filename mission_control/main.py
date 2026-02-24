@@ -81,6 +81,8 @@ class MissionControl:
         """ Main function for async loop. """
         loop = asyncio.get_running_loop()
 
+        self.mission_context.photo_received_event = asyncio.Event()
+
         # Instead of closing, use _signal_handler function
         for sig in (signal.SIGINT, signal.SIGTERM):
             try:
@@ -187,7 +189,14 @@ class MissionControl:
             while (ret in [ActionStatus.CONFIRMED, ActionStatus.WARNING]
                    and moves_performed < move_limit):
                 # Request photo and telemetry.
+                self.mission_context.photo_received_event.clear()
                 await self.drone.send_message("photo_with_telemetry")
+
+                try:
+                    await asyncio.wait_for(self.mission_context.photo_received_event.wait(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    print("[ERROR] Timeout: Photo not received. Aborting search.")
+                    break
 
                 # Send it to vlm.
                 await self.vlm.send_to_vlm(is_warning=(ret == ActionStatus.WARNING))
@@ -251,7 +260,6 @@ class MissionControl:
         self.prompt_manager.generate_and_save(kind, kv)
 
     async def _handle_chat_reset(self):
-        loop = asyncio.get_event_loop()
 
         print("Are you sure you want to reset this chat? You can use CHAT_SAVE to save it first.")
         print("Type 'yes' to reset.")
