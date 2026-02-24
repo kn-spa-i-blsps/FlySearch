@@ -189,6 +189,7 @@ class MissionControl:
             while (ret in [ActionStatus.CONFIRMED, ActionStatus.WARNING]
                    and moves_performed < move_limit):
                 # Request photo and telemetry.
+                self.mission_context.photo_received_event.clear()
                 await self.drone.send_message("photo_with_telemetry")
 
                 try:

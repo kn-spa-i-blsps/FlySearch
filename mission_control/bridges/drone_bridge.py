@@ -120,9 +120,13 @@ class DroneBridge:
                     continue
 
                 match obj:
-                    case {"type": "ACK", "of": "COMMAND", "seq": seq, "ok": ok, "error": err}:
-                        print(f"[ACK ← RPi] COMMAND seq={seq} "
-                              f"ok={ok} err={err}")
+                    case {"type": "ACK", "of": "COMMAND", "seq": seq, "ok": ok, **ack_rest}:
+                        err = ack_rest.get("error")
+                        executed = ack_rest.get("executed")
+                        print(
+                            f"[ACK ← RPi] COMMAND seq={seq} "
+                            f"ok={ok} executed={executed} err={err}"
+                        )
 
                     case {"type": "TELEMETRY", "data": data}:
                         await self._handle_telemetry(data)
@@ -242,7 +246,9 @@ class DroneBridge:
 
         # Photo
         if not photo_base64:
-            raise DroneInvalidDataError("Received 'PHOTO_WITH_TELEMETRY' but 'photo' field is missing.")
+            print("[WS] Received 'PHOTO_WITH_TELEMETRY' but 'photo' field is missing; skipping frame.")
+            await self._handle_telemetry(telemetry, None)
+            return
 
         try:
             photo_data = base64.b64decode(photo_base64)
@@ -270,8 +276,6 @@ class DroneBridge:
 
         # Telemetry
         await self._handle_telemetry(telemetry, img_file_name)
-
-        await ws.send("[SERVER] Photo and telemetry received.")
 
         if self.mission_context.photo_received_event:
             self.mission_context.photo_received_event.set()

@@ -16,7 +16,9 @@ def parse_telemetry(path):
         telemetry = json.load(f)
 
     telemetry_data = telemetry.get("data", {})
-    height = telemetry_data.get("position", {}).get("alt", 10)
+    height = telemetry_data.get("position", {}).get("alt")
+    if height is None:
+        height = 10
     return [f"Your current altitude is {height} meters above ground level.", height]
 
 def parse_prompt_arguments(cmd):
