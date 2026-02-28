@@ -24,7 +24,6 @@ def _validate_captured_image(path: Path) -> None:
     except Exception as exc:
         raise RuntimeError(f"[capture] Capture output is not a readable image: {path} ({exc})") from exc
 
-
 def _make_square(path: Path, quality: int = 90) -> None:
     try:
         from PIL import Image  # type: ignore
@@ -50,7 +49,6 @@ def _make_square(path: Path, quality: int = 90) -> None:
         cropped.close()
         print(f"[square] Cropped to square: {side}x{side}")
 
-
 _CAMERA_LOCK = Lock()
 _CAMERA_STATE: dict[str, Any] = {
     "camera": None,
@@ -58,7 +56,6 @@ _CAMERA_STATE: dict[str, Any] = {
     "video_path": None,
     "ref_count": 0
 }
-
 
 def _release_camera(camera: Any) -> None:
     if camera is None:
@@ -81,7 +78,6 @@ def _release_camera(camera: Any) -> None:
         except Exception:
             pass
 
-
 def recording_status() -> dict[str, object]:
     with _CAMERA_LOCK:
         return {
@@ -89,7 +85,6 @@ def recording_status() -> dict[str, object]:
             "path": str(_CAMERA_STATE["video_path"]) if _CAMERA_STATE["video_path"] else None,
             "ref_count": _CAMERA_STATE["ref_count"]
         }
-
 
 def start_video_recording(
     *,
@@ -102,6 +97,7 @@ def start_video_recording(
 
     with _CAMERA_LOCK:
         if _CAMERA_STATE["recording"]:
+            print(f"[recording] Already recording: {destination}")
             _CAMERA_STATE["ref_count"] += 1
             return {
                 "recording": True,
@@ -146,7 +142,6 @@ def start_video_recording(
             _CAMERA_STATE["video_path"] = None
             raise RuntimeError(f"[recording] Failed to start recording: {exc}") from exc
 
-
 def stop_video_recording() -> dict[str, object]:
     with _CAMERA_LOCK:
         camera = _CAMERA_STATE["camera"]
@@ -163,8 +158,8 @@ def stop_video_recording() -> dict[str, object]:
             print(f"[recording] Stopped: {path}")
             return {"recording": False, "path": str(path) if path else None}
         else:
-            return {"recording": True, "path": path}
-
+            print(f"[recording] Not stopped (manual/search recording overlap): {path}")
+            return {"recording": True, "path": str(path)}
 
 def capture_photo(
     *,

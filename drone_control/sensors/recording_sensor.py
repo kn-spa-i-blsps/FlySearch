@@ -44,14 +44,6 @@ class RecordingSensor(Sensor):
         }
 
     def start_recording(self) -> bool:
-        status = recording_status()
-        if bool(status.get("recording")):
-            self._recording = True
-            path = status.get("path")
-            self._current_path = Path(path) if isinstance(path, str) else None
-            print(f"[RPi] Recording already active: {path}")
-            return True
-
         destination = self.video_dir / f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.h264"
 
         try:
