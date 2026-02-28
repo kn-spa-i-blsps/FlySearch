@@ -1,5 +1,7 @@
 import subprocess
+from threading import Lock
 from pathlib import Path
+from typing import Any
 
 
 def _validate_captured_image(path: Path) -> None:
@@ -49,6 +51,113 @@ def _make_square(path: Path, quality: int = 90) -> None:
         print(f"[square] Cropped to square: {side}x{side}")
 
 
+_CAMERA_LOCK = Lock()
+_CAMERA_STATE: dict[str, Any] = {
+    "camera": None,
+    "recording": False,
+    "video_path": None,
+}
+
+
+def _release_camera(camera: Any) -> None:
+    if camera is None:
+        return
+
+    try:
+        camera.stop_recording()
+    except Exception:
+        pass
+
+    try:
+        camera.stop()
+    except Exception:
+        pass
+
+    close_fn = getattr(camera, "close", None)
+    if callable(close_fn):
+        try:
+            close_fn()
+        except Exception:
+            pass
+
+
+def recording_status() -> dict[str, object]:
+    with _CAMERA_LOCK:
+        return {
+            "recording": bool(_CAMERA_STATE["recording"]),
+            "path": str(_CAMERA_STATE["video_path"]) if _CAMERA_STATE["video_path"] else None,
+        }
+
+
+def start_video_recording(
+    *,
+    destination: Path,
+    width: int,
+    height: int,
+    bitrate: int = 10_000_000,
+) -> dict[str, object]:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    with _CAMERA_LOCK:
+        if _CAMERA_STATE["recording"]:
+            return {
+                "recording": True,
+                "path": str(_CAMERA_STATE["video_path"]) if _CAMERA_STATE["video_path"] else None,
+            }
+
+        try:
+            from picamera2 import Picamera2  # type: ignore
+            from picamera2.encoders import H264Encoder  # type: ignore
+            from picamera2.outputs import FileOutput  # type: ignore
+        except Exception as exc:
+            raise RuntimeError(f"[recording] Picamera2 unavailable: {exc}") from exc
+
+        camera = None
+        try:
+            camera = Picamera2()
+
+            lores_side = max(64, min(int(width), int(height)))
+            cfg = camera.create_video_configuration(
+                main={"size": (int(width), int(height)), "format": "RGB888"},
+                lores={"size": (lores_side, lores_side), "format": "RGB888"},
+                buffer_count=2,
+                queue=False,
+            )
+            camera.configure(cfg)
+            camera.start()
+
+            encoder = H264Encoder(bitrate=int(bitrate))
+            output = FileOutput(str(destination))
+            camera.start_recording(encoder, output)
+
+            _CAMERA_STATE["camera"] = camera
+            _CAMERA_STATE["recording"] = True
+            _CAMERA_STATE["video_path"] = destination
+            print(f"[recording] Started: {destination}")
+            return {"recording": True, "path": str(destination)}
+        except Exception as exc:
+            _release_camera(camera)
+            _CAMERA_STATE["camera"] = None
+            _CAMERA_STATE["recording"] = False
+            _CAMERA_STATE["video_path"] = None
+            raise RuntimeError(f"[recording] Failed to start recording: {exc}") from exc
+
+
+def stop_video_recording() -> dict[str, object]:
+    with _CAMERA_LOCK:
+        camera = _CAMERA_STATE["camera"]
+        if camera is None:
+            return {"recording": False, "path": None}
+
+        path = _CAMERA_STATE["video_path"]
+        _release_camera(camera)
+        _CAMERA_STATE["camera"] = None
+        _CAMERA_STATE["recording"] = False
+        _CAMERA_STATE["video_path"] = None
+        print(f"[recording] Stopped: {path}")
+        return {"recording": False, "path": str(path) if path else None}
+
+
 def capture_photo(
     *,
     destination: Path,
@@ -58,6 +167,21 @@ def capture_photo(
     video_device: str,
 ) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
+
+    # If recording is active, reuse the same Picamera2 session.
+    if _CAMERA_STATE["recording"]:
+        with _CAMERA_LOCK:
+            active_camera = _CAMERA_STATE["camera"] if _CAMERA_STATE["recording"] else None
+            if active_camera is not None:
+                try:
+                    active_camera.capture_file(str(destination), name="lores")
+                    _validate_captured_image(destination)
+                    _make_square(destination, quality)
+                    _validate_captured_image(destination)
+                    print(f"Image saved at: {destination} (shared Picamera2)")
+                    return
+                except Exception as exc:
+                    print(f"[capture] Shared Picamera2 capture failed: {exc}")
 
     # 1) Picamera2 (CSI camera)
     try:
@@ -144,24 +268,7 @@ def capture_video(
     quality: int,
     video_device: str,
 ) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        from picamera2 import Picamera2
-        from picamera2.encoders import H264Encoder
-        from picamera2.outputs import PyavOutput, FileOutput
-        cam = None
-        encoder = H264Encoder(bitrate=10000000)
-        output = FileOutput(str(destination))
-        try:
-            cam = Picamera2()
-            cfg = cam.create_video_configuration(
-                main={"size": (640, 480), "format": "RGB888"},
-                lores={"size": (480, 480), "format": "RGB888"},
-                buffer_count=2,
-                queue=False
-            )
-            cam.configure(cfg)
-            cam.start()
-            cam.start_recording(encoder, output)
-
-
+    # Backward-compatible wrapper.
+    _ = quality
+    _ = video_device
+    start_video_recording(destination=destination, width=width, height=height)
