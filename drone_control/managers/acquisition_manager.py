@@ -31,10 +31,9 @@ class AcquisitionManager:
         telemetry = self.telemetry_sensor.snapshot()
         return build_photo_with_telemetry_payload(photo_base64=photo_base64, telemetry=telemetry)
 
-    def start_recording(self) -> bool:
+    def start_recording(self) -> dict[str, Any]:
         return self.recording_sensor.start_recording()
 
-    def stop_recording(self) -> bool:
+    def stop_recording(self) -> dict[str, Any]:
         return self.recording_sensor.stop_recording()
-
 

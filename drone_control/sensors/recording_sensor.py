@@ -43,7 +43,7 @@ class RecordingSensor(Sensor):
             "path": status.get("path"),
         }
 
-    def start_recording(self) -> bool:
+    def start_recording(self) -> dict[str, object]:
         destination = self.video_dir / f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.h264"
 
         try:
@@ -58,9 +58,16 @@ class RecordingSensor(Sensor):
         self._recording = bool(started.get("recording", False))
         path = started.get("path")
         self._current_path = Path(path) if isinstance(path, str) else destination
-        return self._recording
+        ref_count_raw = started.get("ref_count", 0)
+        ref_count = ref_count_raw if isinstance(ref_count_raw, int) else 0
+        return {
+            "ok": bool(started.get("ok", True)),
+            "recording": self._recording,
+            "path": str(self._current_path) if self._current_path else None,
+            "ref_count": ref_count
+        }
 
-    def stop_recording(self) -> bool:
+    def stop_recording(self) -> dict[str, object]:
         try:
             stopped = stop_video_recording()
         except Exception as exc:
@@ -69,7 +76,14 @@ class RecordingSensor(Sensor):
         self._recording = bool(stopped.get("recording", False))
         path = stopped.get("path")
         self._current_path = Path(path) if isinstance(path, str) else self._current_path
-        return self._recording
+        ref_count_raw = stopped.get("ref_count", 0)
+        ref_count = ref_count_raw if isinstance(ref_count_raw, int) else 0
+        return {
+            "ok": bool(stopped.get("ok", True)),
+            "recording": self._recording,
+            "path": str(self._current_path) if self._current_path else None,
+            "ref_count": ref_count,
+        }
 
     def status(self) -> dict[str, object]:
         status = recording_status()
@@ -77,7 +91,10 @@ class RecordingSensor(Sensor):
         path = status.get("path")
         if isinstance(path, str):
             self._current_path = Path(path)
+        ref_count_raw = status.get("ref_count", 0)
+        ref_count = ref_count_raw if isinstance(ref_count_raw, int) else 0
         return {
             "recording": self._recording,
             "path": str(self._current_path) if self._current_path else path,
+            "ref_count": ref_count,
         }

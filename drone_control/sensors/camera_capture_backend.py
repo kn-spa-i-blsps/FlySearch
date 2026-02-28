@@ -57,6 +57,18 @@ _CAMERA_STATE: dict[str, Any] = {
     "ref_count": 0
 }
 
+def _build_recording_status(*, ok: bool = True, path_override: str | None = None) -> dict[str, object]:
+    path_value = path_override
+    if path_value is None:
+        current = _CAMERA_STATE["video_path"]
+        path_value = str(current) if current else None
+    return {
+        "ok": ok,
+        "recording": bool(_CAMERA_STATE["recording"]),
+        "path": path_value,
+        "ref_count": int(_CAMERA_STATE["ref_count"]),
+    }
+
 def _release_camera(camera: Any) -> None:
     if camera is None:
         return
@@ -80,11 +92,7 @@ def _release_camera(camera: Any) -> None:
 
 def recording_status() -> dict[str, object]:
     with _CAMERA_LOCK:
-        return {
-            "recording": bool(_CAMERA_STATE["recording"]),
-            "path": str(_CAMERA_STATE["video_path"]) if _CAMERA_STATE["video_path"] else None,
-            "ref_count": _CAMERA_STATE["ref_count"]
-        }
+        return _build_recording_status()
 
 def start_video_recording(
     *,
@@ -97,12 +105,9 @@ def start_video_recording(
 
     with _CAMERA_LOCK:
         if _CAMERA_STATE["recording"]:
-            print(f"[recording] Already recording: {_CAMERA_STATE["video_path"]}")
+            print(f"[recording] Already recording: {_CAMERA_STATE['video_path']}")
             _CAMERA_STATE["ref_count"] += 1
-            return {
-                "recording": True,
-                "path": str(_CAMERA_STATE["video_path"]) if _CAMERA_STATE["video_path"] else None,
-            }
+            return _build_recording_status()
 
         try:
             from picamera2 import Picamera2  # type: ignore
@@ -134,7 +139,7 @@ def start_video_recording(
             _CAMERA_STATE["video_path"] = destination
             _CAMERA_STATE["ref_count"] = 1
             print(f"[recording] Started: {destination}")
-            return {"recording": True, "path": str(destination)}
+            return _build_recording_status(path_override=str(destination))
         except Exception as exc:
             _release_camera(camera)
             _CAMERA_STATE["camera"] = None
@@ -146,7 +151,7 @@ def stop_video_recording() -> dict[str, object]:
     with _CAMERA_LOCK:
         camera = _CAMERA_STATE["camera"]
         if camera is None or _CAMERA_STATE["ref_count"] == 0:
-            return {"recording": False, "path": None}
+            return _build_recording_status()
 
         path = _CAMERA_STATE["video_path"]
         _CAMERA_STATE["ref_count"] -= 1
@@ -156,10 +161,10 @@ def stop_video_recording() -> dict[str, object]:
             _CAMERA_STATE["recording"] = False
             _CAMERA_STATE["video_path"] = None
             print(f"[recording] Stopped: {path}")
-            return {"recording": False, "path": str(path) if path else None}
+            return _build_recording_status(path_override=str(path) if path else None)
         else:
             print(f"[recording] Not stopped (manual/search recording overlap): {path}")
-            return {"recording": True, "path": str(path)}
+            return _build_recording_status(path_override=str(path) if path else None)
 
 def capture_photo(
     *,
