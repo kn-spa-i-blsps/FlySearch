@@ -56,6 +56,7 @@ _CAMERA_STATE: dict[str, Any] = {
     "camera": None,
     "recording": False,
     "video_path": None,
+    "ref_count": 0
 }
 
 
@@ -86,6 +87,7 @@ def recording_status() -> dict[str, object]:
         return {
             "recording": bool(_CAMERA_STATE["recording"]),
             "path": str(_CAMERA_STATE["video_path"]) if _CAMERA_STATE["video_path"] else None,
+            "ref_count": _CAMERA_STATE["ref_count"]
         }
 
 
@@ -100,6 +102,7 @@ def start_video_recording(
 
     with _CAMERA_LOCK:
         if _CAMERA_STATE["recording"]:
+            _CAMERA_STATE["ref_count"] += 1
             return {
                 "recording": True,
                 "path": str(_CAMERA_STATE["video_path"]) if _CAMERA_STATE["video_path"] else None,
@@ -133,6 +136,7 @@ def start_video_recording(
             _CAMERA_STATE["camera"] = camera
             _CAMERA_STATE["recording"] = True
             _CAMERA_STATE["video_path"] = destination
+            _CAMERA_STATE["ref_count"] = 1
             print(f"[recording] Started: {destination}")
             return {"recording": True, "path": str(destination)}
         except Exception as exc:
@@ -146,16 +150,20 @@ def start_video_recording(
 def stop_video_recording() -> dict[str, object]:
     with _CAMERA_LOCK:
         camera = _CAMERA_STATE["camera"]
-        if camera is None:
+        if camera is None or _CAMERA_STATE["ref_count"] == 0:
             return {"recording": False, "path": None}
 
         path = _CAMERA_STATE["video_path"]
-        _release_camera(camera)
-        _CAMERA_STATE["camera"] = None
-        _CAMERA_STATE["recording"] = False
-        _CAMERA_STATE["video_path"] = None
-        print(f"[recording] Stopped: {path}")
-        return {"recording": False, "path": str(path) if path else None}
+        _CAMERA_STATE["ref_count"] -= 1
+        if _CAMERA_STATE["ref_count"] == 0:
+            _release_camera(camera)
+            _CAMERA_STATE["camera"] = None
+            _CAMERA_STATE["recording"] = False
+            _CAMERA_STATE["video_path"] = None
+            print(f"[recording] Stopped: {path}")
+            return {"recording": False, "path": str(path) if path else None}
+        else:
+            return {"recording": True, "path": path}
 
 
 def capture_photo(
