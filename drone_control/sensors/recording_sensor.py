@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from drone_control.core.exceptions import SensorError
 from drone_control.sensors.base import Sensor
@@ -148,3 +149,72 @@ class RecordingSensor(Sensor):
 
             rows.append(row)
         return rows
+
+    def prepare_recordings_for_pull(
+        self,
+        names: list[str],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+        prepared: list[dict[str, Any]] = []
+        rejected: list[dict[str, str]] = []
+
+        seen: set[str] = set()
+        for raw_name in names:
+            if not isinstance(raw_name, str):
+                rejected.append({"name": str(raw_name), "error": "invalid_name_type"})
+                continue
+
+            name = raw_name.strip()
+            if not name:
+                rejected.append({"name": raw_name, "error": "empty_name"})
+                continue
+
+            if name in seen:
+                continue
+            seen.add(name)
+
+            candidate = Path(name)
+            if candidate.name != name:
+                rejected.append({"name": name, "error": "invalid_name"})
+                continue
+
+            if candidate.suffix.lower() != ".h264":
+                rejected.append({"name": name, "error": "not_h264"})
+                continue
+
+            video_path = (self.video_dir / candidate.name)
+            if not video_path.exists():
+                rejected.append({"name": name, "error": "not_found"})
+                continue
+
+            try:
+                stat = video_path.stat()
+            except OSError:
+                rejected.append({"name": name, "error": "stat_failed"})
+                continue
+
+            metadata_path = video_path.with_suffix(".json")
+            metadata_exists = metadata_path.exists()
+            metadata: dict[str, Any] | None = None
+            metadata_error: str | None = None
+
+            if metadata_exists:
+                try:
+                    with metadata_path.open("r", encoding="utf-8") as file_obj:
+                        loaded = json.load(file_obj)
+                    if isinstance(loaded, dict):
+                        metadata = loaded
+                except Exception as exc:
+                    metadata_error = str(exc)
+
+            entry: dict[str, Any] = {
+                "name": candidate.name,
+                "path": str(video_path),
+                "size_bytes": int(stat.st_size),
+                "metadata_exists": metadata_exists,
+                "metadata": metadata,
+            }
+            if metadata_error:
+                entry["metadata_error"] = metadata_error
+            prepared.append(entry)
+
+        return prepared, rejected

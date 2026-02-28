@@ -1,4 +1,6 @@
+import base64
 import json
+from pathlib import Path
 from typing import Any
 
 import websocket
@@ -13,12 +15,14 @@ from drone_control.protocols.inbound import (
     IN_START_RECORDING,
     IN_STOP_RECORDING,
     IN_GET_RECORDINGS,
+    IN_PULL_RECORDINGS,
     parse_inbound_message
 )
 from drone_control.protocols.outbound import (
     build_telemetry_payload,
     invalid_message_response,
 )
+from drone_control.utils.time import now_ts
 
 
 class MessageRouter:
@@ -145,6 +149,139 @@ class MessageRouter:
                     "recordings": [],
                 }
                 print(f"[RPi] GET_RECORDINGS error: {exc}")
+            try:
+                ws.send(json.dumps(ack))
+            except Exception:
+                pass
+            return
+
+        if parsed.kind == IN_PULL_RECORDINGS:
+            payload = parsed.json_obj or {}
+            names_raw = payload.get("names", [])
+            names: list[str] = [name for name in names_raw if isinstance(name, str)] if isinstance(names_raw, list) else []
+
+            if not names:
+                ack = {
+                    "type": "ACK",
+                    "of": "RECORDINGS",
+                    "action": IN_PULL_RECORDINGS,
+                    "ok": False,
+                    "error": "No recording names provided.",
+                    "requested_count": 0,
+                    "completed_count": 0,
+                    "results": [],
+                }
+                try:
+                    ws.send(json.dumps(ack))
+                except Exception:
+                    pass
+                return
+
+            batch_size_raw = payload.get("batch_size", 2)
+            chunk_bytes_raw = payload.get("chunk_bytes", 512 * 1024)
+            try:
+                batch_size = max(1, min(int(batch_size_raw), 32))
+            except Exception:
+                batch_size = 2
+            try:
+                chunk_bytes = max(64 * 1024, min(int(chunk_bytes_raw), 2 * 1024 * 1024))
+            except Exception:
+                chunk_bytes = 512 * 1024
+
+            transfer_id = f"pull_{now_ts()}"
+            prepared, rejected = self.acquisition.prepare_recordings_for_pull(names)
+
+            results: list[dict[str, object]] = []
+            for item in rejected:
+                results.append({
+                    "name": item.get("name"),
+                    "ok": False,
+                    "error": item.get("error", "rejected"),
+                })
+
+            for idx in range(0, len(prepared), batch_size):
+                batch = prepared[idx:idx + batch_size]
+                for entry in batch:
+                    name = str(entry.get("name"))
+                    path = Path(str(entry.get("path")))
+                    size_bytes = int(entry.get("size_bytes", 0))
+                    metadata = entry.get("metadata")
+                    metadata_obj = metadata if isinstance(metadata, dict) else None
+                    metadata_exists = bool(entry.get("metadata_exists", False))
+
+                    begin_payload = {
+                        "type": "RECORDING_FILE_BEGIN",
+                        "transfer_id": transfer_id,
+                        "name": name,
+                        "size_bytes": size_bytes,
+                        "metadata_exists": metadata_exists,
+                        "metadata": metadata_obj,
+                    }
+                    try:
+                        ws.send(json.dumps(begin_payload))
+                    except Exception as exc:
+                        results.append({
+                            "name": name,
+                            "ok": False,
+                            "error": f"begin_send_failed: {exc}",
+                        })
+                        continue
+
+                    chunks = 0
+                    try:
+                        with path.open("rb") as file_obj:
+                            while True:
+                                chunk = file_obj.read(chunk_bytes)
+                                if not chunk:
+                                    break
+                                ws.send(json.dumps({
+                                    "type": "RECORDING_FILE_CHUNK",
+                                    "transfer_id": transfer_id,
+                                    "name": name,
+                                    "seq": chunks,
+                                    "data": base64.b64encode(chunk).decode("ascii"),
+                                }))
+                                chunks += 1
+
+                        ws.send(json.dumps({
+                            "type": "RECORDING_FILE_END",
+                            "transfer_id": transfer_id,
+                            "name": name,
+                            "chunks": chunks,
+                        }))
+                        results.append({
+                            "name": name,
+                            "ok": True,
+                            "size_bytes": size_bytes,
+                            "chunks": chunks,
+                            "metadata_exists": metadata_exists,
+                        })
+                    except Exception as exc:
+                        results.append({
+                            "name": name,
+                            "ok": False,
+                            "size_bytes": size_bytes,
+                            "error": str(exc),
+                        })
+
+            completed_count = sum(1 for item in results if bool(item.get("ok", False)))
+            ack = {
+                "type": "ACK",
+                "of": "RECORDINGS",
+                "action": IN_PULL_RECORDINGS,
+                "ok": completed_count == len(results) and len(results) > 0,
+                "transfer_id": transfer_id,
+                "requested_count": len(names),
+                "completed_count": completed_count,
+                "results": results,
+                "batch_size": batch_size,
+                "chunk_bytes": chunk_bytes,
+            }
+            print(
+                "[RPi] PULL_RECORDINGS "
+                f"requested={len(names)} completed={completed_count} "
+                f"batch_size={batch_size} chunk_bytes={chunk_bytes}"
+            )
             try:
                 ws.send(json.dumps(ack))
             except Exception:

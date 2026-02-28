@@ -25,5 +25,6 @@ def invalid_message_response() -> str:
     return (
         "Message sent in invalid format. Accepted messages: "
         "'SEND_PHOTO', 'TELEMETRY', 'PHOTO_WITH_TELEMETRY', "
-        "'START_RECORDING', 'STOP_RECORDING', 'GET_RECORDINGS'"
+        "'START_RECORDING', 'STOP_RECORDING', 'GET_RECORDINGS', "
+        "or JSON {'type':'RECORDINGS','action':'PULL_RECORDINGS',...}"
     )

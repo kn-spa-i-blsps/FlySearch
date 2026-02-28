@@ -6,6 +6,7 @@ x-producer-env: &producer_env
   WIDTH: "${WIDTH:-480}"
   HEIGHT: "${HEIGHT:-480}"
   QUALITY: "${QUALITY:-90}"
+  RECORD_FPS: "${RECORD_FPS:-30}"
   MAV_BAUD: "${MAV_BAUD:-57600}"
   TELEM_TIMEOUT: "${TELEM_TIMEOUT:-2.0}"
   MOVE_METHOD: "${MOVE_METHOD:-0}"
@@ -44,6 +45,7 @@ services:
     volumes:
       - ../:/app
       - ../uploads:/uploads
+      - ../recordings:/recordings
     environment:
         PYTHONUNBUFFERED: "1"
         WS_HOST: "${WS_HOST:-0.0.0.0}"
@@ -58,6 +60,10 @@ services:
         CHATS_DIR: "${CHATS_DIR:-/app/saved_chats}"
         PROMPTS_DIR: "${PROMPTS_DIR:-/app/prompts}"
         TELEMETRY_DIR: "${TELEMETRY_DIR:-/app/telemetry}"
+        RECORDINGS_DIR: "${RECORDINGS_DIR:-/recordings}"
+        PULL_BATCH_SIZE: "${PULL_BATCH_SIZE:-2}"
+        PULL_CHUNK_BYTES: "${PULL_CHUNK_BYTES:-524288}"
+        RECORD_FPS: "${RECORD_FPS:-30}"
     tty: true
     stdin_open: true
     ports: ["8080:8080"]

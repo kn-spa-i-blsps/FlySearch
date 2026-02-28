@@ -39,3 +39,9 @@ class AcquisitionManager:
 
     def list_recordings(self) -> list[dict[str, object]]:
         return self.recording_sensor.list_recordings()
+
+    def prepare_recordings_for_pull(
+        self,
+        names: list[str],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+        return self.recording_sensor.prepare_recordings_for_pull(names)

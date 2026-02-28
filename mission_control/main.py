@@ -64,6 +64,7 @@ class MissionControl:
             "start_recording": lambda cmd, _: self.drone.send_recording_command(cmd),
             "stop_recording": lambda cmd, _: self.drone.send_recording_command(cmd),
             "get_recordings": lambda _cmd, _args: self._handle_get_recordings(),
+            "pull_recordings": lambda _cmd, args: self._handle_pull_recordings(args),
             "move": lambda c, a: self.drone.send_command(
                 found=self.mission_context.parsed_response.found,
                 move=self.mission_context.parsed_response.move
@@ -137,17 +138,14 @@ class MissionControl:
                 except (EOFError, KeyboardInterrupt):
                     line = "q"
 
-                line = (line or " ").strip()
-                if not line:
+                raw_line = (line or " ").strip()
+                if not raw_line:
                     continue
 
-                # Unify.
-                cmd = line.lower()
-
-                #Split command from arguments.
-                parts = cmd.split(" ", 1)
-                command = parts[0]
-                args = parts[1] if len(parts) > 1 else ""
+                # Keep original argument casing, normalize only command name.
+                parts = raw_line.split(" ", 1)
+                command = parts[0].lower()
+                args = parts[1].strip() if len(parts) > 1 else ""
 
                 # Take and use the method from those defined in __init__.
                 handler = self.commands.get(command)
@@ -309,6 +307,64 @@ class MissionControl:
                 f"metadata_exists={metadata_exists} | record_fps={record_fps}"
             )
 
+    async def _handle_pull_recordings(self, args: str) -> None:
+        raw_names = [token.strip() for token in args.replace(",", " ").split()]
+        names: list[str] = []
+        for name in raw_names:
+            if not name:
+                continue
+            normalized = name if name.lower().endswith(".h264") else f"{name}.h264"
+            if normalized not in names:
+                names.append(normalized)
+
+        if not names:
+            print("Usage: PULL_RECORDINGS <name.h264> [name2.h264 ...]")
+            return
+
+        ack = await self.drone.send_pull_recordings(names=names)
+        ack_results_raw = ack.get("results")
+        ack_results = ack_results_raw if isinstance(ack_results_raw, list) else []
+
+        processed_raw = ack.get("processed_results")
+        processed = processed_raw if isinstance(processed_raw, list) else []
+        processed_map = {
+            item.get("name"): item
+            for item in processed
+            if isinstance(item, dict) and isinstance(item.get("name"), str)
+        }
+
+        print(
+            "[PULL_RECORDINGS] "
+            f"requested={ack.get('requested_count')} completed={ack.get('completed_count')} "
+            f"ok={ack.get('ok')}"
+        )
+
+        for item in ack_results:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name")
+            ok = bool(item.get("ok", False))
+            error = item.get("error")
+            pulled = processed_map.get(name) if isinstance(name, str) else None
+
+            if not ok:
+                print(f"  {name}: pull_failed error={error}")
+                continue
+
+            if not isinstance(pulled, dict):
+                print(f"  {name}: pulled but no local processing summary")
+                continue
+
+            convert_ok = bool(pulled.get("convert_ok", False))
+            mp4_path = pulled.get("mp4_path")
+            convert_error = pulled.get("convert_error")
+            fps_used = pulled.get("fps_used")
+            raw_path = pulled.get("raw_path")
+            print(
+                f"  {name}: raw={raw_path} convert_ok={convert_ok} "
+                f"mp4={mp4_path} fps={fps_used} err={convert_error}"
+            )
+
     async def _signal_handler_wrapper(self):
         self._signal_handler()
 
@@ -330,7 +386,7 @@ def print_help():
     print("    PROMPT FS-1|FS-2 [object=.. glimpses=.. area=.. minimum_altitude=..]")
 
     print("Drone communication:")
-    print("    PHOTO_WITH_TELEMETRY | START_RECORDING | STOP_RECORDING | GET_RECORDINGS | MOVE")
+    print("    PHOTO_WITH_TELEMETRY | START_RECORDING | STOP_RECORDING | GET_RECORDINGS | PULL_RECORDINGS <names> | MOVE")
 
     print("VLM communication:")
     print("    SEND_TO_VLM | ADD_WARNING")
