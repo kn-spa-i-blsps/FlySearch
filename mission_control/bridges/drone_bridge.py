@@ -24,7 +24,7 @@ class DroneBridge:
         self.config = config                    # Configuration variables - dirs, ports, hosts...
         self.mission_context = mission_context  # Place to put where the photo or telemetry is saved.
         self.server = None                      # WebSocket server.
-        self._recording_ack_waiters: Dict[str, asyncio.Future] = {}
+        self._recording_ack_waiters: Dict[str, asyncio.Future[Dict[str, Any]]] = {}
 
     ''' ---------- WEBSOCKET LOGIC ---------- '''
     async def start(self):
@@ -207,13 +207,17 @@ class DroneBridge:
         try:
             await self.send_message(cmd_upper)
         except Exception:
-            await self._recording_ack_waiters.pop(cmd_upper, None)
+            stale_waiter = self._recording_ack_waiters.pop(cmd_upper, None)
+            if stale_waiter is not None and not stale_waiter.done():
+                stale_waiter.cancel()
             raise
 
         try:
             ack = await asyncio.wait_for(waiter, timeout=timeout_sec)
         except asyncio.TimeoutError as exc:
-            await self._recording_ack_waiters.pop(cmd_upper, None)
+            stale_waiter = self._recording_ack_waiters.pop(cmd_upper, None)
+            if stale_waiter is not None and not stale_waiter.done():
+                stale_waiter.cancel()
             raise DroneCommandFailedError(
                 f"Timed out waiting for {cmd_upper} ACK from drone."
             ) from exc
