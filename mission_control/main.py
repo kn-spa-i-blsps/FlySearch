@@ -176,9 +176,11 @@ class MissionControl:
         (accept, report collision, or stop).
         """
         print("\n--- SEARCHING... ---")
+        search_started_recording = False
         try:
             # Initial prompt.
             await self.drone.send_message("start_recording")
+            search_started_recording = True
             self.prompt_manager.generate_and_save(kind, kv)
 
             # Init vlm chat.
@@ -218,7 +220,6 @@ class MissionControl:
                     moves_performed += 1
                 elif ret == ActionStatus.FOUND:
                     # If found, print the message and end the loop.
-                    await self.drone.send_message("stop_recording")
                     print("FOUND")
         except (DroneError, VLMError, ChatError) as e:
             print(f"[SEARCH FAILED] An error occurred: {e}")
@@ -226,7 +227,12 @@ class MissionControl:
         except Exception as e:
             print(f"[SEARCH FAILED] An unexpected error occurred: {e}")
             print("Aborting search.")
-        await self.drone.send_message("stop_recording")
+        finally:
+            if search_started_recording:
+                try:
+                    await self.drone.send_message("stop_recording")
+                except DroneError as e:
+                    print(f"[WARN] Failed to stop recording: {e}")
 
     ''' -------------- HELPER METHODS --------------'''
     async def _confirm_send(self, move=None, found=False):
