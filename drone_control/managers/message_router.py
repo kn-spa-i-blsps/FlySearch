@@ -62,8 +62,13 @@ class MessageRouter:
             return
 
         if parsed.kind == IN_START_RECORDING:
-            recording = self.acquisition.start_recording()
+            self.acquisition.start_recording()
             print("[RPi] Started recording")
+            return
+
+        if parsed.kind == IN_STOP_RECORDING:
+            self.acquisition.stop_recording()
+            print("[RPi] Stopped recording")
             return
 
         if parsed.kind == IN_COMMAND and parsed.json_obj is not None:

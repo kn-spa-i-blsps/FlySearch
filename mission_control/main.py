@@ -300,7 +300,7 @@ def print_help():
     print("    PROMPT FS-1|FS-2 [object=.. glimpses=.. area=.. minimum_altitude=..]")
 
     print("Drone communication:")
-    print("    PHOTO_WITH_TELEMETRY | MOVE")
+    print("    PHOTO_WITH_TELEMETRY | START_RECORDING | STOP_RECORDING | MOVE")
 
     print("VLM communication:")
     print("    SEND_TO_VLM | ADD_WARNING")
