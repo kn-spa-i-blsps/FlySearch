@@ -8,6 +8,7 @@ IN_PHOTO_WITH_TELEMETRY = "PHOTO_WITH_TELEMETRY"
 IN_COMMAND = "COMMAND"
 IN_START_RECORDING = "START_RECORDING"
 IN_STOP_RECORDING = "STOP_RECORDING"
+IN_GET_RECORDINGS = "GET_RECORDINGS"
 
 
 @dataclass
@@ -30,6 +31,8 @@ def parse_inbound_message(message: Any) -> InboundMessage:
             return InboundMessage(kind=IN_START_RECORDING, raw=message)
         if message == IN_STOP_RECORDING:
             return InboundMessage(kind=IN_STOP_RECORDING, raw=message)
+        if message == IN_GET_RECORDINGS:
+            return InboundMessage(kind=IN_GET_RECORDINGS, raw=message)
 
         try:
             obj = json.loads(message)

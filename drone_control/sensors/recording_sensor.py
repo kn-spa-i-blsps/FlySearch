@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -109,3 +110,41 @@ class RecordingSensor(Sensor):
             "metadata_path": status.get("metadata_path"),
             "metadata": status.get("metadata"),
         }
+
+    def list_recordings(self) -> list[dict[str, object]]:
+        def safe_mtime(recording_path: Path) -> float:
+            try:
+                return recording_path.stat().st_mtime
+            except OSError:
+                return 0.0
+
+        rows: list[dict[str, object]] = []
+        for path in sorted(self.video_dir.glob("*.h264"), key=safe_mtime, reverse=True):
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+
+            metadata_path = path.with_suffix(".json")
+            row: dict[str, object] = {
+                "name": path.name,
+                "size_bytes": int(stat.st_size),
+                "mtime": datetime.fromtimestamp(stat.st_mtime).strftime("%Y%m%d_%H%M%S"),
+                "metadata_exists": metadata_path.exists(),
+            }
+
+            if bool(row["metadata_exists"]):
+                try:
+                    with metadata_path.open("r", encoding="utf-8") as file_obj:
+                        metadata = json.load(file_obj)
+                    if isinstance(metadata, dict):
+                        record_fps = metadata.get("record_fps")
+                        if isinstance(record_fps, int):
+                            row["record_fps"] = record_fps
+                        elif isinstance(record_fps, str) and record_fps.isdigit():
+                            row["record_fps"] = int(record_fps)
+                except Exception as exc:
+                    row["metadata_error"] = str(exc)
+
+            rows.append(row)
+        return rows

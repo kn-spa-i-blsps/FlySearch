@@ -37,3 +37,5 @@ class AcquisitionManager:
     def stop_recording(self) -> dict[str, Any]:
         return self.recording_sensor.stop_recording()
 
+    def list_recordings(self) -> list[dict[str, object]]:
+        return self.recording_sensor.list_recordings()

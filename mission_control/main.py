@@ -63,6 +63,7 @@ class MissionControl:
             "photo_with_telemetry": lambda cmd, _: self.drone.send_message(cmd),
             "start_recording": lambda cmd, _: self.drone.send_recording_command(cmd),
             "stop_recording": lambda cmd, _: self.drone.send_recording_command(cmd),
+            "get_recordings": lambda _cmd, _args: self._handle_get_recordings(),
             "move": lambda c, a: self.drone.send_command(
                 found=self.mission_context.parsed_response.found,
                 move=self.mission_context.parsed_response.move
@@ -285,6 +286,29 @@ class MissionControl:
         else:
             print("Chat not deleted.")
 
+    async def _handle_get_recordings(self) -> None:
+        ack = await self.drone.send_get_recordings()
+        recordings_raw = ack.get("recordings")
+        recordings = recordings_raw if isinstance(recordings_raw, list) else []
+
+        if not recordings:
+            print("[GET_RECORDINGS] No .h264 recordings available.")
+            return
+
+        print(f"[GET_RECORDINGS] Found {len(recordings)} recording(s):")
+        for item in recordings:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name")
+            size_bytes = item.get("size_bytes")
+            mtime = item.get("mtime")
+            metadata_exists = item.get("metadata_exists")
+            record_fps = item.get("record_fps")
+            print(
+                f"  {name} | size_bytes={size_bytes} | mtime={mtime} | "
+                f"metadata_exists={metadata_exists} | record_fps={record_fps}"
+            )
+
     async def _signal_handler_wrapper(self):
         self._signal_handler()
 
@@ -306,7 +330,7 @@ def print_help():
     print("    PROMPT FS-1|FS-2 [object=.. glimpses=.. area=.. minimum_altitude=..]")
 
     print("Drone communication:")
-    print("    PHOTO_WITH_TELEMETRY | START_RECORDING | STOP_RECORDING | MOVE")
+    print("    PHOTO_WITH_TELEMETRY | START_RECORDING | STOP_RECORDING | GET_RECORDINGS | MOVE")
 
     print("VLM communication:")
     print("    SEND_TO_VLM | ADD_WARNING")

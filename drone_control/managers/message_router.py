@@ -12,6 +12,7 @@ from drone_control.protocols.inbound import (
     IN_TELEMETRY,
     IN_START_RECORDING,
     IN_STOP_RECORDING,
+    IN_GET_RECORDINGS,
     parse_inbound_message
 )
 from drone_control.protocols.outbound import (
@@ -115,6 +116,35 @@ class MessageRouter:
                     "error": str(exc),
                 }
                 print(f"[RPi] STOP_RECORDING error: {exc}")
+            try:
+                ws.send(json.dumps(ack))
+            except Exception:
+                pass
+            return
+
+        if parsed.kind == IN_GET_RECORDINGS:
+            try:
+                recordings = self.acquisition.list_recordings()
+                ack = {
+                    "type": "ACK",
+                    "of": "RECORDINGS",
+                    "action": IN_GET_RECORDINGS,
+                    "ok": True,
+                    "count": len(recordings),
+                    "recordings": recordings,
+                }
+                print(f"[RPi] GET_RECORDINGS count={len(recordings)}")
+            except Exception as exc:
+                ack = {
+                    "type": "ACK",
+                    "of": "RECORDINGS",
+                    "action": IN_GET_RECORDINGS,
+                    "ok": False,
+                    "error": str(exc),
+                    "count": 0,
+                    "recordings": [],
+                }
+                print(f"[RPi] GET_RECORDINGS error: {exc}")
             try:
                 ws.send(json.dumps(ack))
             except Exception:
