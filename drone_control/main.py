@@ -31,6 +31,8 @@ class DroneControl:
             telemetry_template_path=self.config.telemetry_template,
         )
 
+        self.recording_sensor = RecordingSensor()
+
         # Extension-ready sensors kept available for future wiring.
         self.recording_sensor = RecordingSensor()
 

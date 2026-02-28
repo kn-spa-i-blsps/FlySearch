@@ -2,15 +2,17 @@ import base64
 from typing import Any
 
 from drone_control.protocols.outbound import build_photo_with_telemetry_payload
+from drone_control.sensors import RecordingSensor
 from drone_control.sensors.photo_sensor import PhotoSensor
 from drone_control.sensors.telemetry_sensor import TelemetrySensor
 
 
 class AcquisitionManager:
     """Handles sensor requests and workflows."""
-    def __init__(self, *, photo_sensor: PhotoSensor, telemetry_sensor: TelemetrySensor):
+    def __init__(self, *, photo_sensor: PhotoSensor, telemetry_sensor: TelemetrySensor, recording_sensor: RecordingSensor):
         self.photo_sensor = photo_sensor
         self.telemetry_sensor = telemetry_sensor
+        self.recording_sensor = recording_sensor
 
     def capture_photo_bytes(self) -> bytes:
         return self.photo_sensor.capture_bytes()
@@ -28,3 +30,11 @@ class AcquisitionManager:
 
         telemetry = self.telemetry_sensor.snapshot()
         return build_photo_with_telemetry_payload(photo_base64=photo_base64, telemetry=telemetry)
+
+    def start_recording(self) -> dict[str, Any]:
+        try:
+            recording = self.recording_sensor.start_recording()
+        except Exception as exc:
+            print(f"[RPi] RECORD_VIDEO: recording error: {exc}")
+
+        return recording

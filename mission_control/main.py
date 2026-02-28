@@ -61,6 +61,7 @@ class MissionControl:
             "prompt": lambda _, args: self._handle_prompt_cmd(args),
 
             "photo_with_telemetry": lambda cmd, _: self.drone.send_message(cmd),
+            "record_video": lambda cmd, _: self.drone.send_message(cmd),
             "move": lambda c, a: self.drone.send_command(
                 found=self.mission_context.parsed_response.found,
                 move=self.mission_context.parsed_response.move
@@ -176,6 +177,7 @@ class MissionControl:
         print("\n--- SEARCHING... ---")
         try:
             # Initial prompt.
+            await self.drone.send_message("record_video")
             self.prompt_manager.generate_and_save(kind, kv)
 
             # Init vlm chat.

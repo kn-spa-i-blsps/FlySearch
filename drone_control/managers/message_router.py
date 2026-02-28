@@ -10,6 +10,7 @@ from drone_control.protocols.inbound import (
     IN_PHOTO_WITH_TELEMETRY,
     IN_SEND_PHOTO,
     IN_TELEMETRY,
+    IN_RECORDING,
     parse_inbound_message,
 )
 from drone_control.protocols.outbound import (
@@ -24,8 +25,7 @@ class MessageRouter:
         self,
         *,
         acquisition: AcquisitionManager,
-        command_manager: CommandManager,
-        telemetry_template_path,
+        command_manager: CommandManager
     ):
         self.acquisition = acquisition
         self.command_manager = command_manager
@@ -58,6 +58,11 @@ class MessageRouter:
                 "[RPi] Sent PHOTO_WITH_TELEMETRY "
                 f"(photo={payload.get('photo') is not None}, telem_keys={telem_keys})"
             )
+            return
+
+        if parsed.kind == IN_RECORDING:
+            recording = self.acquisition.start_recording()
+            print("[RPi] Started recording")
             return
 
         if parsed.kind == IN_COMMAND and parsed.json_obj is not None:
