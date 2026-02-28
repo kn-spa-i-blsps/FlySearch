@@ -30,11 +30,18 @@ class DroneControl:
             timeout=self.config.telemetry_timeout
         )
 
-        self.recording_sensor = RecordingSensor()
+        self.recording_sensor = RecordingSensor(
+            video_dir=self.config.video_dir,
+            width=self.config.width,
+            height=self.config.height,
+            quality=self.config.quality,
+            video_device=self.config.video_device
+        )
 
         self.acquisition = AcquisitionManager(
             photo_sensor=self.photo_sensor,
             telemetry_sensor=self.telemetry_sensor,
+            recording_sensor=self.recording_sensor
         )
 
         self.flight_controller = FlightController(
@@ -50,8 +57,7 @@ class DroneControl:
 
         self.router = MessageRouter(
             acquisition=self.acquisition,
-            command_manager=self.command_manager,
-            telemetry_template_path=self.config.telemetry_template,
+            command_manager=self.command_manager
         )
         self.server = ServerBridge(config=self.config, router=self.router)
 

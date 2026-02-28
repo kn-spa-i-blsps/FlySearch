@@ -21,15 +21,13 @@ class RecordingSensor(Sensor):
         width: int = 640,
         height: int = 480,
         quality: int = 90,
-        video_device: str = "/dev/video0",
-        bitrate: int = 10_000_000,
+        video_device: str = "/dev/video0"
     ):
         self.video_dir = Path(video_dir)
         self.width = width
         self.height = height
         self.quality = quality
         self.video_device = video_device
-        self.bitrate = bitrate
         self.video_dir.mkdir(parents=True, exist_ok=True)
         self._recording = False
         self._current_path: Path | None = None
@@ -60,8 +58,7 @@ class RecordingSensor(Sensor):
             started = start_video_recording(
                 destination=destination,
                 width=self.width,
-                height=self.height,
-                bitrate=self.bitrate,
+                height=self.height
             )
         except Exception as exc:
             raise SensorError(f"Recording capture failed: {exc}") from exc
