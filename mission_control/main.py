@@ -61,7 +61,8 @@ class MissionControl:
             "prompt": lambda _, args: self._handle_prompt_cmd(args),
 
             "photo_with_telemetry": lambda cmd, _: self.drone.send_message(cmd),
-            "record_video": lambda cmd, _: self.drone.send_message(cmd),
+            "start_recording": lambda cmd, _: self.drone.send_message(cmd),
+            "stop_recording": lambda cmd, _: self.drone.send_message(cmd),
             "move": lambda c, a: self.drone.send_command(
                 found=self.mission_context.parsed_response.found,
                 move=self.mission_context.parsed_response.move
@@ -177,7 +178,7 @@ class MissionControl:
         print("\n--- SEARCHING... ---")
         try:
             # Initial prompt.
-            await self.drone.send_message("record_video")
+            await self.drone.send_message("start_recording")
             self.prompt_manager.generate_and_save(kind, kv)
 
             # Init vlm chat.
@@ -217,6 +218,7 @@ class MissionControl:
                     moves_performed += 1
                 elif ret == ActionStatus.FOUND:
                     # If found, print the message and end the loop.
+                    await self.drone.send_message("stop_recording")
                     print("FOUND")
         except (DroneError, VLMError, ChatError) as e:
             print(f"[SEARCH FAILED] An error occurred: {e}")
@@ -224,7 +226,7 @@ class MissionControl:
         except Exception as e:
             print(f"[SEARCH FAILED] An unexpected error occurred: {e}")
             print("Aborting search.")
-
+        await self.drone.send_message("stop_recording")
 
     ''' -------------- HELPER METHODS --------------'''
     async def _confirm_send(self, move=None, found=False):

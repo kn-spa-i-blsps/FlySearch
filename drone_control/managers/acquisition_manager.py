@@ -31,10 +31,10 @@ class AcquisitionManager:
         telemetry = self.telemetry_sensor.snapshot()
         return build_photo_with_telemetry_payload(photo_base64=photo_base64, telemetry=telemetry)
 
-    def start_recording(self) -> dict[str, Any]:
-        try:
-            recording = self.recording_sensor.start_recording()
-        except Exception as exc:
-            print(f"[RPi] RECORD_VIDEO: recording error: {exc}")
+    def start_recording(self) -> bool:
+        return self.recording_sensor.start_recording()
 
-        return recording
+    def stop_recording(self) -> bool:
+        return self.recording_sensor.stop_recording()
+
+
