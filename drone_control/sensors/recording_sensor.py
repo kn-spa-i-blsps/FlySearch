@@ -20,12 +20,14 @@ class RecordingSensor(Sensor):
         video_dir: str | Path = "/video",
         width: int = 640,
         height: int = 480,
+        record_fps: int = 30,
         quality: int = 90,
         video_device: str = "/dev/video0"
     ):
         self.video_dir = Path(video_dir)
         self.width = width
         self.height = height
+        self.record_fps = max(1, int(record_fps))
         self.quality = quality
         self.video_device = video_device
         self.video_dir.mkdir(parents=True, exist_ok=True)
@@ -39,8 +41,10 @@ class RecordingSensor(Sensor):
             "implemented": True,
             "video_device": self.video_device,
             "video_dir": str(self.video_dir),
+            "record_fps": self.record_fps,
             "recording": status.get("recording", False),
             "path": status.get("path"),
+            "metadata_path": status.get("metadata_path"),
         }
 
     def start_recording(self) -> dict[str, object]:
@@ -50,7 +54,8 @@ class RecordingSensor(Sensor):
             started = start_video_recording(
                 destination=destination,
                 width=self.width,
-                height=self.height
+                height=self.height,
+                record_fps=self.record_fps,
             )
         except Exception as exc:
             raise SensorError(f"Recording capture failed: {exc}") from exc
@@ -64,7 +69,9 @@ class RecordingSensor(Sensor):
             "ok": bool(started.get("ok", True)),
             "recording": self._recording,
             "path": str(self._current_path) if self._current_path else None,
-            "ref_count": ref_count
+            "ref_count": ref_count,
+            "metadata_path": started.get("metadata_path"),
+            "metadata": started.get("metadata"),
         }
 
     def stop_recording(self) -> dict[str, object]:
@@ -83,6 +90,8 @@ class RecordingSensor(Sensor):
             "recording": self._recording,
             "path": str(self._current_path) if self._current_path else None,
             "ref_count": ref_count,
+            "metadata_path": stopped.get("metadata_path"),
+            "metadata": stopped.get("metadata"),
         }
 
     def status(self) -> dict[str, object]:
@@ -97,4 +106,6 @@ class RecordingSensor(Sensor):
             "recording": self._recording,
             "path": str(self._current_path) if self._current_path else path,
             "ref_count": ref_count,
+            "metadata_path": status.get("metadata_path"),
+            "metadata": status.get("metadata"),
         }

@@ -34,6 +34,7 @@ class DroneControl:
             video_dir=self.config.video_dir,
             width=self.config.width,
             height=self.config.height,
+            record_fps=self.config.record_fps,
             quality=self.config.quality,
             video_device=self.config.video_device
         )

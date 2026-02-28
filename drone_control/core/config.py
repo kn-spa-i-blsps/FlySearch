@@ -14,6 +14,7 @@ class Config:
     quality: int
     video_device: str
     video_dir: str
+    record_fps: int
     commands_dir: Path
     telemetry_template: Path
     mav_device: str
@@ -31,6 +32,7 @@ class Config:
         parser.add_argument("--quality", default=int(os.environ.get("QUALITY", "90")), type=int)
         parser.add_argument("--video_device", default=os.environ.get("VIDEO_DEVICE", "/dev/video0"))
         parser.add_argument("--video_dir", default=os.environ.get("VIDEO_DIR", "/video"))
+        parser.add_argument("--record_fps", default=int(os.environ.get("RECORD_FPS", "30")), type=int)
         parser.add_argument("--commands", default=os.environ.get("COMMANDS_DIR", "/commands"))
         parser.add_argument("--mav_device", default=os.environ.get("MAV_DEVICE", "/dev/ttyAMA0"))
         parser.add_argument("--mav_baud", default=int(os.environ.get("MAV_BAUD", "57600")), type=int)
@@ -48,6 +50,7 @@ class Config:
             quality=args.quality,
             video_device=args.video_device,
             video_dir=args.video_dir,
+            record_fps=args.record_fps,
             commands_dir=Path(args.commands),
             telemetry_template=Path(args.telemetry_template),
             mav_device=args.mav_device,

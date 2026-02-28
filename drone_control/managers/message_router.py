@@ -72,6 +72,8 @@ class MessageRouter:
                     "recording": bool(status.get("recording", False)),
                     "ref_count": int(status.get("ref_count", 0)),
                     "path": status.get("path"),
+                    "metadata_path": status.get("metadata_path"),
+                    "metadata": status.get("metadata"),
                 }
                 print(f"[RPi] START_RECORDING status={status}")
             except Exception as exc:
@@ -100,6 +102,8 @@ class MessageRouter:
                     "recording": bool(status.get("recording", False)),
                     "ref_count": int(status.get("ref_count", 0)),
                     "path": status.get("path"),
+                    "metadata_path": status.get("metadata_path"),
+                    "metadata": status.get("metadata"),
                 }
                 print(f"[RPi] STOP_RECORDING status={status}")
             except Exception as exc:
