@@ -97,7 +97,7 @@ def start_video_recording(
 
     with _CAMERA_LOCK:
         if _CAMERA_STATE["recording"]:
-            print(f"[recording] Already recording: {destination}")
+            print(f"[recording] Already recording: {_CAMERA_STATE["video_path"]}")
             _CAMERA_STATE["ref_count"] += 1
             return {
                 "recording": True,

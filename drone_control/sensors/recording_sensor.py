@@ -69,7 +69,7 @@ class RecordingSensor(Sensor):
         self._recording = bool(stopped.get("recording", False))
         path = stopped.get("path")
         self._current_path = Path(path) if isinstance(path, str) else self._current_path
-        return not self._recording
+        return self._recording
 
     def status(self) -> dict[str, object]:
         status = recording_status()
