@@ -61,8 +61,8 @@ class MissionControl:
             "prompt": lambda _, args: self._handle_prompt_cmd(args),
 
             "photo_with_telemetry": lambda cmd, _: self.drone.send_message(cmd),
-            "start_recording": lambda cmd, _: self.drone.send_message(cmd),
-            "stop_recording": lambda cmd, _: self.drone.send_message(cmd),
+            "start_recording": lambda cmd, _: self.drone.send_recording_command(cmd),
+            "stop_recording": lambda cmd, _: self.drone.send_recording_command(cmd),
             "move": lambda c, a: self.drone.send_command(
                 found=self.mission_context.parsed_response.found,
                 move=self.mission_context.parsed_response.move
@@ -179,7 +179,7 @@ class MissionControl:
         search_started_recording = False
         try:
             # Initial prompt.
-            await self.drone.send_message("start_recording")
+            await self.drone.send_recording_command("start_recording")
             search_started_recording = True
             self.prompt_manager.generate_and_save(kind, kv)
 
@@ -230,7 +230,7 @@ class MissionControl:
         finally:
             if search_started_recording:
                 try:
-                    await self.drone.send_message("stop_recording")
+                    await self.drone.send_recording_command("stop_recording")
                 except DroneError as e:
                     print(f"[WARN] Failed to stop recording: {e}")
 

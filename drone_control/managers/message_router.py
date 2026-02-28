@@ -62,13 +62,67 @@ class MessageRouter:
             return
 
         if parsed.kind == IN_START_RECORDING:
-            self.acquisition.start_recording()
-            print("[RPi] Started recording")
+            try:
+                status = self.acquisition.start_recording()
+                ack = {
+                    "type": "ACK",
+                    "of": "RECORDING",
+                    "action": IN_START_RECORDING,
+                    "ok": bool(status.get("ok", True)),
+                    "recording": bool(status.get("recording", False)),
+                    "ref_count": int(status.get("ref_count", 0)),
+                    "path": status.get("path"),
+                }
+                print(
+                    "[RPi] START_RECORDING "
+                    f"ok={ack['ok']} recording={ack['recording']} "
+                    f"ref_count={ack['ref_count']} path={ack['path']}"
+                )
+            except Exception as exc:
+                ack = {
+                    "type": "ACK",
+                    "of": "RECORDING",
+                    "action": IN_START_RECORDING,
+                    "ok": False,
+                    "error": str(exc),
+                }
+                print(f"[RPi] START_RECORDING error: {exc}")
+            try:
+                ws.send(json.dumps(ack))
+            except Exception:
+                pass
             return
 
         if parsed.kind == IN_STOP_RECORDING:
-            self.acquisition.stop_recording()
-            print("[RPi] Stopped recording")
+            try:
+                status = self.acquisition.stop_recording()
+                ack = {
+                    "type": "ACK",
+                    "of": "RECORDING",
+                    "action": IN_STOP_RECORDING,
+                    "ok": bool(status.get("ok", True)),
+                    "recording": bool(status.get("recording", False)),
+                    "ref_count": int(status.get("ref_count", 0)),
+                    "path": status.get("path"),
+                }
+                print(
+                    "[RPi] STOP_RECORDING "
+                    f"ok={ack['ok']} recording={ack['recording']} "
+                    f"ref_count={ack['ref_count']} path={ack['path']}"
+                )
+            except Exception as exc:
+                ack = {
+                    "type": "ACK",
+                    "of": "RECORDING",
+                    "action": IN_STOP_RECORDING,
+                    "ok": False,
+                    "error": str(exc),
+                }
+                print(f"[RPi] STOP_RECORDING error: {exc}")
+            try:
+                ws.send(json.dumps(ack))
+            except Exception:
+                pass
             return
 
         if parsed.kind == IN_COMMAND and parsed.json_obj is not None:

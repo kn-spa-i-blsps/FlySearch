@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import errno
 import json
 import os
@@ -23,6 +24,7 @@ class DroneBridge:
         self.config = config                    # Configuration variables - dirs, ports, hosts...
         self.mission_context = mission_context  # Place to put where the photo or telemetry is saved.
         self.server = None                      # WebSocket server.
+        self._recording_ack_waiters: Dict[str, asyncio.Future] = {}
 
     ''' ---------- WEBSOCKET LOGIC ---------- '''
     async def start(self):
@@ -127,6 +129,18 @@ class DroneBridge:
                             f"[ACK ← RPi] COMMAND seq={seq} "
                             f"ok={ok} executed={executed} err={err}"
                         )
+                    case {"type": "ACK", "of": "RECORDING", "action": action, "ok": ok, **ack_rest}:
+                        err = ack_rest.get("error")
+                        recording = ack_rest.get("recording")
+                        ref_count = ack_rest.get("ref_count")
+                        path = ack_rest.get("path")
+                        print(
+                            f"[ACK ← RPi] RECORDING action={action} ok={ok} "
+                            f"recording={recording} ref_count={ref_count} path={path} err={err}"
+                        )
+                        waiter = self._recording_ack_waiters.pop(str(action), None)
+                        if waiter is not None and not waiter.done():
+                            waiter.set_result(obj)
 
                     case {"type": "TELEMETRY", "data": data}:
                         await self._handle_telemetry(data)
@@ -147,6 +161,14 @@ class DroneBridge:
 
         finally:
             print("[WS] Client set to None - handler ended.")
+            for action, waiter in list(self._recording_ack_waiters.items()):
+                if not waiter.done():
+                    waiter.set_exception(
+                        DroneConnectionLostError(
+                            f"Connection lost before ACK for {action}."
+                        )
+                    )
+            self._recording_ack_waiters.clear()
             # Always reset the client.
             self.client = None
 
@@ -167,6 +189,40 @@ class DroneBridge:
         except Exception as e:
             print(f"[WS] send failed: {e}")
             raise DroneCommandFailedError(f"Failed to send message '{cmd.upper()}'") from e
+
+    async def send_recording_command(self, cmd: str, timeout_sec: float = 5.0) -> Dict[str, Any]:
+        cmd_upper = cmd.upper()
+        if cmd_upper not in ("START_RECORDING", "STOP_RECORDING"):
+            raise ValueError(f"Unsupported recording command: {cmd}")
+        if self.client is None:
+            raise NoDroneConnectedError("No drone is connected.")
+
+        loop = asyncio.get_running_loop()
+        waiter = loop.create_future()
+        previous = self._recording_ack_waiters.get(cmd_upper)
+        if previous is not None and not previous.done():
+            previous.cancel()
+        self._recording_ack_waiters[cmd_upper] = waiter
+
+        try:
+            await self.send_message(cmd_upper)
+        except Exception:
+            await self._recording_ack_waiters.pop(cmd_upper, None)
+            raise
+
+        try:
+            ack = await asyncio.wait_for(waiter, timeout=timeout_sec)
+        except asyncio.TimeoutError as exc:
+            await self._recording_ack_waiters.pop(cmd_upper, None)
+            raise DroneCommandFailedError(
+                f"Timed out waiting for {cmd_upper} ACK from drone."
+            ) from exc
+
+        if not bool(ack.get("ok", False)):
+            raise DroneCommandFailedError(
+                f"{cmd_upper} failed on drone: {ack.get('error', 'unknown error')}"
+            )
+        return ack
 
     async def send_command(self, *, found: bool = False, move=None):
         """ Send command to the drone.
