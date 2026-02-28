@@ -18,6 +18,7 @@ This repository runs two cooperating apps:
    - OpenAI: `OPEN_AI_KEY`
    - Gemini: `GEMINI_AI_KEY`
 5. Optional (for non-LAN connection): `cloudflared` installed on the laptop.
+6. For server-side video conversion in `PULL_RECORDINGS`: `ffmpeg` available in the server runtime.
 
 ### Step A: prepare environment files
 
@@ -38,6 +39,11 @@ OPEN_AI_KEY=...your_key...
 # MODEL_BACKEND=gemini
 # MODEL_NAME=gemini-2.5-flash
 # GEMINI_AI_KEY=...your_key...
+
+# Recording pull/convert output
+RECORDINGS_DIR=/recordings
+PULL_BATCH_SIZE=2
+PULL_CHUNK_BYTES=524288
 ```
 
 Edit `docker/.env` on the RPi (producer side):
@@ -46,6 +52,7 @@ Edit `docker/.env` on the RPi (producer side):
 SERVER_URL=ws://<LAPTOP_IP>:8080
 MAV_DEVICE=/dev/ttyAMA0
 VIDEO_DEVICE=/dev/video0
+RECORD_FPS=30
 ```
 
 If you use Cloudflare Tunnel, set `SERVER_URL` to `wss://...` (see Step D).
@@ -55,15 +62,13 @@ If you use Cloudflare Tunnel, set `SERVER_URL` to `wss://...` (see Step D).
 Laptop:
 
 ```bash
-cd docker
-docker compose --profile server build server
+docker build -t flysearch:latest .
 ```
 
 RPi:
 
 ```bash
-cd docker
-docker compose --profile producer build producer
+docker build -t flysearch:latest .
 ```
 
 ### Step C: start mission server on laptop
@@ -87,7 +92,7 @@ In a second laptop terminal:
 cloudflared tunnel --url http://localhost:8080/
 ```
 
-If Cloudflare prints a URL like `https://xyz.trycloudflare.com`, set on RPi:
+If Cloudflare prints a URL like `https://xyz.trycloudflare.com`, set on RPi (in .env):
 
 ```dotenv
 SERVER_URL=wss://xyz.trycloudflare.com
@@ -157,6 +162,10 @@ The `SEARCH` flow already implements the full FlySearch loop:
 PROMPT FS-1 object=helipad glimpses=6 area=80 minimum_altitude=10
 CHAT_INIT
 PHOTO_WITH_TELEMETRY
+START_RECORDING
+STOP_RECORDING
+GET_RECORDINGS
+PULL_RECORDINGS video_20260228_120000.h264 video_20260228_121500.h264
 SEND_TO_VLM
 MOVE
 CHAT_SAVE <name>
@@ -172,4 +181,23 @@ Notes:
    - `uploads/` (images),
    - `telemetry/` (telemetry JSON),
    - `saved_chats/` (chat history),
-   - `prompts/` (prompt text + metadata).
+   - `prompts/` (prompt text + metadata),
+   - `recordings/raw/` (pulled `.h264`),
+   - `recordings/meta/` (pulled recording metadata),
+   - `recordings/mp4/` (converted `.mp4`).
+
+## 3. Retrieve and convert recordings
+
+Use these commands in `mission_control` CLI:
+
+```text
+GET_RECORDINGS
+PULL_RECORDINGS <name1.h264> [name2.h264 ...]
+```
+
+Behavior:
+
+1. `GET_RECORDINGS` asks the RPi for available `.h264` files in `VIDEO_DIR`.
+2. `PULL_RECORDINGS` streams selected files from RPi to server in chunks (batched).
+3. Server saves pulled raw files and metadata, then converts to `.mp4` using `record_fps` from metadata (fallback: `RECORD_FPS`).
+4. Conversion runs on server side, while RPi keeps original `.h264` files.
