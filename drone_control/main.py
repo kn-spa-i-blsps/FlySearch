@@ -62,8 +62,39 @@ class DroneControl:
         self.server = ServerBridge(config=self.config, router=self.router)
 
     def run(self) -> None:
-        self.server.run()
+        try:
+            self.server.run()
+        finally:
+            # Always finalize camera recording on graceful shutdown paths.
+            self._drain_recording_sessions()
 
+    def _drain_recording_sessions(self) -> None:
+        """
+        Force-stop recording at process shutdown.
+
+        Ref-counted recording may have multiple active "owners"
+        (e.g., manual start + SEARCH), so drain until fully stopped.
+        """
+        try:
+            status = self.recording_sensor.status()
+        except Exception as exc:
+            print(f"[RPi] Recording shutdown status check failed: {exc}")
+            return
+
+        max_attempts = 64
+        attempts = 0
+        while bool(status.get("recording")) and attempts < max_attempts:
+            attempts += 1
+            try:
+                status = self.acquisition.stop_recording()
+            except Exception as exc:
+                print(f"[RPi] Recording shutdown stop failed: {exc}")
+                return
+
+        if bool(status.get("recording")):
+            print("[RPi] Recording may still be active after shutdown cleanup attempts.")
+        else:
+            print("[RPi] Recording cleanup complete.")
 
 def build_server(argv: list[str] | None = None) -> ServerBridge:
     # Compatibility wrapper for existing imports.
