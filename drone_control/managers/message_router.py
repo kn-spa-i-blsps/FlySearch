@@ -73,11 +73,7 @@ class MessageRouter:
                     "ref_count": int(status.get("ref_count", 0)),
                     "path": status.get("path"),
                 }
-                print(
-                    "[RPi] START_RECORDING "
-                    f"ok={ack['ok']} recording={ack['recording']} "
-                    f"ref_count={ack['ref_count']} path={ack['path']}"
-                )
+                print(f"[RPi] START_RECORDING status={status}")
             except Exception as exc:
                 ack = {
                     "type": "ACK",
@@ -105,11 +101,7 @@ class MessageRouter:
                     "ref_count": int(status.get("ref_count", 0)),
                     "path": status.get("path"),
                 }
-                print(
-                    "[RPi] STOP_RECORDING "
-                    f"ok={ack['ok']} recording={ack['recording']} "
-                    f"ref_count={ack['ref_count']} path={ack['path']}"
-                )
+                print(f"[RPi] STOP_RECORDING status={status}")
             except Exception as exc:
                 ack = {
                     "type": "ACK",
