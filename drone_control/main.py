@@ -27,13 +27,9 @@ class DroneControl:
         self.telemetry_sensor = TelemetrySensor(
             mav_device=self.config.mav_device,
             mav_baud=self.config.mav_baud,
-            timeout=self.config.telemetry_timeout,
-            telemetry_template_path=self.config.telemetry_template,
+            timeout=self.config.telemetry_timeout
         )
 
-        self.recording_sensor = RecordingSensor()
-
-        # Extension-ready sensors kept available for future wiring.
         self.recording_sensor = RecordingSensor()
 
         self.acquisition = AcquisitionManager(

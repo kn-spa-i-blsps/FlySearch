@@ -10,8 +10,9 @@ from drone_control.protocols.inbound import (
     IN_PHOTO_WITH_TELEMETRY,
     IN_SEND_PHOTO,
     IN_TELEMETRY,
-    IN_RECORDING,
-    parse_inbound_message,
+    IN_START_RECORDING,
+    IN_STOP_RECORDING,
+    parse_inbound_message
 )
 from drone_control.protocols.outbound import (
     build_telemetry_payload,
@@ -60,7 +61,7 @@ class MessageRouter:
             )
             return
 
-        if parsed.kind == IN_RECORDING:
+        if parsed.kind == IN_START_RECORDING:
             recording = self.acquisition.start_recording()
             print("[RPi] Started recording")
             return

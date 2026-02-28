@@ -134,3 +134,34 @@ def capture_photo(
         print(f"Image saved at: {destination} (fswebcam)")
     except FileNotFoundError as exc:
         raise RuntimeError("[capture] ERROR: fswebcam not found. Install: sudo apt install fswebcam") from exc
+
+
+def capture_video(
+    *,
+    destination: Path,
+    width: int,
+    height: int,
+    quality: int,
+    video_device: str,
+) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        from picamera2 import Picamera2
+        from picamera2.encoders import H264Encoder
+        from picamera2.outputs import PyavOutput, FileOutput
+        cam = None
+        encoder = H264Encoder(bitrate=10000000)
+        output = FileOutput(str(destination))
+        try:
+            cam = Picamera2()
+            cfg = cam.create_video_configuration(
+                main={"size": (640, 480), "format": "RGB888"},
+                lores={"size": (480, 480), "format": "RGB888"},
+                buffer_count=2,
+                queue=False
+            )
+            cam.configure(cfg)
+            cam.start()
+            cam.start_recording(encoder, output)
+
+
