@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-cffi \
     fswebcam \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Raspberry Pi camera stack (libcamera / Picamera2) comes from the Raspberry Pi APT repo and is only available on ARM.
