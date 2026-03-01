@@ -27,16 +27,22 @@ class DroneControl:
         self.telemetry_sensor = TelemetrySensor(
             mav_device=self.config.mav_device,
             mav_baud=self.config.mav_baud,
-            timeout=self.config.telemetry_timeout,
-            telemetry_template_path=self.config.telemetry_template,
+            timeout=self.config.telemetry_timeout
         )
 
-        # Extension-ready sensors kept available for future wiring.
-        self.recording_sensor = RecordingSensor()
+        self.recording_sensor = RecordingSensor(
+            video_dir=self.config.video_dir,
+            width=self.config.width,
+            height=self.config.height,
+            record_fps=self.config.record_fps,
+            quality=self.config.quality,
+            video_device=self.config.video_device
+        )
 
         self.acquisition = AcquisitionManager(
             photo_sensor=self.photo_sensor,
             telemetry_sensor=self.telemetry_sensor,
+            recording_sensor=self.recording_sensor
         )
 
         self.flight_controller = FlightController(
@@ -52,14 +58,44 @@ class DroneControl:
 
         self.router = MessageRouter(
             acquisition=self.acquisition,
-            command_manager=self.command_manager,
-            telemetry_template_path=self.config.telemetry_template,
+            command_manager=self.command_manager
         )
         self.server = ServerBridge(config=self.config, router=self.router)
 
     def run(self) -> None:
-        self.server.run()
+        try:
+            self.server.run()
+        finally:
+            # Always finalize camera recording on graceful shutdown paths.
+            self._drain_recording_sessions()
 
+    def _drain_recording_sessions(self) -> None:
+        """
+        Force-stop recording at process shutdown.
+
+        Ref-counted recording may have multiple active "owners"
+        (e.g., manual start + SEARCH), so drain until fully stopped.
+        """
+        try:
+            status = self.recording_sensor.status()
+        except Exception as exc:
+            print(f"[RPi] Recording shutdown status check failed: {exc}")
+            return
+
+        max_attempts = 64
+        attempts = 0
+        while bool(status.get("recording")) and attempts < max_attempts:
+            attempts += 1
+            try:
+                status = self.acquisition.stop_recording()
+            except Exception as exc:
+                print(f"[RPi] Recording shutdown stop failed: {exc}")
+                return
+
+        if bool(status.get("recording")):
+            print("[RPi] Recording may still be active after shutdown cleanup attempts.")
+        else:
+            print("[RPi] Recording cleanup complete.")
 
 def build_server(argv: list[str] | None = None) -> ServerBridge:
     # Compatibility wrapper for existing imports.

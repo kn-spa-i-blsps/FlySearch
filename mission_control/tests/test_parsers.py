@@ -49,9 +49,9 @@ class TestParsers(unittest.TestCase):
 
     def test_parse_prompt_arguments_success(self):
         """Test successful parsing of prompt arguments."""
-        kind, kv = parse_prompt_arguments("FS-1 object=helipad area=100")
+        kind, kv = parse_prompt_arguments("FS-1 object=helipad area=100 minimum_altitude=12")
         self.assertEqual(kind, "FS-1")
-        self.assertEqual(kv, {"object": "helipad", "area": 100})
+        self.assertEqual(kv, {"object": "helipad", "area": 100, "minimum_altitude": "12"})
 
     def test_parse_prompt_arguments_no_kv(self):
         """Test parsing prompt arguments with no key-value pairs."""
@@ -71,10 +71,12 @@ class TestParsers(unittest.TestCase):
 
     def test_parse_search_arguments_success(self):
         """Test successful parsing of search arguments."""
-        name, kind, kv = parse_search_arguments("test_search FS-2 object=car glimpses=5")
+        name, kind, kv = parse_search_arguments(
+            "test_search FS-2 object=car glimpses=5 minimum_altitude=15"
+        )
         self.assertEqual(name, "TEST_SEARCH")
         self.assertEqual(kind, "FS-2")
-        self.assertEqual(kv, {"object": "car", "glimpses": 5})
+        self.assertEqual(kv, {"object": "car", "glimpses": 5, "minimum_altitude": "15"})
 
     def test_parse_search_arguments_invalid(self):
         """Test that parsing invalid search arguments raises ValueError."""

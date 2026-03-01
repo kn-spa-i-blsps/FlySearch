@@ -14,25 +14,29 @@ class TestPromptManager(unittest.TestCase):
 
     def test_generate_fs1_prompt(self):
         """Test that FS-1 prompt is generated correctly."""
-        kv = {'object': 'landing pad', 'glimpses': '5', 'area': '100'}
+        kv = {'object': 'landing pad', 'glimpses': '5', 'area': '100', 'minimum_altitude': '15'}
         prompt_meta = self.prompt_manager._generate_prompt('FS-1', kv)
         self.assertEqual(prompt_meta['kind'], 'FS-1')
         self.assertIn('landing pad', prompt_meta['text'])
         self.assertIn('5', prompt_meta['text'])
         self.assertIn('100', prompt_meta['text'])
+        self.assertIn('below the altitude of 15', prompt_meta['text'])
         self.assertEqual(prompt_meta['object'], 'landing pad')
         self.assertEqual(prompt_meta['glimpses'], 5)
         self.assertEqual(prompt_meta['area'], 100)
+        self.assertEqual(prompt_meta['minimum_altitude'], 15)
 
     def test_generate_fs2_prompt(self):
         """Test that FS-2 prompt is generated correctly."""
-        kv = {'object': 'red car', 'glimpses': '10'}
+        kv = {'object': 'red car', 'glimpses': '10', 'minimum_altitude': '20'}
         prompt_meta = self.prompt_manager._generate_prompt('FS-2', kv)
         self.assertEqual(prompt_meta['kind'], 'FS-2')
         self.assertIn('red car', prompt_meta['text'])
         self.assertIn('10', prompt_meta['text'])
+        self.assertIn('below the altitude of 20', prompt_meta['text'])
         self.assertEqual(prompt_meta['object'], 'red car')
         self.assertEqual(prompt_meta['glimpses'], 10)
+        self.assertEqual(prompt_meta['minimum_altitude'], 20)
 
     def test_generate_prompt_with_defaults(self):
         """Test that prompt generation uses default values."""
@@ -41,6 +45,7 @@ class TestPromptManager(unittest.TestCase):
         self.assertEqual(prompt_meta['object'], 'helipad')
         self.assertEqual(prompt_meta['glimpses'], 6)
         self.assertEqual(prompt_meta['area'], 80)
+        self.assertEqual(prompt_meta['minimum_altitude'], 10)
 
     def test_generate_prompt_invalid_kind_raises_error(self):
         """Test that generating a prompt with an invalid kind raises an error."""
@@ -62,7 +67,8 @@ class TestPromptManager(unittest.TestCase):
             'text': 'This is a test prompt.',
             'object': 'test_object',
             'glimpses': 3,
-            'area': 50
+            'area': 50,
+            'minimum_altitude': 10
         }
         
         saved_paths = self.prompt_manager._save_prompt(prompt_meta)
@@ -83,6 +89,7 @@ class TestPromptManager(unittest.TestCase):
             'object': 'test_object',
             'glimpses': 3,
             'area': 50,
+            'minimum_altitude': 10,
             'saved_at': '20230101_120000'
         }
         mock_json_dump.assert_called_with(meta_to_save, mock_file_open(), ensure_ascii=False, indent=2)
