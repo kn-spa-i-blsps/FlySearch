@@ -16,6 +16,8 @@ class Config:
 
         # Maximum size of the message.
         self.max_ws_mb = int(os.environ.get("MAX_WS_MB", "25"))
+        self.ws_ping_interval = self._optional_float_env("WS_PING_INTERVAL", 20.0)
+        self.ws_ping_timeout = self._optional_float_env("WS_PING_TIMEOUT", None)
 
         # Directories to save the output.
         self.chats_dir = Path(os.environ.get("CHATS_DIR", "saved_chats"))
@@ -42,3 +44,13 @@ class Config:
         # here just to remember to add it to environ.
         self.gemini_api_key = os.environ.get("GEMINI_AI_KEY", None)
         self.gpt_api_key = os.environ.get("OPEN_AI_KEY", None)
+
+    @staticmethod
+    def _optional_float_env(name: str, default: float | None) -> float | None:
+        raw = os.environ.get(name, None)
+        if raw is None:
+            return default
+        text = str(raw).strip().lower()
+        if text in ("", "none", "null", "off"):
+            return None
+        return float(text)

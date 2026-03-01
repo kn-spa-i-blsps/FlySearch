@@ -42,11 +42,21 @@ class DroneBridge:
 
         # Open WebSocket server.
         try:
+            serve_kwargs: dict[str, Any] = {
+                "max_size": self.config.max_ws_mb * 1024 * 1024,
+            }
+            cfg_dict = getattr(self.config, "__dict__", {})
+            ping_interval = cfg_dict.get("ws_ping_interval", None) if isinstance(cfg_dict, dict) else None
+            ping_timeout = cfg_dict.get("ws_ping_timeout", None) if isinstance(cfg_dict, dict) else None
+            if ping_interval is not None or ping_timeout is not None:
+                serve_kwargs["ping_interval"] = ping_interval
+                serve_kwargs["ping_timeout"] = ping_timeout
+
             self.server = await websockets.serve(
                 self.handler,
                 self.config.host,
                 self.config.port,
-                max_size=self.config.max_ws_mb * 1024 * 1024
+                **serve_kwargs,
             )
             print("[WS] Server is running and listening for connections.")
 

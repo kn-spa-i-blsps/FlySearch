@@ -52,6 +52,8 @@ services:
         WS_PORT: "${WS_PORT:-8080}"
         UPLOAD_DIR: "${UPLOAD_DIR:-/app/uploads}"
         MAX_WS_MB: "${MAX_WS_MB:-25}"
+        WS_PING_INTERVAL: "${WS_PING_INTERVAL:-20}"
+        WS_PING_TIMEOUT: "${WS_PING_TIMEOUT:-none}"
         FOV_ANGLE: "${FOV_ANGLE:-90}"
         OPEN_AI_KEY: "${OPEN_AI_KEY}"
         GEMINI_AI_KEY: "${GEMINI_AI_KEY}"

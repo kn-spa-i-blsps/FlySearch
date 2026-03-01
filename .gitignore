@@ -4,6 +4,7 @@ prompts/
 comments/
 telemetry/
 saved_chats/
+recordings/
 __pycache__/
 mission_control/prompt_generation/__pycache__/
 vlm_raw/
