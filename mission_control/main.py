@@ -228,6 +228,8 @@ class MissionControl:
                 elif ret == ActionStatus.FOUND:
                     # If found, print the message and end the loop.
                     print("FOUND")
+
+                await self.web_server.broadcast_state(custom_status="Search process ended.")
         except (DroneError, VLMError, ChatError) as e:
             print(f"[SEARCH FAILED] An error occurred: {e}")
             print("Aborting search.")
@@ -242,6 +244,7 @@ class MissionControl:
                     await self.drone.send_recording_command("stop_recording")
                 except DroneError as e:
                     print(f"[WARN] Failed to stop recording: {e}")
+            await self.chat_manager.reset_session()
 
     ''' -------------- HELPER METHODS --------------'''
 
