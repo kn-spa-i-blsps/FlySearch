@@ -16,7 +16,9 @@ def parse_telemetry(path):
         telemetry = json.load(f)
 
     telemetry_data = telemetry.get("data", {})
-    height = telemetry_data.get("position", {}).get("alt", 10)
+    height = telemetry_data.get("position", {}).get("alt")
+    if height is None:
+        height = 10
     return [f"Your current altitude is {height} meters above ground level.", height]
 
 def parse_prompt_arguments(cmd):
@@ -27,7 +29,7 @@ def parse_prompt_arguments(cmd):
 
     parts = cmd.split()
     if len(parts) < 1:
-        print("Usage: PROMPT FS-1|FS-2 [object=.. glimpses=.. area=..]")
+        print("Usage: PROMPT FS-1|FS-2 [object=.. glimpses=.. area=.. minimum_altitude=..]")
         raise ValueError
     kind = parts[0].upper()
     if kind not in ("FS-1", "FS-2"):
@@ -41,6 +43,7 @@ def parse_prompt_arguments(cmd):
             kv[k.strip().lower()] = v.strip()
     _coerce_positive_int(kv, "glimpses")
     _coerce_positive_int(kv, "area")
+    _coerce_positive_int(kv, "minimum_altitude")
     return kind, kv
 
 def parse_search_arguments(cmd):
@@ -50,8 +53,8 @@ def parse_search_arguments(cmd):
     """
 
     parts = cmd.split()
-    if len(parts) not in [4, 5]:
-        print("Usage: SEARCH <NAME> <FS-1|FS-2> [object=.. glimpses=.. area=..]")
+    if len(parts) not in [5, 6]:
+        print("Usage: SEARCH <NAME> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=..]")
         raise ValueError
     name = parts[0].upper()
     kind = parts[1].upper()
@@ -70,6 +73,7 @@ def parse_search_arguments(cmd):
 
     _coerce_positive_int(kv, "glimpses")
     _coerce_positive_int(kv, "area")
+    _coerce_positive_int(kv, "minimum_altitude")
     return name, kind, kv
 
 

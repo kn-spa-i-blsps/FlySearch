@@ -26,9 +26,9 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         mock_parse_telemetry.return_value = ('telemetry_text', 100)
         mock_add_grid.return_value = 'gridded_image'
         
-        mock_response = Mock()
-        mock_response.text = '<response><move>forward</move></response>'
-        self.mission_context.conversation.get_latest_message.return_value = mock_response
+        self.mission_context.conversation.get_latest_message.return_value = (
+            "assistant", "<response><move>forward</move></response>"
+        )
         
         mock_parse_xml_response.return_value = {'move': 'forward'}
 
@@ -38,6 +38,7 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         # Assert
         self.mission_context.conversation.add_image_message.assert_called_with('gridded_image')
         self.mission_context.conversation.add_text_message.assert_called_with('telemetry_text')
+        self.mission_context.conversation.begin_transaction.assert_called_once()
         self.mission_context.conversation.commit_transaction.assert_called_with(send_to_vlm=True)
         mock_parse_xml_response.assert_called_with('<response><move>forward</move></response>')
         self.assertEqual(self.mission_context.parsed_response, {'move': 'forward'})
@@ -54,9 +55,9 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         mock_parse_telemetry.return_value = ('telemetry_text', 100)
         mock_add_grid.return_value = 'gridded_image'
         
-        mock_response = Mock()
-        mock_response.text = '<response><move>left</move></response>'
-        self.mission_context.conversation.get_latest_message.return_value = mock_response
+        self.mission_context.conversation.get_latest_message.return_value = (
+            "assistant", "<response><move>left</move></response>"
+        )
         
         mock_parse_xml_response.return_value = {'move': 'left'}
         
@@ -71,6 +72,30 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         self.mission_context.conversation.add_text_message.assert_has_calls(expected_calls)
         self.mission_context.conversation.add_image_message.assert_called_with('gridded_image')
         self.assertEqual(self.mission_context.parsed_response, {'move': 'left'})
+
+    @patch('mission_control.bridges.vlm_bridge.parse_xml_response')
+    @patch('mission_control.bridges.vlm_bridge.add_grid')
+    @patch('mission_control.bridges.vlm_bridge.parse_telemetry')
+    async def test_send_to_vlm_works_if_transaction_already_started(self, mock_parse_telemetry, mock_add_grid, mock_parse_xml_response):
+        # Arrange
+        self.mission_context.conversation = MagicMock()
+        self.mission_context.last_photo_path_cache = 'dummy_photo.jpg'
+        self.mission_context.last_telemetry_path_cache = 'dummy_telemetry.json'
+
+        mock_parse_telemetry.return_value = ('telemetry_text', 100)
+        mock_add_grid.return_value = 'gridded_image'
+        mock_parse_xml_response.return_value = {'move': 'forward'}
+        self.mission_context.conversation.begin_transaction.side_effect = Exception("Transaction already started")
+        self.mission_context.conversation.get_latest_message.return_value = (
+            "assistant", "<response><move>forward</move></response>"
+        )
+
+        # Act
+        await self.bridge.send_to_vlm()
+
+        # Assert
+        self.mission_context.conversation.commit_transaction.assert_called_once_with(send_to_vlm=True)
+        self.assertEqual(self.mission_context.parsed_response, {'move': 'forward'})
 
     async def test_send_to_vlm_no_conversation_raises_error(self):
         # Arrange
@@ -104,9 +129,9 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         mock_parse_telemetry.return_value = ('telemetry_text', 100)
         mock_add_grid.return_value = 'gridded_image'
         
-        mock_response = Mock()
-        mock_response.text = 'invalid_xml'
-        self.mission_context.conversation.get_latest_message.return_value = mock_response
+        self.mission_context.conversation.get_latest_message.return_value = (
+            "assistant", "invalid_xml"
+        )
         
         mock_parse_xml_response.side_effect = ParsingError("Invalid XML")
 
