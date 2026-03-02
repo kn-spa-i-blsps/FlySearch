@@ -227,9 +227,10 @@ class MissionControl:
                     moves_performed += 1
                 elif ret == ActionStatus.FOUND:
                     # If found, print the message and end the loop.
+                    await self.web_server.broadcast_state(custom_status="FOUND.")
                     print("FOUND")
 
-                await self.web_server.broadcast_state(custom_status="Search process ended.")
+            await self.web_server.broadcast_state(custom_status="Search process ended.")
         except (DroneError, VLMError, ChatError) as e:
             print(f"[SEARCH FAILED] An error occurred: {e}")
             print("Aborting search.")
