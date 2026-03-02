@@ -68,7 +68,9 @@ services:
         RECORD_FPS: "${RECORD_FPS:-30}"
     tty: true
     stdin_open: true
-    ports: ["8080:8080"]
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8000:8000"
     profiles: ["server"]
     
   # drone / RPi hardware for actual workflow

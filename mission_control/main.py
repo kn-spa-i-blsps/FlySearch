@@ -18,9 +18,6 @@ from mission_control.utils.parsers import parse_prompt_arguments, parse_search_a
 from mission_control.web_server import WebServer
 
 
-# FUTURE:
-#  - simple html showing photo, reasoning, and proposed move with few options to choose for the user.
-
 class MissionControl:
     def __init__(self):
         self.config = Config()                      # Configuration variables - dirs, ports, hosts...

@@ -259,7 +259,7 @@ class WebServer:
         for ws in self.connected_websockets:
             await ws.send_json(state)
 
-    async def serve(self, host="127.0.0.1", port=8000):
+    async def serve(self, host="0.0.0.0", port=8000):
         """ Starts Uvicorn server in the background."""
         config = uvicorn.Config(self.app, host=host, port=port, log_level="warning")
         self.server = uvicorn.Server(config)
