@@ -1,10 +1,10 @@
-uploads/
 docker/.env
-prompts/
 comments/
-telemetry/
-saved_chats/
+prompts/
 recordings/
+saved_chats/
+telemetry/
+uploads/
 __pycache__/
 mission_control/prompt_generation/__pycache__/
 vlm_raw/
