@@ -6,6 +6,9 @@ import errno
 import asyncio
 import base64
 
+from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
+from websockets.frames import Close
+
 from mission_control.bridges.drone_bridge import DroneBridge
 from mission_control.core.exceptions import NoDroneConnectedError, DroneCommandFailedError, DroneInvalidDataError, \
     DroneAlreadyConnectedError
@@ -110,6 +113,49 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         mock_handle_binary_photo.assert_called_once_with(mock_ws, b'binary_image_data')
         mock_handle_telemetry.assert_called_once_with({"alt": 10})
         mock_handle_telemetry_photo.assert_called_once_with(mock_ws, "base64...", {})
+
+    @patch("builtins.print")
+    async def test_handler_graceful_disconnect_does_not_raise(self, mock_print):
+        """Test graceful close is logged without raising an exception from handler."""
+        close = Close(1001, "RPi shutdown (Ctrl+C)")
+        closed_ok = ConnectionClosedOK(close, close, True)
+
+        class ClosingWS:
+            remote_address = ("127.0.0.1", 12345)
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise closed_ok
+
+        await self.drone_bridge.handler(ClosingWS())
+
+        printed = "\n".join(" ".join(map(str, c.args)) for c in mock_print.call_args_list)
+        self.assertIn("[WS] disconnected gracefully:", printed)
+        self.assertIn("code=1001", printed)
+        self.assertIsNone(self.drone_bridge.client)
+
+    @patch("builtins.print")
+    async def test_handler_broken_disconnect_does_not_raise(self, mock_print):
+        """Test abnormal close is logged without raising an exception from handler."""
+        closed_error = ConnectionClosedError(None, None, None)
+
+        class BrokenWS:
+            remote_address = ("127.0.0.1", 12345)
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise closed_error
+
+        await self.drone_bridge.handler(BrokenWS())
+
+        printed = "\n".join(" ".join(map(str, c.args)) for c in mock_print.call_args_list)
+        self.assertIn("[WS] connection broken:", printed)
+        self.assertIn("code=1006", printed)
+        self.assertIsNone(self.drone_bridge.client)
 
     @patch("builtins.print")
     async def test_handler_ack_without_error_field_is_accepted(self, mock_print):

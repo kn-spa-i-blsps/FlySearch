@@ -195,9 +195,15 @@ class DroneBridge:
                     case _:
                         print(f"[WS] message not matching any case.")
 
+        except websockets.ConnectionClosedOK as e:
+            print(f"[WS] disconnected gracefully: {peer}. {self._format_disconnect_reason(e)}")
+
+        except websockets.ConnectionClosedError as e:
+            print(f"[WS] connection broken: {peer}. {self._format_disconnect_reason(e)}")
+
         except websockets.ConnectionClosed as e:
-            print(f"[WS] disconnected: {peer}.")
-            raise DroneConnectionLostError(f"Connection with drone at {peer} lost.") from e
+            # Fallback for any unexpected ConnectionClosed subtype.
+            print(f"[WS] disconnected: {peer}. {self._format_disconnect_reason(e)}")
 
         except Exception as e:
             print(f"[WS] error: {e}.")
@@ -238,6 +244,31 @@ class DroneBridge:
             self._pull_transfers.clear()
             # Always reset the client.
             self.client = None
+
+    @staticmethod
+    def _format_disconnect_reason(exc: websockets.ConnectionClosed) -> str:
+        code = None
+        reason = ""
+
+        rcvd = getattr(exc, "rcvd", None)
+        sent = getattr(exc, "sent", None)
+        if rcvd is not None:
+            code = getattr(rcvd, "code", None)
+            reason = (getattr(rcvd, "reason", "") or "").strip()
+        elif sent is not None:
+            code = getattr(sent, "code", None)
+            reason = (getattr(sent, "reason", "") or "").strip()
+        elif isinstance(exc, websockets.ConnectionClosedError):
+            # No close frame exchanged.
+            code = 1006
+
+        details = str(exc)
+
+        if code is None:
+            return f"details={details}"
+        if reason:
+            return f"code={code}, reason={reason}, details={details}"
+        return f"code={code}, details={details}"
 
     ''' ---------- AVAILABLE COMMANDS ---------- '''
     async def send_message(self, cmd):
