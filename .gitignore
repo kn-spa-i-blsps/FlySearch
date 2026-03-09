@@ -5,6 +5,9 @@ recordings/
 saved_chats/
 telemetry/
 uploads/
+commands/
+img/
+video/
 __pycache__/
 mission_control/prompt_generation/__pycache__/
 vlm_raw/
