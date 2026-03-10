@@ -16,3 +16,5 @@ class MissionContext:
     last_prompt_text_cache = None       # PromptManager
 
     photo_received_event: asyncio.Event = None
+
+    current_decision_future = None # Future for decision-making.

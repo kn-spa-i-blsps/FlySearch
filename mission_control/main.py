@@ -2,6 +2,7 @@ import asyncio
 import signal
 from typing import Dict, Callable, Awaitable
 
+import uvicorn
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 
@@ -14,10 +15,8 @@ from mission_control.core.mission_context import MissionContext
 from mission_control.managers.chat_manager import ChatSessionManager
 from mission_control.managers.prompt_manager import PromptManager
 from mission_control.utils.parsers import parse_prompt_arguments, parse_search_arguments
+from mission_control.web_server import WebServer
 
-
-# FUTURE:
-#  - simple html showing photo, reasoning, and proposed move with few options to choose for the user.
 
 class MissionControl:
     def __init__(self):
@@ -47,6 +46,8 @@ class MissionControl:
             self.config,
             self.mission_context
         )
+
+        self.web_server = WebServer(self.mission_context)           # GUI
 
         # Dispatcher - maps command name with proper function/method.
         self.commands: Dict[str, Callable[[str, str], Awaitable[None]]] = {
@@ -101,15 +102,19 @@ class MissionControl:
             print("[Mission Control] CRITICAL: Failed to start drone bridge. Exiting.")
             return
 
-        # Start those two method concurrently.
-        repl_task = asyncio.create_task(self.stdin_repl()) # CLI
-        stop_task = asyncio.create_task(self.stop.wait()) # signal handler
+        # CLI
+        repl_task = asyncio.create_task(self.stdin_repl())
+        # WEB GUI
+        web_task = asyncio.create_task(self.web_server.serve())
+        # Stop signal
+        stop_task = asyncio.create_task(self.stop.wait())
 
-        # Wait for the first one to complete.
         done, pending = await asyncio.wait(
-            [repl_task, stop_task],
+            [repl_task, web_task, stop_task],
             return_when=asyncio.FIRST_COMPLETED
         )
+
+        self.web_server.request_stop()
 
         # Cancel those which haven't completed yet.
         for task in pending:
@@ -177,6 +182,9 @@ class MissionControl:
         print("\n--- SEARCHING... ---")
         search_started_recording = False
         try:
+
+            await self.web_server.broadcast_state(custom_status="Search in progress... Initializing VLM.")
+
             # Initial prompt.
             await self.drone.send_recording_command("start_recording")
             search_started_recording = True
@@ -219,21 +227,28 @@ class MissionControl:
                     moves_performed += 1
                 elif ret == ActionStatus.FOUND:
                     # If found, print the message and end the loop.
+                    await self.web_server.broadcast_state(custom_status="FOUND.")
                     print("FOUND")
+
+            await self.web_server.broadcast_state(custom_status="Search process ended.")
         except (DroneError, VLMError, ChatError) as e:
             print(f"[SEARCH FAILED] An error occurred: {e}")
             print("Aborting search.")
+            await self.web_server.broadcast_state(custom_status=e)
         except Exception as e:
             print(f"[SEARCH FAILED] An unexpected error occurred: {e}")
             print("Aborting search.")
+            await self.web_server.broadcast_state(custom_status=e)
         finally:
             if search_started_recording:
                 try:
                     await self.drone.send_recording_command("stop_recording")
                 except DroneError as e:
                     print(f"[WARN] Failed to stop recording: {e}")
+            await self.chat_manager.reset_session()
 
     ''' -------------- HELPER METHODS --------------'''
+
     async def _confirm_send(self, move=None, found=False):
         print("\n--- COMMAND PREVIEW ---")
         if found:
@@ -242,21 +257,47 @@ class MissionControl:
         elif move:
             x, y, z = move
             print(f"MOVE: (x={x}, y={y}, z={z})")
-        print("Press Enter to send, or type 'no' to cancel,"
-              " or 'w' to warn vlm (continue search, stop this move.")
+        print("Press Enter to send, or type 'no' to cancel, or 'w' to warn vlm.")
 
-        while True:
-            try:
-                ans = await self.cli.prompt_async("> ")
-            except (EOFError, KeyboardInterrupt):
-                ans = "no"
+        # Prepare future variable.
+        loop = asyncio.get_running_loop()
+        self.mission_context.current_decision_future = loop.create_future()
 
-            if ans.strip().lower() in ("", "y", "yes"):
-                return ActionStatus.CONFIRMED
-            elif ans.strip().lower() in ("w", "warning", "warn"):
-                return ActionStatus.WARNING
-            elif ans.strip().lower() in ("no", "n"):
-                return ActionStatus.CANCELLED
+        # We are letting GUI know, that we are waiting for the decision.
+        await self.web_server.broadcast_state(waiting_for_decision=True)
+
+        # CLI reading.
+        async def cli_waiter():
+            while True:
+                try:
+                    ans = await self.cli.prompt_async("> ")
+                except (EOFError, KeyboardInterrupt):
+                    ans = "no"
+
+                ans = ans.strip().lower()
+                if ans in ("", "y", "yes"):
+                    return ActionStatus.CONFIRMED
+                elif ans in ("w", "warning", "warn"):
+                    return ActionStatus.WARNING
+                elif ans in ("no", "n"):
+                    return ActionStatus.CANCELLED
+
+        cli_task = asyncio.create_task(cli_waiter())
+
+        # We are waiting for either GUI or CLI
+        done, pending = await asyncio.wait(
+            [cli_task, self.mission_context.current_decision_future],
+            return_when=asyncio.FIRST_COMPLETED
+        )
+
+        result_task = done.pop()
+        decision = result_task.result()
+
+        for task in pending:
+            task.cancel()
+
+        self.current_decision_future = None
+        return decision
 
     async def _handle_search(self, args):
         """ Handle search command - parse the arguments and send them further. """
