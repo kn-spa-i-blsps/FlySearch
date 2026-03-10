@@ -10,3 +10,5 @@ pyserial
 openai
 prompt_toolkit
 pytest
+uvicorn
+fastapi
