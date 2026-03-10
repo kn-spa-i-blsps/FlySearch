@@ -10,6 +10,19 @@ class ServerBridge:
         self.config = config
         self.router = router
 
+    @staticmethod
+    def _close_with_reason(ws: websocket.WebSocketApp, *, status: int, reason: str) -> None:
+        """
+        Try to close with a WS close frame (status/reason).
+        Falls back to plain close for older websocket-client APIs.
+        """
+        try:
+            ws.close(status=status, reason=reason)
+        except TypeError:
+            ws.close()
+        except Exception as exc:
+            print(f"[RPi] WS close failed: {exc}")
+
     def run(self) -> None:
         """Build and start the WebSocket client connection from RPi (drone_control)  to mission server (mission_control)."""
         ws = websocket.WebSocketApp(
@@ -22,4 +35,12 @@ class ServerBridge:
             ),
             on_message=self.router.on_message, # Incoming messages are delegated to MessageRouter.on_message for actual command handling
         )
-        ws.run_forever()
+        try:
+            ws.run_forever()
+        except KeyboardInterrupt:
+            print("[RPi] Ctrl+C received, closing WS gracefully...")
+            self._close_with_reason(
+                ws,
+                status=1001,
+                reason="RPi shutdown (Ctrl+C)",
+            )
