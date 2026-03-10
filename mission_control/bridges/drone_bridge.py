@@ -261,6 +261,9 @@ class DroneBridge:
         cmd_upper = cmd.upper()
         if cmd_upper not in ("START_RECORDING", "STOP_RECORDING"):
             raise ValueError(f"Unsupported recording command: {cmd}")
+        if cmd_upper == "STOP_RECORDING":
+            # Hardcoded longer timeout for stop-finalization on the RPi side.
+            timeout_sec = 20.0
         if self.client is None:
             raise NoDroneConnectedError("No drone is connected.")
 
