@@ -32,7 +32,7 @@ Before starting, ensure both machines (Laptop and RPi) meet the following requir
 
 ## 3. Installation & Setup
 
-### Step A: Prepare Environment Files
+### 1. Prepare Environment Files
 Clone the repository and set up the `.env` files on **both** the laptop and the RPi:
 
 ```bash
@@ -61,7 +61,7 @@ VIDEO_DEVICE=/dev/video0
 RECORD_FPS=30
 ```
 
-### Step B: Build Docker Images
+### 2. Build Docker Images
 Run this command on **both** machines to build the respective containers:
 
 ```bash
