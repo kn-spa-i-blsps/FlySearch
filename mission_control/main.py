@@ -1,85 +1,82 @@
 import asyncio
+import logging
 import signal
-from typing import Dict, Callable, Awaitable
-
-import uvicorn
-from prompt_toolkit import PromptSession
-from prompt_toolkit.patch_stdout import patch_stdout
+import sys
 
 from mission_control.bridges.drone_bridge import DroneBridge
 from mission_control.bridges.vlm_bridge import VLMBridge
 from mission_control.core.action_status import ActionStatus
 from mission_control.core.config import Config
-from mission_control.core.exceptions import DroneError, VLMError, ChatError
+from mission_control.core.exceptions import DroneError, VLMError, ChatError, DroneConnectionLostError, ServerError
 from mission_control.core.mission_context import MissionContext
 from mission_control.managers.chat_manager import ChatSessionManager
 from mission_control.managers.prompt_manager import PromptManager
+from mission_control.ui.cli_handler import CLIHandler
+from mission_control.ui.web_server import WebServer
 from mission_control.utils.parsers import parse_prompt_arguments, parse_search_arguments
-from mission_control.web_server import WebServer
 
+DEBUG = False
+
+log_level = logging.DEBUG if DEBUG else logging.INFO
+
+# TODO: >= warnings should go to stderr
+logging.basicConfig(
+    level=log_level,
+    stream=sys.stdout,
+    format='%(asctime)s | %(levelname)-8s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 class MissionControl:
     def __init__(self):
+        self.logger = logging.getLogger(__name__)   # Logger.
         self.config = Config()                      # Configuration variables - dirs, ports, hosts...
         self.mission_context = MissionContext()     # All connected modules returns info there.
-
-        self.stop = asyncio.Event()                 # Interrupt flag.
-
-        self.cli = PromptSession()                  # CLI manager, e.g. commands history.
-
         self.prompt_manager = PromptManager(        # e.g. prompt generating.
             self.config,
             self.mission_context
         )
-
         self.drone = DroneBridge(                   # Server <-> drone communication.
             self.config,
             self.mission_context
         )
-
         self.vlm = VLMBridge(                       # Server <-> VLM communication.
             self.config,
             self.mission_context,
         )
-
         self.chat_manager = ChatSessionManager(     # Chat management - saving etc.
             self.config,
             self.mission_context
         )
 
-        self.web_server = WebServer(self.mission_context)           # GUI
-
         # Dispatcher - maps command name with proper function/method.
-        self.commands: Dict[str, Callable[[str, str], Awaitable[None]]] = {
-
-            "search": lambda _, args: self._handle_search(args),
-
-            "chat_init": lambda c, a: self.chat_manager.create_new_session(),
-            "chat_save": lambda _, args: self.chat_manager.save_session(args),
-            "chat_retrieve": lambda _, args: self.chat_manager.restore_session(args),
-            "chat_reset": lambda c, a: self._handle_chat_reset(),
-
-            "prompt": lambda _, args: self._handle_prompt_cmd(args),
-
+        commands = {
+            "clear_search":     lambda _, __: self.clear_search(),
+            "search":           lambda _, args: self._handle_search(args),
+            "chat_init":        lambda _, __: self.chat_manager.create_new_session(),
+            "chat_save":        lambda _, args: self.chat_manager.save_session(args),
+            "chat_retrieve":    lambda _, args: self.chat_manager.restore_session(args),
+            "chat_reset":       lambda _, __: self._handle_chat_reset(),
+            "prompt":           lambda _, args: self._handle_prompt_cmd(args),
+            "start_recording":  lambda cmd, _: self.drone.send_recording_command(cmd),
+            "stop_recording":   lambda cmd, _: self.drone.send_recording_command(cmd),
+            "get_recordings":   lambda _, __: self._handle_get_recordings(),
+            "pull_recordings":  lambda _, args: self._handle_pull_recordings(args),
+            "send_to_vlm":      lambda c, a: self.vlm.send_to_vlm(),
+            "q":                lambda c, a: self._signal_handler_wrapper(),
+            "quit":             lambda c, a: self._signal_handler_wrapper(),
+            "exit":             lambda c, a: self._signal_handler_wrapper(),
+            "move":             lambda _, __: self.drone.send_move(
+                                    found=self.mission_context.parsed_response.found,
+                                    move=self.mission_context.parsed_response.move
+                                ),
+            "add_warning":      lambda c, a: self.vlm.send_to_vlm(
+                                    is_warning=True
+                                ),
             "photo_with_telemetry": lambda cmd, _: self.drone.send_message(cmd),
-            "start_recording": lambda cmd, _: self.drone.send_recording_command(cmd),
-            "stop_recording": lambda cmd, _: self.drone.send_recording_command(cmd),
-            "get_recordings": lambda _cmd, _args: self._handle_get_recordings(),
-            "pull_recordings": lambda _cmd, args: self._handle_pull_recordings(args),
-            "move": lambda c, a: self.drone.send_command(
-                found=self.mission_context.parsed_response.found,
-                move=self.mission_context.parsed_response.move
-            ),
-
-            "send_to_vlm": lambda c, a: self.vlm.send_to_vlm(),
-            "add_warning": lambda c, a: self.vlm.send_to_vlm(
-                is_warning=True
-            ),
-
-            "q":    lambda c, a: self._signal_handler_wrapper(),
-            "quit": lambda c, a: self._signal_handler_wrapper(),
-            "exit": lambda c, a: self._signal_handler_wrapper()
         }
+        self.cli_handler = CLIHandler(self.mission_context, commands)  # CLI
+        self.web_server = WebServer(self.mission_context)  # GUI
 
     ''' -------------- ASYNC LOOP METHOD -------------- '''
     async def run(self):
@@ -98,16 +95,17 @@ class MissionControl:
         # Start the connection with the drone and listen for drones.
         try:
             await self.drone.start()
-        except OSError:
-            print("[Mission Control] CRITICAL: Failed to start drone bridge. Exiting.")
+        except ServerError as e:
+            self.logger.error("[MC] Error on server startup. Exiting.", exc_info=True)
+            # TODO: proper return.
             return
 
         # CLI
-        repl_task = asyncio.create_task(self.stdin_repl())
+        repl_task = asyncio.create_task(self.cli_handler.serve())
         # WEB GUI
         web_task = asyncio.create_task(self.web_server.serve())
         # Stop signal
-        stop_task = asyncio.create_task(self.stop.wait())
+        stop_task = asyncio.create_task(self.mission_context.stop.wait())
 
         done, pending = await asyncio.wait(
             [repl_task, web_task, stop_task],
@@ -127,46 +125,6 @@ class MissionControl:
         # Stop the WebSocket connection.
         await self.drone.stop()
 
-    ''' -------------- CLI HANDLING -------------- '''
-    async def stdin_repl(self):
-        """ Handling commands received from the user.
-
-            Parses input and forwards it to the proper method.
-        """
-        print_help()
-
-        with patch_stdout():
-            while not self.stop.is_set():
-                # Take the input from the user.
-                try:
-                    line = await self.cli.prompt_async("> ")
-                except (EOFError, KeyboardInterrupt):
-                    line = "q"
-
-                raw_line = (line or " ").strip()
-                if not raw_line:
-                    continue
-
-                # Keep original argument casing, normalize only command name.
-                parts = raw_line.split(" ", 1)
-                command = parts[0].lower()
-                args = parts[1].strip() if len(parts) > 1 else ""
-
-                # Take and use the method from those defined in __init__.
-                handler = self.commands.get(command)
-
-                if handler:
-                    try:
-                        await handler(command, args)
-                    except (DroneError, VLMError, ChatError) as e:
-                        print(f"[ERROR] {e}")
-                    except ValueError:                  # Incorrect arguments.
-                        print_help()
-                    except Exception as e:
-                        print(f"[ERROR] An unexpected command failure occurred: {e}")
-                else:
-                    print_help()
-
     ''' -------------- WHOLE SEARCH SEQUENCE -------------- '''
     async def search(self, name, kind, kv):
         """ Orchestrates an automated search test sequence.
@@ -179,7 +137,10 @@ class MissionControl:
         The user is expected to validate the VLM's decisions during the process
         (accept, report collision, or stop).
         """
-        print("\n--- SEARCHING... ---")
+        self.logger.info("[SEARCH] Starting search...")
+        ending_status = "Search process ended."
+        moves_performed = 0
+        move_limit = 0
         search_started_recording = False
         try:
 
@@ -189,32 +150,30 @@ class MissionControl:
             await self.drone.send_recording_command("start_recording")
             search_started_recording = True
             self.prompt_manager.generate_and_save(kind, kv)
-
-            # Init vlm chat.
-            await self.chat_manager.create_new_session()
-            await self.chat_manager.save_session(name)
+            moves_performed = await self._initialize_or_restore_search_session(name)
 
             ret = ActionStatus.CONFIRMED
-            moves_performed = 0
             move_limit = int(kv["glimpses"])
 
             while (ret in [ActionStatus.CONFIRMED, ActionStatus.WARNING]
                    and moves_performed < move_limit):
-                # Request photo and telemetry.
-                self.mission_context.photo_received_event.clear()
-                await self.drone.send_message("photo_with_telemetry")
 
-                try:
-                    await asyncio.wait_for(self.mission_context.photo_received_event.wait(), timeout=15.0)
-                except asyncio.TimeoutError:
-                    print("[ERROR] Timeout: Photo not received. Aborting search.")
-                    break
+                if not self.mission_context.parsed_response:
+                    # Request photo and telemetry.
+                    self.mission_context.photo_received_event.clear()
+                    await self.drone.send_message("photo_with_telemetry")
 
-                # Send it to vlm.
-                await self.vlm.send_to_vlm(is_warning=(ret == ActionStatus.WARNING))
+                    try:
+                        await asyncio.wait_for(self.mission_context.photo_received_event.wait(), timeout=15.0)
+                    except asyncio.TimeoutError:
+                        self.logger.error("[SEARCH] Timeout: Photo not received. Aborting search.")
+                        return
 
-                # Autosave the chat.
-                await self.chat_manager.save_session(name)
+                    # Send it to vlm.
+                    await self.vlm.send_to_vlm(is_warning=(ret == ActionStatus.WARNING))
+
+                    # Autosave the chat.
+                    await self.chat_manager.save_session(name)
 
                 # Take parsed response and ask for confirmation.
                 parsed = self.mission_context.parsed_response
@@ -223,66 +182,77 @@ class MissionControl:
 
                 if ret == ActionStatus.CONFIRMED:
                     # If confirmed, send the move to the drone.
-                    await self.drone.send_command(found=parsed.found, move=parsed.move)
+                    await self.drone.send_move(found=parsed.found, move=parsed.move)
                     moves_performed += 1
+                    self.mission_context.parsed_response = None
                 elif ret == ActionStatus.FOUND:
                     # If found, print the message and end the loop.
                     await self.web_server.broadcast_state(custom_status="FOUND.")
-                    print("FOUND")
+                    self.logger.info("[SEARCH] FOUND")
 
-            await self.web_server.broadcast_state(custom_status="Search process ended.")
+        except DroneConnectionLostError as e:
+            self.logger.warning(f"[SEARCH] Connection lost.")
+            ending_status = "Connection lost."
         except (DroneError, VLMError, ChatError) as e:
-            print(f"[SEARCH FAILED] An error occurred: {e}")
-            print("Aborting search.")
-            await self.web_server.broadcast_state(custom_status=e)
+            self.logger.error(f"[SEARCH] An error occurred. Aborting search.", exc_info=True)
+            ending_status = e
         except Exception as e:
-            print(f"[SEARCH FAILED] An unexpected error occurred: {e}")
-            print("Aborting search.")
-            await self.web_server.broadcast_state(custom_status=e)
+            self.logger.error(f"[SEARCH] An unexpected error occurred. Aborting search.", exc_info=True)
+            ending_status = e
         finally:
+            await self.web_server.broadcast_state(custom_status=ending_status)
             if search_started_recording:
                 try:
                     await self.drone.send_recording_command("stop_recording")
                 except DroneError as e:
-                    print(f"[WARN] Failed to stop recording: {e}")
+                    self.logger.error(f"[SEARCH] Failed to stop recording: {e}")
             await self.chat_manager.reset_session()
+
+            # save state of the search, if broken
+            if moves_performed < move_limit:
+                self.mission_context.search_interrupted = True
+                self.mission_context.last_chat_name = name
+                self.mission_context.moves_performed = moves_performed
+
+    # If user want to start fresh.
+    async def clear_search(self):
+        self.mission_context.search_interrupted = False
+        self.mission_context.last_chat_name = None
+        self.mission_context.moves_performed = 0
 
     ''' -------------- HELPER METHODS --------------'''
 
-    async def _confirm_send(self, move=None, found=False):
-        print("\n--- COMMAND PREVIEW ---")
-        if found:
-            print("ACTION: FOUND")
-            return ActionStatus.FOUND
-        elif move:
-            x, y, z = move
-            print(f"MOVE: (x={x}, y={y}, z={z})")
-        print("Press Enter to send, or type 'no' to cancel, or 'w' to warn vlm.")
+    async def _initialize_or_restore_search_session(self, name: str) -> int:
+        """Initializes a new search session or restores an interrupted one."""
+        if self.mission_context.search_interrupted and name == self.mission_context.last_chat_name:
+            self.logger.info("[SEARCH] Restoring interrupted session.")
+            self.mission_context.search_interrupted = False
+            await self.chat_manager.restore_session(self.mission_context.last_chat_name)
 
-        # Prepare future variable.
+            # Restore the number of moves performed before the interruption.
+            moves_performed = self.mission_context.moves_performed
+            self.mission_context.last_chat_name = None
+            self.mission_context.moves_performed = 0
+            return moves_performed
+        else:
+            self.logger.info("[SEARCH] Starting new session.")
+            await self.chat_manager.create_new_session()
+            await self.chat_manager.save_session(name)
+            return 0
+
+    # TODO - I think there should be no found - we are only accepting moves.
+    async def _confirm_send(self, move=None, found=False):
+
+        self.logger.info("Asking user to confirm the move.")
+
+        # Prepare future variable for the web gui.
         loop = asyncio.get_running_loop()
         self.mission_context.current_decision_future = loop.create_future()
 
         # We are letting GUI know, that we are waiting for the decision.
         await self.web_server.broadcast_state(waiting_for_decision=True)
 
-        # CLI reading.
-        async def cli_waiter():
-            while True:
-                try:
-                    ans = await self.cli.prompt_async("> ")
-                except (EOFError, KeyboardInterrupt):
-                    ans = "no"
-
-                ans = ans.strip().lower()
-                if ans in ("", "y", "yes"):
-                    return ActionStatus.CONFIRMED
-                elif ans in ("w", "warning", "warn"):
-                    return ActionStatus.WARNING
-                elif ans in ("no", "n"):
-                    return ActionStatus.CANCELLED
-
-        cli_task = asyncio.create_task(cli_waiter())
+        cli_task = asyncio.create_task(self.cli_handler.ask_move_confirmation(move, found))
 
         # We are waiting for either GUI or CLI
         done, pending = await asyncio.wait(
@@ -296,7 +266,7 @@ class MissionControl:
         for task in pending:
             task.cancel()
 
-        self.current_decision_future = None
+        self.mission_context.current_decision_future = None
         return decision
 
     async def _handle_search(self, args):
@@ -311,19 +281,13 @@ class MissionControl:
 
     async def _handle_chat_reset(self):
 
-        print("Are you sure you want to reset this chat? You can use CHAT_SAVE to save it first.")
-        print("Type 'yes' to reset.")
+        ans = await self.cli_handler.ask_chat_reset()
 
-        try:
-            ans = await self.cli.prompt_async("> ")
-        except (EOFError, KeyboardInterrupt):
-            ans = "no"
-
-        if ans.lower() == "yes":
+        if ans:
             await self.chat_manager.reset_session()
-            print("Chat deleted.")
+            self.logger.info("Chat deleted.")
         else:
-            print("Chat not deleted.")
+            self.logger.info("Chat not deleted.")
 
     async def _handle_get_recordings(self) -> None:
         ack = await self.drone.send_get_recordings()
@@ -349,25 +313,30 @@ class MissionControl:
             )
 
     async def _handle_pull_recordings(self, args: str) -> None:
-        raw_names = [token.strip() for token in args.replace(",", " ").split()]
-        names: list[str] = []
-        for name in raw_names:
-            if not name:
-                continue
-            normalized = name if name.lower().endswith(".h264") else f"{name}.h264"
-            if normalized not in names:
-                names.append(normalized)
+        raw_tokens = [token.strip() for token in args.replace(",", " ").split()]
+
+        # Normalize and deduplicate recording names.
+        names_to_pull = set()
+        for token in raw_tokens:
+            if token:
+                normalized = token if token.lower().endswith(".h264") else f"{token}.h264"
+                names_to_pull.add(normalized)
+
+        names = list(names_to_pull)
 
         if not names:
             print("Usage: PULL_RECORDINGS <name.h264> [name2.h264 ...]")
             return
 
         ack = await self.drone.send_pull_recordings(names=names)
+
         ack_results_raw = ack.get("results")
         ack_results = ack_results_raw if isinstance(ack_results_raw, list) else []
 
         processed_raw = ack.get("processed_results")
         processed = processed_raw if isinstance(processed_raw, list) else []
+
+        # Create a map for quick lookup of local processing results.
         processed_map = {
             item.get("name"): item
             for item in processed
@@ -380,6 +349,7 @@ class MissionControl:
             f"ok={ack.get('ok')}"
         )
 
+        # Display the status for each requested recording.
         for item in ack_results:
             if not isinstance(item, dict):
                 continue
@@ -396,6 +366,7 @@ class MissionControl:
                 print(f"  {name}: pulled but no local processing summary")
                 continue
 
+            # Display details of the local processing (e.g., conversion to MP4).
             convert_ok = bool(pulled.get("convert_ok", False))
             mp4_path = pulled.get("mp4_path")
             convert_error = pulled.get("convert_error")
@@ -411,26 +382,9 @@ class MissionControl:
 
     def _signal_handler(self):
         """ Function for soft handling of SIGINT """
-        if not self.stop.is_set():
+        if not self.mission_context.stop.is_set():
             print("[WS] shutdown requested (signal). Closing clients…")
-            self.stop.set()
-
-
-def print_help():
-    print("Perform search:")
-    print("    SEARCH <name> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=..]")
-
-    print("Chat management:")
-    print("    CHAT_INIT | CHAT_RESET | CHAT_SAVE <name> | CHAT_RETRIEVE <name>")
-
-    print("Prompt manager:")
-    print("    PROMPT FS-1|FS-2 [object=.. glimpses=.. area=.. minimum_altitude=..]")
-
-    print("Drone communication:")
-    print("    PHOTO_WITH_TELEMETRY | START_RECORDING | STOP_RECORDING | GET_RECORDINGS | PULL_RECORDINGS <names> | MOVE")
-
-    print("VLM communication:")
-    print("    SEND_TO_VLM | ADD_WARNING")
+            self.mission_context.stop.set()
 
 
 if __name__ == "__main__":

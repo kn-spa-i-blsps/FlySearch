@@ -7,16 +7,27 @@ class DroneError(MissionControlError):
     """ Base for drone's exceptions. """
     pass
 
+class ServerError(DroneError):
+    pass
+
 class NoDroneConnectedError(DroneError):
     pass
 
 class DroneCommandFailedError(DroneError):
     pass
 
-class DroneConnectionLostError(DroneError):
+class CommandTransmissionError(DroneError):
     pass
 
-class DroneAlreadyConnectedError(DroneError):
+class DroneCommunicationError(DroneError):
+    pass
+
+class DroneDisconnectedError(DroneCommunicationError):
+    """ When drone disconnects naturally. """
+    pass
+
+class DroneConnectionLostError(DroneCommunicationError):
+    """ When drone disconnects unexpectedly (i.e. due to connection problems). """
     pass
 
 class DroneInvalidDataError(DroneError):

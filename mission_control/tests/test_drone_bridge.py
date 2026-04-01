@@ -308,7 +308,7 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         mock_client = AsyncMock()
         self.drone_bridge.client = mock_client
         
-        await self.drone_bridge.send_command(found=True)
+        await self.drone_bridge.send_move(found=True)
         
         sent_data = json.loads(mock_client.send.call_args[0][0])
         self.assertEqual(sent_data['type'], 'COMMAND')
@@ -319,7 +319,7 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         mock_client = AsyncMock()
         self.drone_bridge.client = mock_client
         
-        await self.drone_bridge.send_command(move=(1.0, 2.5, -3.0))
+        await self.drone_bridge.send_move(move=(1.0, 2.5, -3.0))
         
         sent_data = json.loads(mock_client.send.call_args[0][0])
         self.assertEqual(sent_data['type'], 'COMMAND')
@@ -339,14 +339,14 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         for move in invalid_moves:
             with self.subTest(move=move):
                 with self.assertRaises(ValueError):
-                    await self.drone_bridge.send_command(move=move)
+                    await self.drone_bridge.send_move(move=move)
 
     async def test_send_command_no_content_raises_error(self):
         """Test that send_command raises ValueError if no action is specified."""
         self.drone_bridge.client = AsyncMock()
         
         with self.assertRaises(ValueError):
-            await self.drone_bridge.send_command()
+            await self.drone_bridge.send_move()
 
     @patch('mission_control.bridges.drone_bridge.DroneBridge._handle_telemetry', new_callable=AsyncMock)
     async def test_handle_telemetry_photo_missing_photo_skips_frame(self, mock_handle_telemetry):

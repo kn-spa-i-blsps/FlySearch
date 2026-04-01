@@ -1,19 +1,21 @@
-import base64
 import asyncio
+import base64
 import errno
 import json
+import logging
 import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
 import websockets
 from websockets.frames import CloseCode
 
 from mission_control.core.config import Config
-from mission_control.core.exceptions import NoDroneConnectedError, DroneCommandFailedError, DroneError, \
-    DroneConnectionLostError, DroneAlreadyConnectedError, DroneInvalidDataError
+from mission_control.core.exceptions import NoDroneConnectedError, DroneCommandFailedError, DroneConnectionLostError, \
+     DroneInvalidDataError, DroneCommunicationError
 from mission_control.core.mission_context import MissionContext
 from mission_control.utils.image_processing import crop_img_square
 
@@ -26,6 +28,7 @@ class DroneBridge:
         self.config = config                    # Configuration variables - dirs, ports, hosts...
         self.mission_context = mission_context  # Place to put where the photo or telemetry is saved.
         self.server = None                      # WebSocket server.
+        self.logger = logging.getLogger(__name__)
         self._recording_ack_waiters: Dict[str, asyncio.Future[Dict[str, Any]]] = {}
         self._recordings_ack_waiters: Dict[str, asyncio.Future[Dict[str, Any]]] = {}
         self._pull_transfers: Dict[str, Dict[str, Any]] = {}
@@ -35,22 +38,20 @@ class DroneBridge:
         """ Starts WebSocket server in the background.
 
             Raises:
-                OSError: If the server cannot be started (e.g., port in use).
+                DroneCommunicationError: If the server cannot be started (e.g., port in use).
         """
 
-        print(f"[WS] Starting server on {self.config.host}:{self.config.port}...")
+        self.logger.info(f"[WS] Starting server on {self.config.host}:{self.config.port}...")
 
         # Open WebSocket server.
         try:
             serve_kwargs: dict[str, Any] = {
                 "max_size": self.config.max_ws_mb * 1024 * 1024,
             }
-            cfg_dict = getattr(self.config, "__dict__", {})
-            ping_interval = cfg_dict.get("ws_ping_interval", None) if isinstance(cfg_dict, dict) else None
-            ping_timeout = cfg_dict.get("ws_ping_timeout", None) if isinstance(cfg_dict, dict) else None
-            if ping_interval is not None or ping_timeout is not None:
-                serve_kwargs["ping_interval"] = ping_interval
-                serve_kwargs["ping_timeout"] = ping_timeout
+            ping_interval = getattr(self.config, "ws_ping_interval", None)
+            ping_timeout = getattr(self.config, "ws_ping_timeout", None)
+            serve_kwargs["ping_interval"] = ping_interval
+            serve_kwargs["ping_timeout"] = ping_timeout
 
             self.server = await websockets.serve(
                 self.handler,
@@ -58,25 +59,26 @@ class DroneBridge:
                 self.config.port,
                 **serve_kwargs,
             )
-            print("[WS] Server is running and listening for connections.")
+            self.logger.info("[WS] Server is running and listening for connections.")
 
         except OSError as e:
-            print(f"[CRITICAL ERROR] Could not start WebSocket server on port {self.config.port}.")
+            error_msg = f"[WS] Could not start WebSocket server on port {self.config.port}.\n"
             if e.errno == errno.EADDRINUSE:
-                print("REASON: Port is already in use!")
-                print("HINT: Check if another instance is running or wait a moment.")
+                error_msg += "REASON: Port is already in use!\n"
+                error_msg += "HINT: Check if another instance is running or wait a moment."
             else:
-                print(f"REASON: {e.strerror} (Errno: {e.errno})")
+                error_msg += f"REASON: {e.strerror} (Errno: {e.errno})"
 
+            # Cleanup
             self.server = None
 
             # Raise the error up the stream.
-            raise e
+            raise DroneCommunicationError(error_msg) from e
 
     async def stop(self):
         """ Closes the server and disconnects connected drone. """
 
-        print("[WS] Stopping server...")
+        self.logger.info("[WS] Stopping server...")
 
         # Closing the server.
         if self.server:
@@ -84,8 +86,8 @@ class DroneBridge:
                 self.server.close()
                 await self.server.wait_closed()
             except Exception as e:
-                # Only log - we want to disconnect the drone.
-                print(f"[WS] Warning: Error checking server close: {e}")
+                # Only log - we still want to disconnect the drone.
+                self.logger.warning(f"[WS] Warning: Error checking server close: {e}")
 
         # Disconnecting the drone.
         if self.client:
@@ -95,23 +97,23 @@ class DroneBridge:
                 # Drone might be already disconnected.
                 pass
             except Exception as e:
-                print(f"[WS] Warning: Error closing client connection: {e}")
+                self.logger.warning(f"[WS] Warning: Error closing client connection: {e}")
             finally:
                 self.client = None
 
-        print("[WS] Server stopped.")
+        self.logger.info("[WS] Server stopped.")
 
     async def handler(self, ws):
-        """ Handle received messages from the drone. """
+        """ Handle connected drone. """
 
         peer = ws.remote_address # IP address and port of the connected drone.
         if self.client is not None:
-            print(f"[WS] REJECTED connection from {peer} (System busy)")
+            self.logger.info(f"[WS] REJECTED connection from {peer} (System busy)")
             await ws.send("[SERVER] ERROR: System busy. Another drone is already connected.")
-            raise DroneAlreadyConnectedError("Another drone is already connected.")
+            return
 
         self.client = ws
-        print(f"[WS] connected: {peer}")
+        self.logger.info(f"[WS] connected: {peer}")
 
         try:
             # Wait for incoming messages.
@@ -128,44 +130,27 @@ class DroneBridge:
                 try:
                     obj = json.loads(text)
                 except json.JSONDecodeError:
-                    print(f"[WS] Ignored message (not JSON nor binary): {text}")
+                    self.logger.warning(f"[WS] Ignored message (not JSON nor binary): {text}")
                     continue
 
                 if not isinstance(obj, dict):
-                    print(f"[WS] Ignored non-dict JSON: {obj}")
+                    self.logger.warning(f"[WS] Ignored non-dict JSON: {obj}")
                     continue
 
                 match obj:
                     case {"type": "ACK", "of": "COMMAND", "seq": seq, "ok": ok, **ack_rest}:
                         err = ack_rest.get("error")
                         executed = ack_rest.get("executed")
-                        print(
+                        self.logger.debug(
                             f"[ACK ← RPi] COMMAND seq={seq} "
                             f"ok={ok} executed={executed} err={err}"
                         )
                     case {"type": "ACK", "of": "RECORDING", "action": action, "ok": ok, **ack_rest}:
-                        err = ack_rest.get("error")
-                        recording = ack_rest.get("recording")
-                        ref_count = ack_rest.get("ref_count")
-                        path = ack_rest.get("path")
-                        print(
-                            f"[ACK ← RPi] RECORDING action={action} ok={ok} "
-                            f"recording={recording} ref_count={ref_count} path={path} err={err}"
-                        )
-                        waiter = self._recording_ack_waiters.pop(str(action), None)
-                        if waiter is not None and not waiter.done():
-                            waiter.set_result(obj)
+                        self._handle_recording_ack(obj)
+
                     case {"type": "ACK", "of": "RECORDINGS", "action": action, "ok": ok, **ack_rest}:
-                        err = ack_rest.get("error")
-                        count = ack_rest.get("count")
-                        completed_count = ack_rest.get("completed_count")
-                        print(
-                            f"[ACK ← RPi] RECORDINGS action={action} ok={ok} "
-                            f"count={count} completed={completed_count} err={err}"
-                        )
-                        waiter = self._recordings_ack_waiters.pop(str(action), None)
-                        if waiter is not None and not waiter.done():
-                            waiter.set_result(obj)
+                        self._handle_recordings_ack(obj)
+
                     case {"type": "RECORDING_FILE_BEGIN", "transfer_id": transfer_id, "name": name, **file_rest}:
                         await self._handle_recording_file_begin(
                             transfer_id=str(transfer_id),
@@ -193,101 +178,100 @@ class DroneBridge:
                         await self._handle_telemetry_photo(ws, photo, telemetry)
 
                     case _:
-                        print(f"[WS] message not matching any case.")
+                        self.logger.warning(f"[WS] message not matching any case.")
 
         except websockets.ConnectionClosedOK as e:
-            print(f"[WS] disconnected gracefully: {peer}. {self._format_disconnect_reason(e)}")
+            self.logger.info(f"[WS] Drone disconnected gracefully: {peer}. {self._format_disconnect_reason(e)}")
 
         except websockets.ConnectionClosedError as e:
-            print(f"[WS] connection broken: {peer}. {self._format_disconnect_reason(e)}")
+            # This is set when heartbeat has not responded in time.
+            self.logger.warning(f"[WS] Drone connection broken: {peer}. {self._format_disconnect_reason(e)}")
 
         except websockets.ConnectionClosed as e:
             # Fallback for any unexpected ConnectionClosed subtype.
-            print(f"[WS] disconnected: {peer}. {self._format_disconnect_reason(e)}")
+            self.logger.warning(f"[WS] disconnected: {peer}. {self._format_disconnect_reason(e)}")
 
         except Exception as e:
-            print(f"[WS] error: {e}.")
-            raise DroneError(f"Error during communication with drone: {e}") from e
-
+            self.logger.error(f"[WS] error: {e}.")
         finally:
-            print("[WS] Client set to None - handler ended.")
-            for action, waiter in list(self._recording_ack_waiters.items()):
-                if not waiter.done():
-                    waiter.set_exception(
-                        DroneConnectionLostError(
-                            f"Connection lost before ACK for {action}."
-                        )
-                    )
-            self._recording_ack_waiters.clear()
-            for action, waiter in list(self._recordings_ack_waiters.items()):
-                if not waiter.done():
-                    waiter.set_exception(
-                        DroneConnectionLostError(
-                            f"Connection lost before ACK for {action}."
-                        )
-                    )
-            self._recordings_ack_waiters.clear()
-
-            for transfer in self._pull_transfers.values():
-                active_files = transfer.get("active_files", {})
-                if not isinstance(active_files, dict):
-                    continue
-                for file_state in active_files.values():
-                    if not isinstance(file_state, dict):
-                        continue
-                    handle = file_state.get("fh")
-                    if handle is not None:
-                        try:
-                            handle.close()
-                        except Exception:
-                            pass
-            self._pull_transfers.clear()
+            # Cleanup
+            self._clear_waiters(self._recording_ack_waiters, "Connection lost before ACK")
+            self._clear_waiters(self._recordings_ack_waiters, "Connection lost before ACK")
+            self._cleanup_pull_transfers()
             # Always reset the client.
             self.client = None
 
-    @staticmethod
-    def _format_disconnect_reason(exc: websockets.ConnectionClosed) -> str:
-        code = None
-        reason = ""
-
-        rcvd = getattr(exc, "rcvd", None)
-        sent = getattr(exc, "sent", None)
-        if rcvd is not None:
-            code = getattr(rcvd, "code", None)
-            reason = (getattr(rcvd, "reason", "") or "").strip()
-        elif sent is not None:
-            code = getattr(sent, "code", None)
-            reason = (getattr(sent, "reason", "") or "").strip()
-        elif isinstance(exc, websockets.ConnectionClosedError):
-            # No close frame exchanged.
-            code = 1006
-
-        details = str(exc)
-
-        if code is None:
-            return f"details={details}"
-        if reason:
-            return f"code={code}, reason={reason}, details={details}"
-        return f"code={code}, details={details}"
-
     ''' ---------- AVAILABLE COMMANDS ---------- '''
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_fixed(1),
+        retry=retry_if_exception_type(DroneCommunicationError),
+        reraise=True
+    )
     async def send_message(self, cmd):
         """ Transmits a message to the connected drone via WebSocket.
 
         :raises:
             NoDroneConnectedError: If no drone is connected.
-            DroneCommandFailedError: If the message could not be sent.
+            DroneCommunicationError: If the message could not be sent.
         """
+
+        self.logger.debug(f"[WS] Trying to send the message: {cmd}")
+
         if self.client is None:
-            raise NoDroneConnectedError("No drone is connected.")
+            raise NoDroneConnectedError("[WS] No drone is connected.")
 
         try:
             await self.client.send(cmd.upper())
-            print(f"[WS] {cmd.upper()} sent to the drone.")
         except Exception as e:
-            print(f"[WS] send failed: {e}")
-            raise DroneCommandFailedError(f"Failed to send message '{cmd.upper()}'") from e
+            raise DroneCommunicationError(f"[WS] Failed to send message '{cmd.upper()}'") from e
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_fixed(1),
+        retry=retry_if_exception_type(DroneCommunicationError),
+        reraise=True
+    )
+    async def send_move(self, *, found: bool = False, move=None):
+        """ Send command to the drone.
+
+          - found=True  ->  {"type":"COMMAND","action":"FOUND", ...}
+          - move=(x,y,z)->  {"type":"COMMAND","move":[x,y,z], ...}
+        :raises:
+            NoDroneConnectedError: If no drone is connected.
+            DroneCommunicationError: If the command could not be sent.
+            ValueError: If the move parameters are invalid or no command content is provided.
+        """
+
+        self.logger.debug("[WS] Trying to send the move.")
+
+        if self.client is None:
+            raise NoDroneConnectedError("[WS] No drone is connected.")
+
+        payload: Dict[str, Any] = {
+            "type": "COMMAND",
+            "ts": datetime.now().strftime("%Y%m%d_%H%M%S_%f"),
+        }
+
+        if found:
+            payload["action"] = "FOUND"
+        elif move is not None:
+            try:
+                x, y, z = map(float, move)
+            except (ValueError, IndexError, TypeError) as e:
+                raise ValueError(f"[WS] Invalid move triple {move}: {e}") from e
+            payload["move"] = [x, y, z]
+        else:
+            raise ValueError("[WS] No move content provided (neither 'found' nor 'move').")
+
+        # Sending payload as a JSON.
+        try:
+            await self.client.send(json.dumps(payload))
+        except Exception as e:
+            raise DroneCommunicationError("[WS] Sending move failed.") from e
+
+    # TODO: Czy to musi być osobno?
     async def send_recording_command(self, cmd: str, timeout_sec: float = 5.0) -> Dict[str, Any]:
         cmd_upper = cmd.upper()
         if cmd_upper not in ("START_RECORDING", "STOP_RECORDING"):
@@ -307,18 +291,14 @@ class DroneBridge:
 
         try:
             await self.send_message(cmd_upper)
-        except Exception:
-            stale_waiter = self._recording_ack_waiters.pop(cmd_upper, None)
-            if stale_waiter is not None and not stale_waiter.done():
-                stale_waiter.cancel()
+        except DroneCommandFailedError:
+            self._cancel_waiter(self._recording_ack_waiters, cmd_upper)
             raise
 
         try:
             ack = await asyncio.wait_for(waiter, timeout=timeout_sec)
         except asyncio.TimeoutError as exc:
-            stale_waiter = self._recording_ack_waiters.pop(cmd_upper, None)
-            if stale_waiter is not None and not stale_waiter.done():
-                stale_waiter.cancel()
+            self._cancel_waiter(self._recording_ack_waiters, cmd_upper)
             raise DroneCommandFailedError(
                 f"Timed out waiting for {cmd_upper} ACK from drone."
             ) from exc
@@ -342,18 +322,14 @@ class DroneBridge:
 
         try:
             await self.send_message("GET_RECORDINGS")
-        except Exception:
-            stale_waiter = self._recordings_ack_waiters.pop("GET_RECORDINGS", None)
-            if stale_waiter is not None and not stale_waiter.done():
-                stale_waiter.cancel()
+        except DroneCommandFailedError:
+            self._cancel_waiter(self._recordings_ack_waiters, "GET_RECORDINGS")
             raise
 
         try:
             ack = await asyncio.wait_for(waiter, timeout=timeout_sec)
         except asyncio.TimeoutError as exc:
-            stale_waiter = self._recordings_ack_waiters.pop("GET_RECORDINGS", None)
-            if stale_waiter is not None and not stale_waiter.done():
-                stale_waiter.cancel()
+            self._cancel_waiter(self._recordings_ack_waiters, "GET_RECORDINGS")
             raise DroneCommandFailedError(
                 "Timed out waiting for GET_RECORDINGS ACK from drone."
             ) from exc
@@ -402,23 +378,19 @@ class DroneBridge:
 
         try:
             await self.client.send(json.dumps(payload))
-            print(
+            self.logger.debug(
                 f"[WS] PULL_RECORDINGS sent to drone "
                 f"(files={len(requested_names)}, batch_size={batch}, chunk_bytes={chunk})."
             )
         except Exception as e:
-            stale_waiter = self._recordings_ack_waiters.pop("PULL_RECORDINGS", None)
-            if stale_waiter is not None and not stale_waiter.done():
-                stale_waiter.cancel()
-            print(f"[WS] send failed: {e}")
+            self._cancel_waiter(self._recordings_ack_waiters, "PULL_RECORDINGS")
+            self.logger.error(f"[WS] send failed: {e}")
             raise DroneCommandFailedError("Failed to send PULL_RECORDINGS to the drone") from e
 
         try:
             ack = await asyncio.wait_for(waiter, timeout=timeout_sec)
         except asyncio.TimeoutError as exc:
-            stale_waiter = self._recordings_ack_waiters.pop("PULL_RECORDINGS", None)
-            if stale_waiter is not None and not stale_waiter.done():
-                stale_waiter.cancel()
+            self._cancel_waiter(self._recordings_ack_waiters, "PULL_RECORDINGS")
             raise DroneCommandFailedError(
                 "Timed out waiting for PULL_RECORDINGS ACK from drone."
             ) from exc
@@ -428,48 +400,77 @@ class DroneBridge:
         ack["processed_results"] = processed_results
         return ack
 
-    async def send_command(self, *, found: bool = False, move=None):
-        """ Send command to the drone.
-
-          - found=True  ->  {"type":"COMMAND","action":"FOUND", ...}
-          - move=(x,y,z)->  {"type":"COMMAND","move":[x,y,z], ...}
-        :raises:
-            NoDroneConnectedError: If no drone is connected.
-            DroneCommandFailedError: If the command could not be sent.
-            ValueError: If the move parameters are invalid or no command content is provided.
-        """
-        if self.client is None:
-            raise NoDroneConnectedError("No drone is connected.")
-
-        payload: Dict[str, Any] = {
-            "type": "COMMAND",
-            "ts": datetime.now().strftime("%Y%m%d_%H%M%S_%f"),
-        }
-
-        if found:
-            payload["action"] = "FOUND"
-        elif move is not None:
-            try:
-                x, y, z = map(float, move)
-            except (ValueError, IndexError, TypeError) as e:
-                print(f"[WS] Invalid move triple {move}: {e}")
-                raise ValueError(f"Invalid move parameters: {move}") from e
-            payload["move"] = [x, y, z]
-        else:
-            raise ValueError("No command content provided (neither 'found' nor 'move').")
-
-        # Sending payload as a JSON.
-        try:
-            await self.client.send(json.dumps(payload))
-            print("[WS] COMMAND sent to the drone.")
-        except Exception as e:
-            print("[WS] COMMAND send failed:", e)
-            raise DroneCommandFailedError("Failed to send COMMAND to the drone") from e
-
     # SAVING PHOTOS/JSON IS BLOCKING - WITH MULTIPLE DRONES OR BIG DATA COULD BE BAD
     # may need change into run_in_executor
 
     ''' ---------- HELPER METHODS ----------'''
+
+    @staticmethod
+    def _format_disconnect_reason(exc: websockets.ConnectionClosed) -> str:
+        code = None
+        reason = ""
+
+        rcvd = getattr(exc, "rcvd", None)
+        sent = getattr(exc, "sent", None)
+        if rcvd is not None:
+            code = getattr(rcvd, "code", None)
+            reason = (getattr(rcvd, "reason", "") or "").strip()
+        elif sent is not None:
+            code = getattr(sent, "code", None)
+            reason = (getattr(sent, "reason", "") or "").strip()
+        elif isinstance(exc, websockets.ConnectionClosedError):
+            # No close frame exchanged.
+            code = CloseCode.ABNORMAL_CLOSURE
+
+        details = str(exc)
+
+        if code is None:
+            return f"details={details}"
+        if reason:
+            return f"code={code}, reason={reason}, details={details}"
+        return f"code={code}, details={details}"
+
+    def _cancel_waiter(self, waiter_dict: Dict[str, asyncio.Future], key: str):
+        """Safely removes and cancels a waiter future."""
+        waiter = waiter_dict.pop(key, None)
+        if waiter is not None and not waiter.done():
+            waiter.cancel()
+
+    def _handle_recording_ack(self, ack: Dict[str, Any]):
+        """Handles ACKs for RECORDING actions and resolves the corresponding waiter."""
+        action = ack.get("action")
+        ok = ack.get("ok")
+        self.logger.debug(
+            f"[ACK ← RPi] RECORDING action={action} ok={ok} "
+            f"recording={ack.get('recording')} ref_count={ack.get('ref_count')} "
+            f"path={ack.get('path')} err={ack.get('error')}"
+        )
+        waiter = self._recording_ack_waiters.pop(str(action), None)
+        if waiter is not None and not waiter.done():
+            waiter.set_result(ack)
+
+    def _handle_recordings_ack(self, ack: Dict[str, Any]):
+        """Handles ACKs for RECORDINGS actions and resolves the corresponding waiter."""
+        action = ack.get("action")
+        ok = ack.get("ok")
+        self.logger.debug(
+            f"[ACK ← RPi] RECORDINGS action={action} ok={ok} "
+            f"count={ack.get('count')} completed={ack.get('completed_count')} "
+            f"err={ack.get('error')}"
+        )
+        waiter = self._recordings_ack_waiters.pop(str(action), None)
+        if waiter is not None and not waiter.done():
+            waiter.set_result(ack)
+
+    def _clear_waiters(self, waiters: Dict[str, asyncio.Future], reason: str):
+        """Cancels all pending waiters in a dictionary with a connection lost error."""
+        for key, waiter in list(waiters.items()):
+            if not waiter.done():
+                waiter.set_exception(
+                    DroneConnectionLostError(f"{reason} for {key}.")
+                )
+        waiters.clear()
+
     async def _handle_recording_file_begin(self, *, transfer_id: str, name: str, payload: dict[str, Any]) -> None:
         transfer = self._pull_transfers.setdefault(
             transfer_id,
@@ -489,7 +490,7 @@ class DroneBridge:
             fh = tmp_path.open("wb")
         except Exception as exc:
             transfer["receive_errors"][safe_name] = f"begin_failed: {exc}"
-            print(f"[WS] begin receive failed for {safe_name}: {exc}")
+            self.logger.error(f"[WS] begin receive failed for {safe_name}: {exc}")
             return
 
         metadata_obj = payload.get("metadata")
@@ -502,7 +503,7 @@ class DroneBridge:
                 with metadata_path.open("w", encoding="utf-8") as file_obj:
                     json.dump(metadata, file_obj, ensure_ascii=False, indent=2)
             except Exception as exc:
-                print(f"[WS] metadata save failed for {safe_name}: {exc}")
+                self.logger.warning(f"[WS] metadata save failed for {safe_name}: {exc}")
                 metadata_path = None
 
         active_files[safe_name] = {
@@ -547,7 +548,7 @@ class DroneBridge:
             state["chunks_received"] = max(int(state.get("chunks_received", 0)), seq + 1)
         except Exception as exc:
             transfer["receive_errors"][safe_name] = f"chunk_failed: {exc}"
-            print(f"[WS] chunk receive failed for {safe_name}: {exc}")
+            self.logger.warning(f"[WS] chunk receive failed for {safe_name}: {exc}")
 
     async def _handle_recording_file_end(
         self,
@@ -582,7 +583,7 @@ class DroneBridge:
                 tmp_path.replace(raw_path)
         except Exception as exc:
             transfer["receive_errors"][safe_name] = f"finalize_failed: {exc}"
-            print(f"[WS] finalize receive failed for {safe_name}: {exc}")
+            self.logger.error(f"[WS] finalize receive failed for {safe_name}: {exc}")
             return
 
         transfer["completed"][safe_name] = {
@@ -594,6 +595,23 @@ class DroneBridge:
             "expected_chunks": int(payload.get("chunks", 0)),
             "size_bytes_expected": int(state.get("size_bytes_expected", 0)),
         }
+
+    def _cleanup_pull_transfers(self):
+        """Closes any open file handles from incomplete pull transfers."""
+        for transfer in self._pull_transfers.values():
+            active_files = transfer.get("active_files", {})
+            if not isinstance(active_files, dict):
+                continue
+            for file_state in active_files.values():
+                if not isinstance(file_state, dict):
+                    continue
+                handle = file_state.get("fh")
+                if handle is not None:
+                    try:
+                        handle.close()
+                    except Exception:
+                        pass  # Ignore errors on close
+        self._pull_transfers.clear()
 
     async def _finalize_pull_transfer(self, *, transfer_id: str | None) -> list[dict[str, Any]]:
         if not transfer_id:
@@ -613,43 +631,53 @@ class DroneBridge:
         results: list[dict[str, Any]] = []
         names = set(completed.keys()) | set(receive_errors.keys())
         for name in sorted(names):
-            file_state = completed.get(name, {})
-            if not isinstance(file_state, dict):
-                file_state = {}
-
-            raw_path_value = file_state.get("raw_path")
-            raw_path = Path(raw_path_value) if isinstance(raw_path_value, str) else None
-            metadata = file_state.get("metadata") if isinstance(file_state.get("metadata"), dict) else None
-
-            receive_error = receive_errors.get(name)
-            pulled_ok = raw_path is not None and raw_path.exists() and receive_error is None
-
-            summary: dict[str, Any] = {
-                "name": name,
-                "pulled_ok": pulled_ok,
-                "raw_path": str(raw_path) if raw_path is not None else None,
-                "metadata_path": file_state.get("metadata_path"),
-                "size_bytes": int(file_state.get("bytes_received", 0)),
-                "chunks": int(file_state.get("chunks_received", 0)),
-            }
-
-            if receive_error is not None:
-                summary["pull_error"] = str(receive_error)
-                summary["convert_ok"] = False
-                results.append(summary)
-                continue
-
-            if raw_path is None or not raw_path.exists():
-                summary["pull_error"] = "raw_file_missing_after_transfer"
-                summary["convert_ok"] = False
-                results.append(summary)
-                continue
-
-            conversion = await self._convert_raw_recording(raw_path=raw_path, metadata=metadata)
-            summary.update(conversion)
+            summary = await self._process_pulled_file(name, completed, receive_errors)
             results.append(summary)
 
         return results
+
+    async def _process_pulled_file(self, name: str, completed: dict, receive_errors: dict) -> dict[str, Any]:
+        """Processes a single pulled file: validates transfer and converts to MP4."""
+        file_state = completed.get(name, {})
+        if not isinstance(file_state, dict):
+            file_state = {}
+
+        raw_path_value = file_state.get("raw_path")
+        raw_path = Path(raw_path_value) if isinstance(raw_path_value, str) else None
+
+        summary: dict[str, Any] = {
+            "name": name,
+            "pulled_ok": False,
+            "raw_path": str(raw_path) if raw_path is not None else None,
+            "metadata_path": file_state.get("metadata_path"),
+            "size_bytes": int(file_state.get("bytes_received", 0)),
+            "chunks": int(file_state.get("chunks_received", 0)),
+        }
+
+        receive_error = receive_errors.get(name)
+        if receive_error is not None:
+            summary["pull_error"] = str(receive_error)
+            summary["convert_ok"] = False
+            return summary
+
+        if raw_path is None or not raw_path.exists():
+            summary["pull_error"] = "raw_file_missing_after_transfer"
+            summary["convert_ok"] = False
+            return summary
+
+        summary["pulled_ok"] = True
+        metadata = file_state.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = None
+
+        try:
+            conversion = await self._convert_raw_recording(raw_path=raw_path, metadata=metadata)
+            summary.update(conversion)
+        except Exception as e:
+            summary["convert_ok"] = False
+            summary["convert_error"] = f"Conversion process failed: {e}"
+
+        return summary
 
     async def _convert_raw_recording(self, *, raw_path: Path, metadata: dict[str, Any] | None) -> dict[str, Any]:
         mp4_path = Path(self.config.recordings_mp4_dir) / f"{raw_path.stem}.mp4"
@@ -726,7 +754,7 @@ class DroneBridge:
         path = os.path.join(self.config.upload_dir, file_name)
         with open(path, "wb") as f:
             f.write(message)
-        print(f"[WS] saved binary -> {path}")
+        self.logger.debug(f"[WS] saved binary -> {path}")
         await ws.send(f"[SERVER] SAVED {path}")
 
     async def _handle_telemetry(self, data, photo_name=None):
@@ -744,9 +772,9 @@ class DroneBridge:
         with open(path, "w", encoding="utf-8") as f:
             try:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
-                print(f"[WS] saved telemetry -> {path}")
+                self.logger.debug(f"[WS] saved telemetry -> {path}")
             except Exception as e:
-                print(f"[WS] error saving telemetry: {e}")
+                self.logger.warning(f"[WS] error saving telemetry: {e}")
 
         self.mission_context.last_telemetry_path_cache = path
 
@@ -755,7 +783,7 @@ class DroneBridge:
 
         # Photo
         if not photo_base64:
-            print("[WS] Received 'PHOTO_WITH_TELEMETRY' but 'photo' field is missing; skipping frame.")
+            self.logger.warning("[WS] Received 'PHOTO_WITH_TELEMETRY' but 'photo' field is missing; skipping frame.")
             await self._handle_telemetry(telemetry, None)
             return
 
@@ -773,12 +801,12 @@ class DroneBridge:
             img_cropped, side = crop_img_square(photo_data)
 
             img_cropped.save(img_path, format="JPEG", quality=90)
-            print(f"[WS] saved *square* photo -> {img_path} ({side}x{side})")
+            self.logger.debug(f"[WS] saved *square* photo -> {img_path} ({side}x{side})")
         except Exception as e:
-            print(f"[WS] square crop failed, saving raw photo: {e}")
+            self.logger.warning(f"[WS] square crop failed, saving raw photo: {e}")
             with open(img_path, "wb") as f:
                 f.write(photo_data)
-                print(f"[WS] saved photo (raw) -> {img_path}")
+                self.logger.debug(f"[WS] saved photo (raw) -> {img_path}")
 
         # We are caching paths for easier access after, when sending to VLM.
         self.mission_context.last_photo_path_cache = img_path
