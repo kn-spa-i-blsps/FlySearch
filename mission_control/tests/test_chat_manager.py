@@ -4,9 +4,9 @@ from unittest.mock import MagicMock, patch, mock_open, call
 import json
 from pathlib import Path
 
-from mission_control.managers.chat_manager import ChatSessionManager
+from mission_control.vlm.chat_storage_helper import ChatSessionManager
 from mission_control.core.exceptions import ChatSessionError, ChatSaveError, ChatRestoreError
-from conversation.abstract_conversation import Role
+from mission_control.conversation.abstract_conversation import Role
 
 class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
 

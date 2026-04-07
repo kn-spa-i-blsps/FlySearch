@@ -2,7 +2,7 @@
 import unittest
 from unittest.mock import Mock, patch, MagicMock, call
 
-from mission_control.bridges.vlm_bridge import VLMBridge
+from mission_control.vlm.vlm_bridge import VLMBridge
 from mission_control.core.exceptions import VLMPreconditionsNotMetError, VLMParseError, VLMConnectionError
 from mission_control.utils.parsers import ParsingError
 
@@ -33,7 +33,7 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         mock_parse_xml_response.return_value = {'move': 'forward'}
 
         # Act
-        await self.bridge.send_to_vlm()
+        await self.bridge.handle_analyze_photo()
 
         # Assert
         self.mission_context.conversation.add_image_message.assert_called_with('gridded_image')
@@ -62,7 +62,7 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         mock_parse_xml_response.return_value = {'move': 'left'}
         
         # Act
-        await self.bridge.send_to_vlm(is_warning=True)
+        await self.bridge.handle_analyze_photo(is_warning=True)
 
         # Assert
         expected_calls = [
@@ -91,7 +91,7 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         )
 
         # Act
-        await self.bridge.send_to_vlm()
+        await self.bridge.handle_analyze_photo()
 
         # Assert
         self.mission_context.conversation.commit_transaction.assert_called_once_with(send_to_vlm=True)
@@ -105,7 +105,7 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
 
         # Act & Assert
         with self.assertRaises(VLMPreconditionsNotMetError):
-            await self.bridge.send_to_vlm()
+            await self.bridge.handle_analyze_photo()
 
     async def test_send_to_vlm_no_data_raises_error(self):
         # Arrange
@@ -115,7 +115,7 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
 
         # Act & Assert
         with self.assertRaises(VLMPreconditionsNotMetError):
-            await self.bridge.send_to_vlm()
+            await self.bridge.handle_analyze_photo()
 
     @patch('mission_control.bridges.vlm_bridge.parse_xml_response')
     @patch('mission_control.bridges.vlm_bridge.add_grid')
@@ -137,7 +137,7 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
 
         # Act & Assert
         with self.assertRaises(VLMParseError):
-            await self.bridge.send_to_vlm()
+            await self.bridge.handle_analyze_photo()
 
     @patch('mission_control.bridges.vlm_bridge.parse_telemetry')
     async def test_send_to_vlm_telemetry_file_not_found_raises_error(self, mock_parse_telemetry):
@@ -149,7 +149,7 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
 
         # Act & Assert
         with self.assertRaises(FileNotFoundError):
-            await self.bridge.send_to_vlm()
+            await self.bridge.handle_analyze_photo()
 
     @patch('mission_control.bridges.vlm_bridge.add_grid')
     @patch('mission_control.bridges.vlm_bridge.parse_telemetry')
@@ -163,7 +163,7 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
 
         # Act & Assert
         with self.assertRaises(FileNotFoundError):
-            await self.bridge.send_to_vlm()
+            await self.bridge.handle_analyze_photo()
 
     @patch('mission_control.bridges.vlm_bridge.add_grid')
     @patch('mission_control.bridges.vlm_bridge.parse_telemetry')
@@ -180,7 +180,7 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
 
         # Act & Assert
         with self.assertRaises(VLMConnectionError):
-            await self.bridge.send_to_vlm()
+            await self.bridge.handle_analyze_photo()
 
 
 if __name__ == '__main__':

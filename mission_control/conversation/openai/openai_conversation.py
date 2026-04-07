@@ -5,7 +5,7 @@ from time import sleep
 from PIL import Image
 from openai import RateLimitError, Client
 
-from conversation.abstract_conversation import Conversation, Role
+from mission_control.conversation.abstract_conversation import Conversation, Role
 
 
 class OpenAIConversation(Conversation):
@@ -127,9 +127,6 @@ class OpenAIConversation(Conversation):
         self.commit_transaction(send_to_vlm=False)
 
     def rollback_transaction(self):
-        if not self.transaction_started:
-            raise Exception("Transaction not started")
-
         self.transaction_conversation = {}
 
         self.transaction_started = False

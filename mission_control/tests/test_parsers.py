@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch, mock_open
 import json
 from mission_control.utils.parsers import (
-    parse_telemetry,
+    get_height_from_telemetry,
     parse_prompt_arguments,
     parse_search_arguments,
     parse_xml_response,
@@ -16,7 +16,7 @@ class TestParsers(unittest.TestCase):
     @patch("builtins.open", new_callable=mock_open, read_data='{"data": {"position": {"alt": 25}}}')
     def test_parse_telemetry_success(self, mock_file):
         """Test successful parsing of telemetry data."""
-        message, height = parse_telemetry('fake/path.json')
+        message, height = get_height_from_telemetry('fake/path.json')
         self.assertEqual(height, 25)
         self.assertEqual(message, "Your current altitude is 25 meters above ground level.")
         mock_file.assert_called_with('fake/path.json', 'r', encoding='utf-8')
@@ -24,14 +24,14 @@ class TestParsers(unittest.TestCase):
     @patch("builtins.open", new_callable=mock_open, read_data='{}')
     def test_parse_telemetry_missing_data(self, mock_file):
         """Test parsing of telemetry data with missing keys."""
-        message, height = parse_telemetry('fake/path.json')
+        message, height = get_height_from_telemetry('fake/path.json')
         self.assertEqual(height, 10) # Default value
         self.assertEqual(message, "Your current altitude is 10 meters above ground level.")
 
     @patch("builtins.open", new_callable=mock_open, read_data='{"data": {"position": {"alt": null}}}')
     def test_parse_telemetry_null_altitude_falls_back_to_default(self, mock_file):
         """Test parsing telemetry data where altitude is explicitly null."""
-        message, height = parse_telemetry('fake/path.json')
+        message, height = get_height_from_telemetry('fake/path.json')
         self.assertEqual(height, 10)
         self.assertEqual(message, "Your current altitude is 10 meters above ground level.")
 
@@ -39,13 +39,13 @@ class TestParsers(unittest.TestCase):
     def test_parse_telemetry_file_not_found(self, mock_file):
         """Test that FileNotFoundError is raised if the telemetry file does not exist."""
         with self.assertRaises(FileNotFoundError):
-            parse_telemetry('non_existent_path.json')
+            get_height_from_telemetry('non_existent_path.json')
 
     @patch("builtins.open", new_callable=mock_open, read_data='{invalid json')
     def test_parse_telemetry_invalid_json(self, mock_file):
         """Test that json.JSONDecodeError is raised for invalid JSON."""
         with self.assertRaises(json.JSONDecodeError):
-            parse_telemetry('invalid_json.json')
+            get_height_from_telemetry('invalid_json.json')
 
     def test_parse_prompt_arguments_success(self):
         """Test successful parsing of prompt arguments."""

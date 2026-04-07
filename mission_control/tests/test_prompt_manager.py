@@ -1,7 +1,7 @@
 
 import unittest
 from unittest.mock import MagicMock, patch, mock_open
-from mission_control.managers.prompt_manager import PromptManager
+from mission_control.prompt_helpers.prompt_helper import FlySearchPromptHelper
 from mission_control.prompt_generation.prompts import Prompts
 
 class TestPromptManager(unittest.TestCase):
@@ -10,7 +10,7 @@ class TestPromptManager(unittest.TestCase):
         self.mock_config = MagicMock()
         self.mock_config.prompts_dir = '/fake/prompts/dir'
         self.mock_mission_context = MagicMock()
-        self.prompt_manager = PromptManager(self.mock_config, self.mock_mission_context)
+        self.prompt_manager = FlySearchPromptHelper(self.mock_config, self.mock_mission_context)
 
     def test_generate_fs1_prompt(self):
         """Test that FS-1 prompt is generated correctly."""
@@ -111,8 +111,8 @@ class TestPromptManager(unittest.TestCase):
         with self.assertRaises(IOError):
             self.prompt_manager._save_prompt(prompt_meta)
 
-    @patch.object(PromptManager, '_generate_prompt')
-    @patch.object(PromptManager, '_save_prompt')
+    @patch.object(FlySearchPromptHelper, '_generate_prompt')
+    @patch.object(FlySearchPromptHelper, '_save_prompt')
     def test_generate_and_save(self, mock_save, mock_generate):
         """Test the main entrypoint method."""
         mock_generate.return_value = {'kind': 'FS-1', 'text': '...'}
@@ -124,8 +124,8 @@ class TestPromptManager(unittest.TestCase):
         mock_save.assert_called_once_with({'kind': 'FS-1', 'text': '...'})
 
     @patch('builtins.print')
-    @patch.object(PromptManager, '_generate_prompt', side_effect=Exception("Generation failed"))
-    @patch.object(PromptManager, '_save_prompt')
+    @patch.object(FlySearchPromptHelper, '_generate_prompt', side_effect=Exception("Generation failed"))
+    @patch.object(FlySearchPromptHelper, '_save_prompt')
     def test_generate_and_save_exception_handling(self, mock_save, mock_generate, mock_print):
         """Test that generate_and_save handles exceptions gracefully."""
         self.prompt_manager.generate_and_save('FS-1', {})

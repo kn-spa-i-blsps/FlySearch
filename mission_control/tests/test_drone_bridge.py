@@ -3,13 +3,12 @@ import unittest
 from unittest.mock import MagicMock, patch, AsyncMock, mock_open
 import json
 import errno
-import asyncio
 import base64
 
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 from websockets.frames import Close
 
-from mission_control.bridges.drone_bridge import DroneBridge
+from mission_control.done_comm import DroneBridge
 from mission_control.core.exceptions import NoDroneConnectedError, DroneCommandFailedError, DroneInvalidDataError, \
     DroneAlreadyConnectedError
 

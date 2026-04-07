@@ -7,7 +7,7 @@ from google import genai
 from google.genai import types
 from google.genai.errors import APIError, ServerError
 
-from conversation.abstract_conversation import Conversation, Role
+from mission_control.conversation.abstract_conversation import Conversation, Role
 
 
 class GeminiConversation(Conversation):
@@ -133,8 +133,6 @@ class GeminiConversation(Conversation):
         raise Exception("Failed to get response after multiple retries")
 
     def commit_transaction(self, send_to_vlm=False):
-        if not send_to_vlm:
-            raise NotImplementedError("GeminiConversation does not support commit_transaction with send_to_vlm=False")
         if not self.transaction_started:
             raise Exception("Transaction not started")
 
@@ -146,6 +144,9 @@ class GeminiConversation(Conversation):
         
         role = self.transaction_role
         self.transaction_role = None
+
+        if not send_to_vlm:
+            return
 
         if role == Role.ASSISTANT and send_to_vlm:
             raise Exception("Assistant cannot send messages to VLM")
@@ -169,9 +170,6 @@ class GeminiConversation(Conversation):
         self.conversation.append(response_message)
 
     def rollback_transaction(self):
-        if not self.transaction_started:
-            raise Exception("Transaction not started")
-
         self.transaction_conversation = {}
 
         self.transaction_started = False

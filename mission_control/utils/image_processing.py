@@ -18,18 +18,21 @@ def crop_img_square(photo_data):
 
     return img.crop((left, top, right, bottom)), side
 
-def add_grid(photo_path, drone_height):
-    """ Adds grid to the image.
+import asyncio
+from PIL import Image
 
-    That grid shows how many meters drone have to move to be above that point.
-    """
 
-    img = Image.open(photo_path)
-    img_grid = gd.dot_matrix_two_dimensional_drone(
-        img=img,
-        drone_height=drone_height
-    )
-    # It might seem redundant, but without it while sending
-    # original photo from the file is taken (Python optimization)
-    img_grid.save("tmp.png")
-    return Image.open("tmp.png")
+def _add_grid_sync_copy(photo_path, drone_height):
+    with Image.open(photo_path) as img:
+        img_grid = gd.dot_matrix_two_dimensional_drone(
+            img=img,
+            drone_height=drone_height
+        )
+
+        clean_img = img_grid.copy()
+
+    return clean_img
+
+
+async def add_grid_async(photo_path, drone_height):
+    return await asyncio.to_thread(_add_grid_sync_copy, photo_path, drone_height)
