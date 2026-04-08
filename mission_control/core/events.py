@@ -48,6 +48,26 @@ class SearchEnded(Event):
     mission_id: str
     moves_performed: int
     found: bool
+    error_message: str|None = None
+
+@dataclass(kw_only=True)
+class StartRecordingCommand(Command):
+    drone_id: str
+
+@dataclass(kw_only=True)
+class StopRecordingCommand(Command):
+    drone_id: str
+
+@dataclass(kw_only=True)
+class GetRecordingsListCommand(Command):
+    drone_id: str
+
+@dataclass(kw_only=True)
+class PullRecordingsCommand(Command):
+    drone_id: str
+    names: List[str]
+
+
 
 @dataclass(kw_only=True)
 class UserDecisionReceived(Event):

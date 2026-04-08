@@ -1,6 +1,6 @@
 from enum import Enum
 
-from mission_control.prompt_generation.drone_prompt_generation import fs1_prompt, fs2_prompt
+from mission_control.prompt_helpers.drone_prompt_generation import fs1_prompt, fs2_prompt
 
 
 class Prompts(str, Enum):

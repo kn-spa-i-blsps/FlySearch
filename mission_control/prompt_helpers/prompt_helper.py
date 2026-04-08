@@ -9,7 +9,7 @@ import aiofiles
 
 from mission_control.core.config import Config
 from mission_control.core.interfaces import PromptHelper
-from mission_control.prompt_generation.prompts import Prompts, PROMPT_FACTORIES
+from mission_control.prompt_helpers.prompts import Prompts, PROMPT_FACTORIES
 
 logger = logging.getLogger(__name__)
 

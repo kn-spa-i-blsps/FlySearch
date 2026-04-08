@@ -21,9 +21,9 @@ class Config:
 
         # Directories to save the output.
         self.chats_dir = Path(os.environ.get("CHATS_DIR", "saved_chats"))
-        self.upload_dir = os.environ.get("UPLOAD_DIR", "uploads")
-        self.prompts_dir = os.environ.get("PROMPTS_DIR", "prompts")
-        self.telemetry_dir = os.environ.get("TELEMETRY_DIR", "telemetry")
+        self.upload_dir = Path(os.environ.get("UPLOAD_DIR", "uploads"))
+        self.prompts_dir = Path(os.environ.get("PROMPTS_DIR", "prompts"))
+        self.telemetry_dir = Path(os.environ.get("TELEMETRY_DIR", "telemetry"))
         self.recordings_dir = Path(os.environ.get("RECORDINGS_DIR", "recordings"))
         self.recordings_raw_dir = self.recordings_dir / "raw"
         self.recordings_mp4_dir = self.recordings_dir / "mp4"

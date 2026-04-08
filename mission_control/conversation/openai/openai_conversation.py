@@ -6,7 +6,9 @@ from PIL import Image
 from openai import RateLimitError, Client
 
 from mission_control.conversation.abstract_conversation import Conversation, Role
+from mission_control.utils.logger import get_configured_logger
 
+logger = get_configured_logger(__name__)
 
 class OpenAIConversation(Conversation):
     def __init__(self, client: Client, model_name: str, seed=42, max_tokens=300, temperature=0.8, top_p=1.0):
@@ -86,8 +88,8 @@ class OpenAIConversation(Conversation):
                 )
                 fail = False
             except RateLimitError as e:
-                print("Rate limit error")
-                print(e)
+                logger.warning("Rate limit error")
+                logger.warning(e)
                 sleep(120)
                 fail = True
         return response
@@ -120,7 +122,7 @@ class OpenAIConversation(Conversation):
         response_content = str(response.choices[0].message.content)
         response_role = Role.ASSISTANT
 
-        print("llm response:", response_content)
+        logger.info("llm response:", response_content)
 
         self.begin_transaction(response_role)
         self.add_text_message(response_content)
@@ -163,7 +165,7 @@ class OpenAIConversation(Conversation):
                                     yield role, url_string
 
                             except Exception as e:
-                                print(f"Error decoding image from history: {e}")
+                                logger.error(f"Error decoding image from history: {e}")
                                 yield role, "image_error"
                 else:
                     raise Exception("Invalid content type")

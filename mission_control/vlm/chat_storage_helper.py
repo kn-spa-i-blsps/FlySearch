@@ -83,7 +83,7 @@ class FileChatStorageHelper(ChatStorageHelper):
             raise ChatSaveError(f"Error writing JSON file {json_path}: {e}") from e
 
     async def load_chat(self, chat_id: str) -> List[Dict[str, Any]]:
-        """ Reconstructs and resumes a previously saved chat session. """
+        """ Reconstructs a previously saved chat session. """
         chat_dir = self.chats_dir / chat_id
         json_path = chat_dir / "history.json"
 

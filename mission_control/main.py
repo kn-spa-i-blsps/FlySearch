@@ -1,5 +1,9 @@
 import asyncio
 
+from mission_control.core.exceptions import DroneCommunicationError
+from mission_control.drone_comm.data_storage_helper import FileDataStorageHelper
+from mission_control.drone_comm.drone_bridge import WebSocketDroneBridge
+from mission_control.drone_comm.video_helper import VideoHelper
 from mission_control.vlm.vlm_bridge import FlySearchVLMBridge
 from mission_control.core.config import Config
 from mission_control.vlm.chat_storage_helper import FileChatStorageHelper
@@ -19,7 +23,9 @@ async def main():
     storage = FileChatStorageHelper(config.chats_dir)
     vlm_bridge = FlySearchVLMBridge(config, event_bus, storage)
     logger.debug("[MAIN] VLMBridge created.")
-    # drone_bridge = WebSocketDroneBridge(config, event_bus)
+    storage_drone = FileDataStorageHelper(config)
+    video_helper = VideoHelper(config, event_bus)
+    drone_bridge = WebSocketDroneBridge(config, event_bus, video_helper, storage_drone)
     logger.debug("[MAIN] DroneBridge created.")
     prompts = FlySearchPromptHelper(config)
     mission_manager = MissionManager(event_bus, prompts)
@@ -28,11 +34,11 @@ async def main():
 
     logger.info("[MAIN] Starting DroneBridge, CLIHandler and the WebServer.")
 
-    # try:
-    #     drone_bridge.start()
-    # except DroneCommunicationError as e:
-    #     logger.error(e)
-    #     exit(1)
+    try:
+        await drone_bridge.start()
+    except DroneCommunicationError as e:
+        logger.error(e)
+        exit(1)
     #cli_handler = CLIHandler(event_bus)
     web_server = WebServer(config, event_bus)
 

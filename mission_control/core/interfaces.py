@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Protocol, Callable, Type, Any, Awaitable, List, Dict
 
 from mission_control.conversation.abstract_conversation import Conversation
@@ -101,4 +102,15 @@ class VLMBridge(Protocol):
         """
         Restores a chat session from persistent storage into the service's memory.
         """
+        ...
+
+class DataStorageHelper(Protocol):
+
+    async def save_photo_and_telemetry(self, photo_base64: bytes, telemetry):
+        ...
+
+    async def save_binary_photo(self, photo) -> Path:
+        ...
+
+    async def save_telemetry(self, data, photo_name=None) -> Path:
         ...

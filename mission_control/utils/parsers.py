@@ -6,7 +6,9 @@ from typing import Dict, Tuple
 import aiofiles
 
 from mission_control.core.exceptions import ParsingError
+from mission_control.utils.logger import get_configured_logger
 
+logger = get_configured_logger(__name__)
 
 async def get_height_async(path):
     """ Parses telemetry data from JSON file asynchronously.
@@ -34,11 +36,11 @@ def parse_prompt_arguments(cmd):
 
     parts = cmd.split()
     if len(parts) < 1:
-        print("Usage: PROMPT FS-1|FS-2 [object=.. glimpses=.. area=.. minimum_altitude=..]")
+        logger.info("Usage: PROMPT FS-1|FS-2 [object=.. glimpses=.. area=.. minimum_altitude=..]")
         raise ValueError
     kind = parts[0].upper()
     if kind not in ("FS-1", "FS-2"):
-        print("Kind must be FS-1 or FS-2")
+        logger.info("Kind must be FS-1 or FS-2")
         raise ValueError
 
     kv: Dict[str, int | str] = {}
@@ -59,14 +61,14 @@ def parse_search_arguments(cmd):
 
     parts = cmd.split()
     if len(parts) not in [6, 7]:
-        print("Usage: SEARCH <mission_id> <drone_id> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=..]")
+        logger.info("Usage: SEARCH <mission_id> <drone_id> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=..]")
         raise ValueError
     mission_id = parts[0]
     drone_id = parts[1]
     kind = parts[2].upper()
     if kind not in ("FS-1"
                     "", "FS-2"):
-        print("Kind must be FS-1 or FS-2")
+        logger.info("Kind must be FS-1 or FS-2")
         raise ValueError
 
     kv: Dict[str, int | str] = {}
@@ -75,7 +77,7 @@ def parse_search_arguments(cmd):
             k, v = token.split("=", 1)
             kv[k.strip().lower()] = v.strip()
     if "glimpses" not in kv:
-        print("SEARCH requires glimpses=<max_moves>")
+        logger.info("SEARCH requires glimpses=<max_moves>")
         raise ValueError
 
     _coerce_positive_int(kv, "glimpses")
@@ -92,11 +94,11 @@ def _coerce_positive_int(kv: Dict[str, int | str], key: str) -> None:
     try:
         value = int(str(kv[key]).strip())
     except (TypeError, ValueError):
-        print(f"{key} must be an integer.")
+        logger.warning(f"{key} must be an integer.")
         raise ValueError
 
     if value <= 0:
-        print(f"{key} must be greater than 0.")
+        logger.warning(f"{key} must be greater than 0.")
         raise ValueError
 
     kv[key] = value

@@ -151,6 +151,11 @@ class WebServer:
 
     async def api_start_mission(self, req: MissionCreateRequest):
         """ Endpoint: POST /api/missions """
+        if req.mission_id in self.missions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Mission with ID '{req.mission_id}' already exists. Please choose a different name."
+            )
         kv = {
             "object": req.search_object,
             "glimpses": str(req.glimpses),
@@ -174,12 +179,9 @@ class WebServer:
 
     async def get_index(self):
         """ Endpoint: GET / (Mission Launcher & Active Missions GUI) """
-
-        # 1. Generowanie dynamicznej listy aktywnych misji
         if self.missions:
             active_missions_html = '<ul class="mission-list">'
             for m_id, m_state in self.missions.items():
-                # Możemy nawet wyciągnąć aktualny status, żeby lista była bardziej informacyjna!
                 status_color = "#27ae60" if m_state.waiting_for_decision else "#7f8c8d"
                 active_missions_html += f'''
                     <li>
@@ -192,8 +194,7 @@ class WebServer:
             active_missions_html += '</ul>'
         else:
             active_missions_html = '<p class="empty-state">No active missions running at the moment.</p>'
-
-        # 2. Renderowanie strony HTML z wstrzykniętą listą
+        # TODO: move to additional file
         html = f"""
         <!DOCTYPE html>
         <html lang="en">
@@ -297,7 +298,8 @@ class WebServer:
                         const data = await response.json();
                         window.location.href = data.url;
                     }} else {{
-                        alert('Failed to launch mission. Check server logs.');
+                        const errorData = await response.json();
+                        alert(`Error: ${{errorData.detail || 'Failed to launch mission.'}}`);
                     }}
                 }});
             </script>
@@ -388,11 +390,9 @@ class WebServer:
     async def get_mission_gui(self, mission_id: str):
         """ Endpoint: GET /{mission_id} """
 
-        # --- ZMIANA 1: Zwracaj 404, jeśli misja nie została jeszcze wystartowana ---
         if mission_id not in self.missions:
             raise HTTPException(status_code=404, detail=f"Mission '{mission_id}' not found or not started yet.")
 
-        # --- ZMIANA 2: Dodano przycisk "Back to Hub" w HTML/CSS ---
         html_content = """
         <!DOCTYPE html>
         <html lang="en">
@@ -422,7 +422,6 @@ class WebServer:
                 .btn-warn { background: #f39c12; color: white; }
                 .btn-stop { background: #c0392b; color: white; }
 
-                /* Style dla nowego guzika cofania */
                 .btn-back { display: inline-flex; align-items: center; justify-content: center; width: max-content; padding: 8px 15px; margin-bottom: 20px; background: #e0e6ed; color: #2c3e50; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px; transition: background 0.2s; }
                 .btn-back:hover { background: #cbd4df; }
                 .btn-back span { margin-right: 8px; font-size: 18px; line-height: 1;}
