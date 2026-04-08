@@ -1,4 +1,6 @@
+import asyncio
 import errno
+import itertools
 import json
 import traceback
 
@@ -21,11 +23,14 @@ class WebSocketDroneBridge:
     def __init__(self, config: Config, event_bus: EventBus, video_helper: VideoHelper, storage: DataStorageHelper):
         self.connected_clients: Dict[str, Any] = {}  # Active drone connections mapping {drone_id: ws_instance}
         self.disconnected_clients = {}  # Tracks drones that lost connection abnormally
-        self.config = config  # System configuration (directories, ports, hosts, etc.)
-        self.event_bus = event_bus  # Event bus for the event-driven architecture
+        self.config = config  # System configuration
+        self.event_bus = event_bus
         self.server = None  # WebSocket server instance
         self.video_helper = video_helper
         self.storage = storage
+
+        # Sequence number generator (starting from 1000)
+        self._seq_counter = itertools.count(1000)
 
         # Subscribe to standard core commands
         self.event_bus.subscribe(GetPhotoAndTelemetryCommand, self.handle_get_photo_telemetry)
@@ -36,6 +41,10 @@ class WebSocketDroneBridge:
         self.event_bus.subscribe(StopRecordingCommand, self.handle_stop_recording)
         self.event_bus.subscribe(GetRecordingsListCommand, self.handle_get_recordings)
         self.event_bus.subscribe(PullRecordingsCommand, self.handle_pull_recordings)
+
+    def _get_seq(self) -> int:
+        """ Returns the next sequence number for requests sent to the drone. """
+        return next(self._seq_counter)
 
     ''' ---------- WEBSOCKET LOGIC ---------- '''
 
@@ -87,28 +96,44 @@ class WebSocketDroneBridge:
 
     async def handler(self, ws):
         """ Handles the lifecycle of a connected drone. """
-        peer = ws.remote_address  # IP address and port of the connected drone.
+        peer = ws.remote_address
+        drone_id = ""
 
-        # Currently, the system restricts connection to a single drone at a time.
-        if self.connected_clients:
-            logger.info(f"[WS] Rejected connection from {peer} (System busy)")
-            return
-
-        # TODO: Implement a proper handshake protocol where the drone identifies itself with a unique ID.
-        drone_id = "drone"
-
-        self.connected_clients[drone_id] = ws
-
-        logger.info(f"[WS] connected: {peer}")
+        logger.info(f"[WS] New connection from {peer}. Waiting for authorization...")
 
         try:
-            async for message in ws:
-                # The drone sends binary payloads exclusively for raw photos.
-                if isinstance(message, (bytes, bytearray)):
-                    await self.storage.save_binary_photo(message)
-                    continue
+            # Drone Identification (Handshake / Auth)
+            try:
+                first_msg = await asyncio.wait_for(ws.recv(), timeout=10.0)
+                if isinstance(first_msg, (bytes, bytearray)):
+                    logger.warning(f"[WS] Expected JSON AUTH payload, but received binary data from {peer}.")
+                    await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": False}))
+                    return
 
-                # For all other messages, attempt to parse them as JSON.
+                auth_obj = json.loads(first_msg.strip())
+
+                if auth_obj.get("type") == "AUTH" and "drone_id" in auth_obj:
+                    drone_id = auth_obj["drone_id"]
+
+                    if self.connected_clients.get(drone_id):
+                        logger.warning(f"[WS] Drone {drone_id} is already connected. Rejecting connection from {peer}.")
+                        await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": False}))
+                        return
+
+                    self.connected_clients[drone_id] = ws
+                    logger.info(f"[WS] Authorization successful. Registered drone: {drone_id}")
+
+                    await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": True}))
+                else:
+                    logger.warning(f"[WS] Invalid AUTH payload from {peer}: {auth_obj}")
+                    await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": False}))
+                    return
+            except (json.JSONDecodeError, asyncio.TimeoutError) as e:
+                logger.warning(f"[WS] Error or timeout during authorization with {peer}: {e}")
+                return
+
+            # Message Listening Loop
+            async for message in ws:
                 text = message.strip()
                 try:
                     obj = json.loads(text)
@@ -120,15 +145,26 @@ class WebSocketDroneBridge:
                     logger.warning(f"[WS] Ignored non-dict JSON: {obj}")
                     continue
 
-                # Route the message based on its structure and type.
+                # Route messages based on the "type" key
                 match obj:
                     case {"type": "ACK", "of": "COMMAND", "seq": seq, "ok": ok, **ack_rest}:
+                        action = ack_rest.get("action", "UNKNOWN")
                         err = ack_rest.get("error")
                         executed = ack_rest.get("executed")
                         logger.debug(
-                            f"[ACK ← RPi] COMMAND seq={seq} "
+                            f"[ACK ← {drone_id}] COMMAND action={action} seq={seq} "
                             f"ok={ok} executed={executed} err={err}"
                         )
+
+                    case {"type": "PHOTO_WITH_TELEMETRY", "seq": seq, "photo": photo, "telemetry": telemetry}:
+                        logger.info(f"[WS] Received PHOTO_WITH_TELEMETRY from {drone_id} (seq: {seq})")
+                        photo_path, telemetry_path = await self.storage.save_photo_and_telemetry(photo, telemetry)
+                        await self.event_bus.publish(PhotoWithTelemetryReceived(
+                            drone_id=drone_id,
+                            photo_path=photo_path,
+                            telemetry_path=telemetry_path
+                        ))
+
                     case {"type": "ACK", "of": "RECORDING", "action": action, "ok": ok, **ack_rest}:
                         self.video_helper.handle_recording_ack(obj)
 
@@ -137,107 +173,81 @@ class WebSocketDroneBridge:
 
                     case {"type": "RECORDING_FILE_BEGIN", "transfer_id": transfer_id, "name": name, **file_rest}:
                         await self.video_helper.handle_recording_file_begin(
-                            transfer_id=str(transfer_id),
-                            name=str(name),
-                            payload=file_rest,
+                            transfer_id=str(transfer_id), name=str(name), payload=file_rest,
                         )
+
                     case {"type": "RECORDING_FILE_CHUNK", "transfer_id": transfer_id, "name": name, "seq": seq,
                           "data": data}:
                         await self.video_helper.handle_recording_file_chunk(
-                            transfer_id=str(transfer_id),
-                            name=str(name),
-                            seq=int(seq),
-                            chunk_b64=str(data),
+                            transfer_id=str(transfer_id), name=str(name), seq=int(seq), chunk_b64=str(data),
                         )
+
                     case {"type": "RECORDING_FILE_END", "transfer_id": transfer_id, "name": name, **end_rest}:
                         await self.video_helper.handle_recording_file_end(
-                            transfer_id=str(transfer_id),
-                            name=str(name),
-                            payload=end_rest,
+                            transfer_id=str(transfer_id), name=str(name), payload=end_rest,
                         )
 
-                    case {"type": "TELEMETRY", "data": data}:
-                        await self.storage.save_telemetry(data)
-
-                    case {"type": "PHOTO_WITH_TELEMETRY", "photo": photo, "telemetry": telemetry}:
-                        photo_path, telemetry_path = await self.storage.save_photo_and_telemetry(photo, telemetry)
-                        await self.event_bus.publish(PhotoWithTelemetryReceived(
-                            drone_id=drone_id,
-                            photo_path=photo_path,
-                            telemetry_path=telemetry_path
-                        ))
-
                     case _:
-                        logger.warning(f"[WS] message not matching any case: {obj}")
+                        logger.warning(f"[WS] Unrecognized message type from {drone_id}: {obj.get('type')}")
 
         except websockets.ConnectionClosedOK as e:
             logger.info(f"[WS] Drone disconnected gracefully: {peer}. {self.video_helper.format_disconnect_reason(e)}")
-
         except websockets.ConnectionClosedError as e:
             logger.warning(f"[WS] Drone connection broken: {peer}. {self.video_helper.format_disconnect_reason(e)}")
-
         except websockets.ConnectionClosed as e:
             logger.warning(f"[WS] disconnected: {peer}. {self.video_helper.format_disconnect_reason(e)}")
-
         except Exception as e:
             logger.error(f"[WS] error: {e}")
             logger.debug(traceback.format_exc())
-
         finally:
-            # Clean up pending futures and file handles upon disconnection
-            #TODO: cleanup method
             self.video_helper._clear_waiters(self.video_helper._recording_ack_waiters, "Connection lost before ACK")
             self.video_helper._clear_waiters(self.video_helper._recordings_ack_waiters, "Connection lost before ACK")
             self.video_helper._cleanup_pull_transfers()
 
-            # Remove the drone from the active clients registry
-            self.connected_clients.pop(drone_id, None)
+            if drone_id is not None and drone_id in self.connected_clients:
+                self.connected_clients.pop(drone_id, None)
+                logger.info(f"[WS] Drone {drone_id} removed from the connected clients registry.")
 
     ''' ---------- SUBSCRIBED COMMANDS (CORE) ---------- '''
 
-    async def handle_get_photo_telemetry(self, event: GetPhotoAndTelemetryCommand):
-        await self.send_message(event.drone_id, "PHOTO_WITH_TELEMETRY")
-
-    async def send_message(self, drone_id: str, cmd: str) -> None:
+    async def send_message(self, drone_id: str, payload: dict) -> None:
         """
-        Transmits a raw string message to the connected drone via WebSocket.
-
-        Publishes:
-            DroneErrorOccurred: If the drone is not connected or the transmission fails.
+        Transmits a JSON dictionary to the connected drone via WebSocket.
         """
         try:
             if drone_id not in self.connected_clients:
                 raise DroneCommunicationError(f"Drone {drone_id} is not connected.")
             client = self.connected_clients[drone_id]
-            await client.send(cmd)
+            await client.send(json.dumps(payload))
 
         except Exception as e:
             error_event = DroneErrorOccurred(
                 drone_id=drone_id,
-                error_message=f"[WS] Failed to send message to drone {drone_id}: {str(e)}",
+                error_message=f"[WS] Failed to send JSON payload to drone {drone_id}: {str(e)}",
                 traceback=traceback.format_exc()
             )
             await self.event_bus.publish(error_event)
             logger.error(f"[WS] Failed to send message to drone {drone_id}: {e}")
 
-    async def send_move(self, event: ExecuteMoveCommand):
-        """
-        Sends a movement command vector to the drone.
+    async def handle_get_photo_telemetry(self, event: GetPhotoAndTelemetryCommand):
+        payload = {
+            "type": "COMMAND",
+            "action": "GET_PHOTO_TELEMETRY",
+            "seq": self._get_seq()
+        }
+        logger.info(f"[WS] Sending GET_PHOTO_TELEMETRY to {event.drone_id}")
+        await self.send_message(event.drone_id, payload)
 
-        Raises:
-            ValueError: If the movement coordinates are invalid or missing.
-        """
+    async def send_move(self, event: ExecuteMoveCommand):
+        """ Sends a movement command vector to the drone. """
         drone_id = event.drone_id
         move = event.move
 
         try:
-            if drone_id not in self.connected_clients:
-                raise DroneCommunicationError(f"Drone {drone_id} is not connected.")
-            client = self.connected_clients[drone_id]
-
             payload: Dict[str, Any] = {
                 "type": "COMMAND",
-                "ts": datetime.now().strftime("%Y%m%d_%H%M%S_%f"),
+                "action": "MOVE",
+                "seq": self._get_seq()
             }
 
             if move is not None:
@@ -247,9 +257,9 @@ class WebSocketDroneBridge:
                     raise ValueError(f"[WS] Invalid move coordinates {move}: {e}") from e
                 payload["move"] = [x, y, z]
             else:
-                raise ValueError("[WS] No move content provided (neither 'found' nor 'move').")
+                raise ValueError("[WS] No move content provided.")
 
-            await client.send(json.dumps(payload))
+            await self.send_message(drone_id, payload)
 
         except Exception as e:
             error_event = DroneErrorOccurred(
@@ -274,7 +284,8 @@ class WebSocketDroneBridge:
 
         except Exception as e:
             await self.event_bus.publish(
-                DroneErrorOccurred(drone_id=drone_id, error_message=f"Start recording failed: {e}", traceback=traceback.format_exc()))
+                DroneErrorOccurred(drone_id=drone_id, error_message=f"Start recording failed: {e}",
+                                   traceback=traceback.format_exc()))
             logger.error(f"[WS] Start recording failed for {drone_id}: {e}")
 
     async def handle_stop_recording(self, event: StopRecordingCommand):
@@ -289,7 +300,8 @@ class WebSocketDroneBridge:
 
         except Exception as e:
             await self.event_bus.publish(
-                DroneErrorOccurred(drone_id=drone_id, error_message=f"Stop recording failed: {e}", traceback=traceback.format_exc()))
+                DroneErrorOccurred(drone_id=drone_id, error_message=f"Stop recording failed: {e}",
+                                   traceback=traceback.format_exc()))
             logger.error(f"[WS] Stop recording failed for {drone_id}: {e}")
 
     async def handle_get_recordings(self, event: GetRecordingsListCommand):
@@ -302,12 +314,10 @@ class WebSocketDroneBridge:
             ack = await self.video_helper.send_get_recordings(ws)
             logger.info(f"[WS] Recordings list received from {drone_id}: {ack}")
 
-            # You can broadcast the retrieved list to other components via the event bus
-            # e.g., await self.event_bus.publish(RecordingsListReceived(drone_id, ack.get("recordings", [])))
-
         except Exception as e:
             await self.event_bus.publish(
-                DroneErrorOccurred(drone_id=drone_id, error_message=f"Failed to fetch recordings list: {e}", traceback=traceback.format_exc()))
+                DroneErrorOccurred(drone_id=drone_id, error_message=f"Failed to fetch recordings list: {e}",
+                                   traceback=traceback.format_exc()))
             logger.error(f"[WS] Failed to fetch recordings list for {drone_id}: {e}")
 
     async def handle_pull_recordings(self, event: PullRecordingsCommand):
@@ -327,5 +337,6 @@ class WebSocketDroneBridge:
 
         except Exception as e:
             await self.event_bus.publish(
-                DroneErrorOccurred(drone_id=drone_id, error_message=f"Pull recordings transfer failed: {e}", traceback=traceback.format_exc()))
+                DroneErrorOccurred(drone_id=drone_id, error_message=f"Pull recordings transfer failed: {e}",
+                                   traceback=traceback.format_exc()))
             logger.error(f"[WS] Pull recordings transfer failed for {drone_id}: {e}")
