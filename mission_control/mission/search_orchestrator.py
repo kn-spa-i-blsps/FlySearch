@@ -5,7 +5,7 @@ from mission_control.core.action_status import ActionStatus
 from mission_control.core.events import PhotoWithTelemetryReceived, VlmAnalysisCompleted, StartMissionCommand, \
     CreateNewSessionCommand, GetPhotoAndTelemetryCommand, AnalyzePhotoCommand, \
     AskUserConfirmationCommand, UserDecisionReceived, ExecuteMoveCommand, SaveSessionCommand, MoveExecuted, SearchEnded, \
-    DroneErrorOccurred, VlmErrorOccurred, ChatErrorOccurred
+    DroneErrorOccurred, VlmErrorOccurred, ChatErrorOccurred, StartRecordingCommand
 from mission_control.core.interfaces import EventBus, PromptHelper
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,7 @@ class MissionState(Enum):
     WAITING_FOR_USER = auto()
     FLYING = auto()
     ENDED = auto()
+
 
 class SearchOrchestrator:
     def __init__(self, event_bus: EventBus, prompts: PromptHelper):
@@ -48,13 +49,14 @@ class SearchOrchestrator:
 
         self.max_moves = int(kv.get("glimpses", 0))
         if self.max_moves == 0:
-            pass #TODO: Error handling
+            raise ValueError("[SEARCH] No glimpses atribute or glimpses set to 0.")
 
         self.initial_prompt = await self.prompt_helper.generate_prompt(kind, kv)
 
         await self.event_bus.publish(CreateNewSessionCommand(chat_id=self.mission_id, prompt=self.initial_prompt))
         await self.event_bus.publish(SaveSessionCommand(chat_id=self.mission_id))
         self.state = MissionState.WAITING_FOR_DRONE
+        await self.event_bus.publish(StartRecordingCommand(drone_id=self.drone_id))
         await self.event_bus.publish(GetPhotoAndTelemetryCommand(drone_id=self.drone_id))
 
     async def handle_photo_and_telemetry(self, event: PhotoWithTelemetryReceived):
@@ -84,15 +86,11 @@ class SearchOrchestrator:
         await self.event_bus.publish(SaveSessionCommand(chat_id=self.mission_id))
 
         if event.found:
-            self.state = MissionState.ENDED
-            self.cleanup()
-            await self.event_bus.publish(SearchEnded(mission_id=self.mission_id, found=True, moves_performed=self.moves_performed))
+            self._terminate_mission(found=True)
             return
 
         if self.moves_performed >= self.max_moves:
-            self.state = MissionState.ENDED
-            self.cleanup()
-            await self.event_bus.publish(SearchEnded(mission_id=self.mission_id, found=False, moves_performed=self.moves_performed))
+            self._terminate_mission(found=False)
             return
 
 
@@ -112,9 +110,7 @@ class SearchOrchestrator:
             return
 
         if event.decision == ActionStatus.CANCELLED:
-            self.state = MissionState.ENDED
-            self.cleanup()
-            await self.event_bus.publish(SearchEnded(mission_id=self.mission_id, found=False, moves_performed=self.moves_performed))
+            self._terminate_mission(found=False)
             return
 
         if event.decision == ActionStatus.WARNING:
@@ -167,15 +163,22 @@ class SearchOrchestrator:
 
         logger.error(f"[SEARCH] Mission {self.mission_id} aborted. Reason: {reason}")
 
+        self._terminate_mission(found=False, error_message=reason)
+
+    async def _terminate_mission(self, found: bool, error_message: str | None = None):
+        if self.state == MissionState.ENDED:
+            return
+
         self.state = MissionState.ENDED
         self.cleanup()
+        await self.event_bus.publish(StopRecordingCommand(drone_id=self.drone_id))
 
         await self.event_bus.publish(
             SearchEnded(
                 mission_id=self.mission_id,
-                found=False,
+                found=found,
                 moves_performed=self.moves_performed,
-                error_message=reason
+                error_message=error_message
             )
         )
 

@@ -108,9 +108,3 @@ class DataStorageHelper(Protocol):
 
     async def save_photo_and_telemetry(self, photo_base64: bytes, telemetry):
         ...
-
-    async def save_binary_photo(self, photo) -> Path:
-        ...
-
-    async def save_telemetry(self, data, photo_name=None) -> Path:
-        ...

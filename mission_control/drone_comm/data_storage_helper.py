@@ -11,24 +11,12 @@ from mission_control.utils.logger import get_configured_logger
 
 logger = get_configured_logger(__name__)
 
+
 class FileDataStorageHelper(DataStorageHelper):
     def __init__(self, config: Config):
         self.config = config
 
-    # TODO: probably to be deleted
-    async def save_binary_photo(self, photo) -> Path:
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_base = f"img_{ts}"
-        file_name = f"{file_base}.jpg"
-        path = self.config.upload_dir / file_name
-        with open(path, "wb") as f:
-            f.write(photo)
-        logger.debug(f"[WS] saved binary -> {path}")
-
-        return path
-
-    # TODO: probably to be deleted/to be private
-    async def save_telemetry(self, data, photo_name=None) -> Path:
+    async def _save_telemetry(self, data, photo_name=None) -> Path:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         file_base = f"telemetry_{ts}"
         file_name = f"{file_base}.json"
@@ -49,14 +37,13 @@ class FileDataStorageHelper(DataStorageHelper):
 
         return path
 
-
     async def save_photo_and_telemetry(self, photo_base64: bytes, telemetry):
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Photo
         if not photo_base64:
             logger.warning("[WS] Received 'PHOTO_WITH_TELEMETRY' but 'photo' field is missing; skipping frame.")
-            telemetry_path = await self.save_telemetry(telemetry, None)
+            telemetry_path = await self._save_telemetry(telemetry, None)
             return None, telemetry_path
 
         try:
@@ -81,6 +68,6 @@ class FileDataStorageHelper(DataStorageHelper):
                 logger.debug(f"[WS] saved photo (raw) -> {img_path}")
 
         # Telemetry
-        telemetry_path = await self.save_telemetry(telemetry, img_file_name)
+        telemetry_path = await self._save_telemetry(telemetry, img_file_name)
 
         return img_path, telemetry_path

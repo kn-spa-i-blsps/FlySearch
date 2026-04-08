@@ -63,9 +63,7 @@ async def main():
         except asyncio.CancelledError:
             pass
 
-    # Waiting for CLIHandler to end...
-
-    #drone_bridge.stop()
+    await drone_bridge.stop()
 
 
 if __name__ == "__main__":

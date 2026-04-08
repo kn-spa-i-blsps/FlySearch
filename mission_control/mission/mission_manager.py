@@ -1,7 +1,7 @@
 import logging
 from typing import Dict
 
-from mission_control.core.events import StartMissionCommand
+from mission_control.core.events import StartMissionCommand, SearchEnded
 from mission_control.core.interfaces import EventBus, PromptHelper
 from mission_control.mission.search_orchestrator import SearchOrchestrator
 
@@ -16,6 +16,7 @@ class MissionManager:
         self.prompts = prompts
         self.active_missions: Dict[str, SearchOrchestrator] = {}
         self.event_bus.subscribe(StartMissionCommand, self.handle_start_mission)
+        self.event_bus.subscribe(SearchEnded, self.handle_mission_ended)
 
     async def handle_start_mission(self, event: StartMissionCommand):
         mission_id = event.mission_id
@@ -29,3 +30,14 @@ class MissionManager:
         orchestrator = SearchOrchestrator(self.event_bus, self.prompts)
         self.active_missions[mission_id] = orchestrator
         await orchestrator.start(event)
+
+    async def handle_mission_ended(self, event: SearchEnded):
+        mission_id = event.mission_id
+
+        if mission_id not in self.active_missions:
+            logger.warning(f"[MISSION MANAGER] SearchEnded event, but mission {mission_id} is not running!")
+            return
+
+        logger.info(f"[MISSION MANAGER] Deleting Orchestrator for mission: {mission_id}")
+
+        self.active_missions.pop(mission_id)
