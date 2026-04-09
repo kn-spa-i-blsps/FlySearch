@@ -3,6 +3,7 @@ import errno
 import itertools
 import json
 import traceback
+from collections import defaultdict
 
 import websockets
 
@@ -30,7 +31,7 @@ class WebSocketDroneBridge:
         self.storage = storage
 
         # Sequence number generator (starting from 1000)
-        self._seq_counter = itertools.count(1000)
+        self._seq_counters = defaultdict(lambda: itertools.count(1000))
 
         # Subscribe to standard core commands
         self.event_bus.subscribe(GetPhotoAndTelemetryCommand, self.handle_get_photo_telemetry)
@@ -42,9 +43,8 @@ class WebSocketDroneBridge:
         self.event_bus.subscribe(GetRecordingsListCommand, self.handle_get_recordings)
         self.event_bus.subscribe(PullRecordingsCommand, self.handle_pull_recordings)
 
-    def _get_seq(self) -> int:
-        """ Returns the next sequence number for requests sent to the drone. """
-        return next(self._seq_counter)
+    def _get_seq(self, drone_id: str) -> int:
+        return next(self._seq_counters[drone_id])
 
     ''' ---------- WEBSOCKET LOGIC ---------- '''
 
@@ -233,7 +233,7 @@ class WebSocketDroneBridge:
         payload = {
             "type": "COMMAND",
             "action": "GET_PHOTO_TELEMETRY",
-            "seq": self._get_seq()
+            "seq": self._get_seq(event.drone_id)
         }
         logger.info(f"[WS] Sending GET_PHOTO_TELEMETRY to {event.drone_id}")
         await self.send_message(event.drone_id, payload)
@@ -247,7 +247,7 @@ class WebSocketDroneBridge:
             payload: Dict[str, Any] = {
                 "type": "COMMAND",
                 "action": "MOVE",
-                "seq": self._get_seq()
+                "seq": self._get_seq(drone_id)
             }
 
             if move is not None:
