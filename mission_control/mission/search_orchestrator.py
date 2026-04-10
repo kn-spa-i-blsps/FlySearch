@@ -6,7 +6,7 @@ from mission_control.core.events import PhotoWithTelemetryReceived, VlmAnalysisC
     CreateNewSessionCommand, GetPhotoAndTelemetryCommand, AnalyzePhotoCommand, \
     AskUserConfirmationCommand, UserDecisionReceived, ExecuteMoveCommand, SaveSessionCommand, MoveExecuted, SearchEnded, \
     DroneErrorOccurred, VlmErrorOccurred, ChatErrorOccurred, StartRecordingCommand, DroneConnectionLost, \
-    StopRecordingCommand, DroneReconnected, DroneDisconnected, MoveStarted
+    StopRecordingCommand, DroneReconnected, DroneDisconnected, MoveStarted, DeleteSessionCommand
 from mission_control.core.interfaces import EventBus, PromptHelper
 
 logger = logging.getLogger(__name__)
@@ -243,6 +243,8 @@ class SearchOrchestrator:
                 error_message=error_message
             )
         )
+
+        await self.event_bus.publish(DeleteSessionCommand(chat_id=self.mission_id))
 
     def _cleanup(self):
         self.event_bus.unsubscribe(PhotoWithTelemetryReceived, self.handle_photo_and_telemetry)

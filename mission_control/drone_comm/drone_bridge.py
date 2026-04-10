@@ -6,11 +6,11 @@ import traceback
 from collections import defaultdict
 
 import websockets
-from websockets import ConnectionClosedError, ConnectionClosedOK
+from websockets import ConnectionClosedError, ConnectionClosedOK, ConnectionClosed
 
 from mission_control.core.config import Config
 from mission_control.core.events import *
-from mission_control.core.exceptions import DroneCommunicationError
+from mission_control.core.exceptions import DroneCommunicationError, DroneInvalidDataError
 from mission_control.core.interfaces import DataStorageHelper
 from mission_control.drone_comm.video_helper import VideoHelper
 from mission_control.utils.event_bus import EventBus
@@ -98,147 +98,36 @@ class WebSocketDroneBridge:
     async def handler(self, ws):
         """ Handles the lifecycle of a connected drone. """
         peer = ws.remote_address
-        drone_id = ""
-
         logger.info(f"[WS] New connection from {peer}. Waiting for authorization...")
+        try:
+            drone_id = await self._authenticate_drone(ws, peer)
+        except (json.JSONDecodeError, asyncio.TimeoutError) as e:
+            logger.warning(f"[WS] Error or timeout during authorization with {peer}: {e}")
+            return
+
+        if not drone_id:
+            return
 
         try:
-            # Drone Identification (Handshake / Auth)
-            try:
-                first_msg = await asyncio.wait_for(ws.recv(), timeout=10.0)
-                if isinstance(first_msg, (bytes, bytearray)):
-                    logger.warning(f"[WS] Expected JSON AUTH payload, but received binary data from {peer}.")
-                    await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": False}))
-                    return
-
-                auth_obj = json.loads(first_msg.strip())
-
-                if auth_obj.get("type") == "AUTH" and "drone_id" in auth_obj:
-                    drone_id = auth_obj["drone_id"]
-
-                    if self.connected_clients.get(drone_id):
-                        logger.warning(f"[WS] Drone {drone_id} is already connected. Rejecting connection from {peer}.")
-                        await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": False}))
-                        return
-
-                    self.connected_clients[drone_id] = ws
-                    logger.info(f"[WS] Authorization successful. Registered drone: {drone_id}")
-
-                    if drone_id in self.disconnected_clients:
-                        logger.info(f"[WS] Drone {drone_id} reconnected.")
-                        self.disconnected_clients.remove(drone_id)
-                        await self.event_bus.publish(DroneReconnected(drone_id=drone_id))
-
-                    await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": True}))
-                else:
-                    logger.warning(f"[WS] Invalid AUTH payload from {peer}: {auth_obj}")
-                    await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": False}))
-                    return
-            except (json.JSONDecodeError, asyncio.TimeoutError) as e:
-                logger.warning(f"[WS] Error or timeout during authorization with {peer}: {e}")
-                return
-
             # Message Listening Loop
             async for message in ws:
-                text = message.strip()
                 try:
-                    obj = json.loads(text)
+                    obj = json.loads(message.strip())
                 except json.JSONDecodeError:
-                    logger.warning(f"[WS] Ignored message (not JSON nor binary): {text}")
+                    logger.warning(f"[WS] Ignored message (not JSON nor binary): {message}")
                     continue
 
-                if not isinstance(obj, dict):
-                    logger.warning(f"[WS] Ignored non-dict JSON: {obj}")
-                    continue
-
-                # Route messages based on the "type" key
-                match obj:
-                    case {"type": "ACK", "of": "COMMAND", "seq": seq, "ok": ok, **ack_rest}:
-                        action = ack_rest.get("action", "UNKNOWN")
-                        err = ack_rest.get("error")
-                        logger.debug(
-                            f"[ACK ← {drone_id}] COMMAND action={action} seq={seq} "
-                            f"ok={ok} err={err}"
-                        )
-                        if action == "MOVE" and ok:
-                            await self.event_bus.publish(MoveStarted(drone_id=drone_id))
-
-                    case {"type": "MOVE_EXECUTED", "seq": seq, "ok": ok}:
-                        logger.debug(
-                            f"[ACK ← {drone_id}] MOVE_EXECUTED seq={seq} "
-                            f"ok={ok}"
-                        )
-                        if ok:
-                            await self.event_bus.publish(MoveExecuted(drone_id=drone_id))
-
-                        await ws.send(json.dumps({
-                            "type": "ACK",
-                            "of": "MOVE_EXECUTED",
-                            "seq": seq,
-                            "ok": True
-                        }))
-
-                    case {"type": "PHOTO_WITH_TELEMETRY", "seq": seq, "photo": photo, "telemetry": telemetry}:
-                        logger.info(f"[WS] Received PHOTO_WITH_TELEMETRY from {drone_id} (seq: {seq})")
-                        try:
-                            photo_path, telemetry_path = await self.storage.save_photo_and_telemetry(photo, telemetry)
-                            await self.event_bus.publish(PhotoWithTelemetryReceived(
-                                drone_id=drone_id,
-                                photo_path=photo_path,
-                                telemetry_path=telemetry_path
-                            ))
-
-                            await ws.send(json.dumps({
-                                "type": "ACK",
-                                "of": "PHOTO_WITH_TELEMETRY",
-                                "seq": seq,
-                                "ok": True
-                            }))
-                        except Exception as e:
-                            logger.error(f"[WS] Error saving photo/telemetry for {drone_id}: {e}")
-
-                            await ws.send(json.dumps({
-                                "type": "ACK",
-                                "of": "PHOTO_WITH_TELEMETRY",
-                                "seq": seq,
-                                "ok": False,
-                                "error": str(e)
-                            }))
-
-                    case {"type": "ACK", "of": "RECORDING", "action": action, "ok": ok, **ack_rest}:
-                        self.video_helper.handle_recording_ack(obj)
-
-                    case {"type": "ACK", "of": "RECORDINGS", "action": action, "ok": ok, **ack_rest}:
-                        self.video_helper.handle_recordings_ack(obj)
-
-                    case {"type": "RECORDING_FILE_BEGIN", "transfer_id": transfer_id, "name": name, **file_rest}:
-                        await self.video_helper.handle_recording_file_begin(
-                            transfer_id=str(transfer_id), name=str(name), payload=file_rest,
-                        )
-
-                    case {"type": "RECORDING_FILE_CHUNK", "transfer_id": transfer_id, "name": name, "seq": seq,
-                          "data": data}:
-                        await self.video_helper.handle_recording_file_chunk(
-                            transfer_id=str(transfer_id), name=str(name), seq=int(seq), chunk_b64=str(data),
-                        )
-
-                    case {"type": "RECORDING_FILE_END", "transfer_id": transfer_id, "name": name, **end_rest}:
-                        await self.video_helper.handle_recording_file_end(
-                            transfer_id=str(transfer_id), name=str(name), payload=end_rest,
-                        )
-
-                    case _:
-                        logger.warning(f"[WS] Unrecognized message type from {drone_id}: {obj.get('type')}")
-
-        except websockets.ConnectionClosedOK as e:
+                if isinstance(obj, dict):
+                    await self._process_message(ws, drone_id, obj)
+        except ConnectionClosedOK as e:
             logger.info(f"[WS] Drone disconnected gracefully: {peer}. {self.video_helper.format_disconnect_reason(e)}")
             await self.event_bus.publish(DroneDisconnected(drone_id=drone_id))
-        except websockets.ConnectionClosedError as e:
+        except ConnectionClosedError as e:
             logger.warning(f"[WS] Drone connection broken: {peer}. {self.video_helper.format_disconnect_reason(e)}")
             if drone_id:
                 self.disconnected_clients.add(drone_id)
                 await self.event_bus.publish(DroneConnectionLost(drone_id=drone_id))
-        except websockets.ConnectionClosed as e:
+        except ConnectionClosed as e:
             logger.warning(f"[WS] disconnected: {peer}. {self.video_helper.format_disconnect_reason(e)}")
         except Exception as e:
             logger.error(f"[WS] error: {e}")
@@ -396,3 +285,120 @@ class WebSocketDroneBridge:
                 DroneErrorOccurred(drone_id=drone_id, error_message=f"Pull recordings transfer failed: {e}",
                                    traceback=traceback.format_exc()))
             logger.error(f"[WS] Pull recordings transfer failed for {drone_id}: {e}")
+
+    async def _authenticate_drone(self, ws, peer) -> str | None:
+        # Drone Identification (Handshake / Auth)
+        first_msg = await asyncio.wait_for(ws.recv(), timeout=10.0)
+        if isinstance(first_msg, (bytes, bytearray)):
+            logger.warning(f"[WS] Expected JSON AUTH payload, but received binary data from {peer}.")
+            await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": False}))
+            return
+
+        auth_obj = json.loads(first_msg.strip())
+
+        if auth_obj.get("type") == "AUTH" and "drone_id" in auth_obj:
+            drone_id = auth_obj["drone_id"]
+
+            if self.connected_clients.get(drone_id):
+                logger.warning(f"[WS] Drone {drone_id} is already connected. Rejecting connection from {peer}.")
+                await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": False}))
+                return None
+
+            self.connected_clients[drone_id] = ws
+            logger.info(f"[WS] Authorization successful. Registered drone: {drone_id}")
+
+            if drone_id in self.disconnected_clients:
+                logger.info(f"[WS] Drone {drone_id} reconnected.")
+                self.disconnected_clients.remove(drone_id)
+                await self.event_bus.publish(DroneReconnected(drone_id=drone_id))
+
+            await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": True}))
+            return drone_id
+        else:
+            logger.warning(f"[WS] Invalid AUTH payload from {peer}: {auth_obj}")
+            await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": False}))
+            return None
+
+    @staticmethod
+    async def _send_ack(ws, of: str, ok: bool = True, seq: int = None, error: str = None) -> None:
+        payload = {
+            "type": "ACK",
+            "of": of,
+            "ok": ok
+        }
+        if seq is not None:
+            payload["seq"] = seq
+        if error is not None:
+            payload["error"] = error
+
+        await ws.send(json.dumps(payload))
+
+    async def _process_message(self, ws, drone_id: str, obj: dict) -> None:
+        # Route messages based on the "type" key
+        match obj:
+            case {"type": "ACK", "of": "COMMAND", "seq": seq, "ok": ok, **ack_rest}:
+                action = ack_rest.get("action", "UNKNOWN")
+                err = ack_rest.get("error")
+                logger.debug(
+                    f"[ACK ← {drone_id}] COMMAND action={action} seq={seq} "
+                    f"ok={ok} err={err}"
+                )
+                if action == "MOVE" and ok:
+                    await self.event_bus.publish(MoveStarted(drone_id=drone_id))
+
+            case {"type": "MOVE_EXECUTED", "seq": seq, "ok": ok}:
+                logger.debug(
+                    f"[ACK ← {drone_id}] MOVE_EXECUTED seq={seq} "
+                    f"ok={ok}"
+                )
+                if ok:
+                    await self.event_bus.publish(MoveExecuted(drone_id=drone_id))
+
+                await self._send_ack(ws, of="MOVE_EXECUTED", ok=True, seq=seq)
+
+            case {"type": "PHOTO_WITH_TELEMETRY", "seq": seq, "photo": photo, "telemetry": telemetry}:
+                logger.info(f"[WS] Received PHOTO_WITH_TELEMETRY from {drone_id} (seq: {seq})")
+                try:
+                    photo_path, telemetry_path = await self.storage.save_photo_and_telemetry(photo, telemetry)
+                    await self.event_bus.publish(PhotoWithTelemetryReceived(
+                        drone_id=drone_id,
+                        photo_path=photo_path,
+                        telemetry_path=telemetry_path
+                    ))
+
+                    await self._send_ack(ws, of="PHOTO_WITH_TELEMETRY", ok=True, seq=seq)
+                except DroneInvalidDataError as e:
+                    logger.error(f"[WS] Error saving photo/telemetry for {drone_id}: {e}")
+                    await self._send_ack(ws, of="PHOTO_WITH_TELEMETRY", ok=False, seq=seq, error=str(e))
+
+            case {"type": "ACK", "of": "RECORDING", "action": action, "ok": ok, **ack_rest}:
+                self.video_helper.handle_recording_ack(obj)
+
+            case {"type": "ACK", "of": "RECORDINGS", "action": action, "ok": ok, **ack_rest}:
+                self.video_helper.handle_recordings_ack(obj)
+
+            case {"type": "RECORDING_FILE_BEGIN", "transfer_id": transfer_id, "name": name, **file_rest}:
+                await self.video_helper.handle_recording_file_begin(
+                    transfer_id=str(transfer_id),
+                    name=str(name),
+                    payload=file_rest,
+                )
+
+            case {"type": "RECORDING_FILE_CHUNK", "transfer_id": transfer_id, "name": name, "seq": seq,
+                  "data": data}:
+                await self.video_helper.handle_recording_file_chunk(
+                    transfer_id=str(transfer_id),
+                    name=str(name),
+                    seq=int(seq),
+                    chunk_b64=str(data),
+                )
+
+            case {"type": "RECORDING_FILE_END", "transfer_id": transfer_id, "name": name, **end_rest}:
+                await self.video_helper.handle_recording_file_end(
+                    transfer_id=str(transfer_id),
+                    name=str(name),
+                    payload=end_rest,
+                )
+
+            case _:
+                logger.warning(f"[WS] Unrecognized message type from {drone_id}: {obj.get('type')}")
