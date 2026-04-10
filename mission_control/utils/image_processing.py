@@ -16,6 +16,7 @@ def crop_img_square(photo_data):
 
     return img.crop((left, top, right, bottom)), side
 
+
 import asyncio
 from PIL import Image
 

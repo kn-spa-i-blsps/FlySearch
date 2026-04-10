@@ -1,6 +1,7 @@
 '''
 The prompt generation logic with the templates below have been directly copied and slightly modified from the official Github repository of the FlySearch project: https://github.com/gmum/flysearch '''
 
+
 def fs1_prompt(glimpses: int, object_name: str, search_area_rectangle_length: int, minimum_altitude: int) -> str:
     return f'''<Context>
     You are in command of a UAV, tasked with finding {object_name}.

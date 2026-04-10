@@ -1,4 +1,3 @@
-
 import unittest
 from unittest.mock import MagicMock, patch, mock_open
 
@@ -73,7 +72,7 @@ class TestPromptManager(unittest.TestCase):
             'area': 50,
             'minimum_altitude': 10
         }
-        
+
         saved_paths = self.prompt_manager._save_prompt(prompt_meta)
 
         # Check that the text file was written correctly
@@ -83,9 +82,9 @@ class TestPromptManager(unittest.TestCase):
         # Check that the json file was written correctly
         json_path = '/fake/prompts/dir/fs-1_20230101_120000.json'
         mock_path_join.return_value = json_path
-        self.prompt_manager._save_prompt(prompt_meta) # Call again to get the json path
+        self.prompt_manager._save_prompt(prompt_meta)  # Call again to get the json path
         mock_file_open.assert_any_call(json_path, 'w', encoding='utf-8')
-        
+
         # Verify the content of the JSON file
         meta_to_save = {
             'kind': 'FS-1',
@@ -107,9 +106,9 @@ class TestPromptManager(unittest.TestCase):
         mock_now = MagicMock()
         mock_now.strftime.return_value = "20230101_120000"
         mock_datetime.now.return_value = mock_now
-        
+
         mock_file_open.side_effect = IOError("Disk full")
-        
+
         prompt_meta = {'kind': 'FS-1', 'text': '...'}
         with self.assertRaises(IOError):
             self.prompt_manager._save_prompt(prompt_meta)
@@ -120,9 +119,9 @@ class TestPromptManager(unittest.TestCase):
         """Test the main entrypoint method."""
         mock_generate.return_value = {'kind': 'FS-1', 'text': '...'}
         mock_save.return_value = {'txt': 'path.txt', 'json': 'path.json'}
-        
+
         self.prompt_manager.generate_and_save('FS-1', {})
-        
+
         mock_generate.assert_called_once_with('FS-1', {})
         mock_save.assert_called_once_with({'kind': 'FS-1', 'text': '...'})
 
@@ -132,10 +131,11 @@ class TestPromptManager(unittest.TestCase):
     def test_generate_and_save_exception_handling(self, mock_save, mock_generate, mock_print):
         """Test that generate_and_save handles exceptions gracefully."""
         self.prompt_manager.generate_and_save('FS-1', {})
-        
+
         mock_generate.assert_called_once_with('FS-1', {})
         mock_print.assert_called_once_with("Error in _generate_prompt or _save_prompt: Generation failed")
         mock_save.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

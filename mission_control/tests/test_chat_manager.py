@@ -1,4 +1,3 @@
-
 import json
 import unittest
 from pathlib import Path
@@ -16,7 +15,7 @@ class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
         self.mock_config.chats_dir = Path('/fake/chats')
         self.mock_config.model_backend = 'mock_backend'
         self.mock_config.model_name = 'mock_model'
-        
+
         self.mock_mission_context = MagicMock()
         self.mock_mission_context.conversation = None
         self.mock_mission_context.last_prompt_text_cache = None
@@ -27,7 +26,7 @@ class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
     async def test_create_new_session_success(self, mock_llm_factories):
         """Test successful creation of a new chat session."""
         self.mock_mission_context.last_prompt_text_cache = "Initial prompt"
-        
+
         mock_conversation = MagicMock()
         mock_factory_instance = MagicMock()
         mock_factory_instance.get_conversation.return_value = mock_conversation
@@ -65,7 +64,7 @@ class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
         mock_conversation = MagicMock()
         mock_image = MagicMock()
         mock_image.mode = 'RGB'
-        
+
         history = [
             (Role.USER, "This is the prompt."),
             (Role.ASSISTANT, mock_image)
@@ -78,9 +77,9 @@ class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
 
         chat_dir = self.mock_config.chats_dir / chat_id
         assets_dir = chat_dir / "assets"
-        
+
         mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
-        
+
         mock_image.save.assert_called_once_with(assets_dir / 'image_0.jpg', format='JPEG', quality=95)
 
         expected_history = [
@@ -93,7 +92,7 @@ class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
                 "parts": [{"type": "image", "path": "assets/image_0.jpg"}]
             }
         ]
-        
+
         json_path = chat_dir / "history.json"
         mock_file_open.assert_called_once_with(json_path, 'w', encoding='utf-8')
         mock_json_dump.assert_called_once_with(expected_history, mock_file_open(), indent=2, ensure_ascii=False)
@@ -106,7 +105,7 @@ class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
         mock_conversation = MagicMock()
         mock_image = MagicMock()
         mock_image.mode = 'RGBA'
-        
+
         # Mock the converted image
         mock_converted_image = MagicMock()
         mock_image.convert.return_value = mock_converted_image
@@ -164,7 +163,7 @@ class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
         mock_factory_instance = MagicMock()
         mock_factory_instance.get_conversation.return_value = mock_conversation
         mock_llm_factories.__getitem__.return_value.return_value = mock_factory_instance
-        
+
         mock_image = MagicMock()
         mock_image_open.return_value = mock_image
 
@@ -172,7 +171,7 @@ class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
 
         mock_file_open.assert_called_with(json_path, 'r', encoding='utf-8')
         self.assertEqual(self.mock_mission_context.conversation, mock_conversation)
-        
+
         calls = [
             call.begin_transaction(Role.USER),
             call.add_text_message("Restored prompt"),
@@ -188,7 +187,8 @@ class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
     @patch('mission_control.managers.chat_manager.Path.exists')
     @patch('builtins.open', new_callable=mock_open)
     @patch('mission_control.managers.chat_manager.LLM_BACKEND_FACTORIES')
-    async def test_restore_session_missing_image_file(self, mock_llm_factories, mock_file_open, mock_path_exists, mock_image_open):
+    async def test_restore_session_missing_image_file(self, mock_llm_factories, mock_file_open, mock_path_exists,
+                                                      mock_image_open):
         """Test restore_session handles a missing image file gracefully."""
         chat_id = "missing_image_chat"
         chat_dir = self.mock_config.chats_dir / chat_id
@@ -230,10 +230,11 @@ class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
     @patch('mission_control.managers.chat_manager.Path.exists', return_value=True)
     @patch('builtins.open', new_callable=mock_open)
     @patch('mission_control.managers.chat_manager.LLM_BACKEND_FACTORIES')
-    async def test_restore_session_corrupted_data_raises_error(self, mock_llm_factories, mock_file_open, mock_path_exists):
+    async def test_restore_session_corrupted_data_raises_error(self, mock_llm_factories, mock_file_open,
+                                                               mock_path_exists):
         """Test restore_session raises ChatRestoreError for corrupted data."""
         # Missing 'parts' key
-        corrupted_data = [{"role": "user"}] 
+        corrupted_data = [{"role": "user"}]
         mock_file_open.return_value.read.return_value = json.dumps(corrupted_data)
 
         mock_factory_instance = MagicMock()
@@ -245,7 +246,8 @@ class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
     @patch('mission_control.managers.chat_manager.Path.exists', return_value=True)
     @patch('builtins.open', new_callable=mock_open)
     @patch('mission_control.managers.chat_manager.LLM_BACKEND_FACTORIES')
-    async def test_restore_session_invalid_role_raises_error(self, mock_llm_factories, mock_file_open, mock_path_exists):
+    async def test_restore_session_invalid_role_raises_error(self, mock_llm_factories, mock_file_open,
+                                                             mock_path_exists):
         """Test restore_session raises ChatRestoreError for invalid role."""
         invalid_role_data = [{"role": "invalid_role", "parts": []}]
         mock_file_open.return_value.read.return_value = json.dumps(invalid_role_data)
@@ -261,6 +263,7 @@ class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
         self.mock_mission_context.conversation = MagicMock()
         await self.chat_manager.reset_session()
         self.assertIsNone(self.mock_mission_context.conversation)
+
 
 if __name__ == '__main__':
     unittest.main()

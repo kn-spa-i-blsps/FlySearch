@@ -17,10 +17,12 @@ class Message:
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     correlation_id: Optional[str] = None
 
+
 @dataclass(kw_only=True)
 class Event(Message):
     """Indicates that something has happened in the system."""
     pass
+
 
 @dataclass(kw_only=True)
 class Command(Message):
@@ -37,34 +39,39 @@ class AskUserConfirmationCommand(Command):
     reasoning: str
     move: tuple
 
+
 @dataclass(kw_only=True)
 class MoveExecuted(Event):
     drone_id: str
+
 
 @dataclass(kw_only=True)
 class SearchEnded(Event):
     mission_id: str
     moves_performed: int
     found: bool
-    error_message: str|None = None
+    error_message: str | None = None
+
 
 @dataclass(kw_only=True)
 class StartRecordingCommand(Command):
     drone_id: str
 
+
 @dataclass(kw_only=True)
 class StopRecordingCommand(Command):
     drone_id: str
+
 
 @dataclass(kw_only=True)
 class GetRecordingsListCommand(Command):
     drone_id: str
 
+
 @dataclass(kw_only=True)
 class PullRecordingsCommand(Command):
     drone_id: str
     names: List[str]
-
 
 
 @dataclass(kw_only=True)
@@ -92,6 +99,7 @@ class PhotoWithTelemetryReceived(Event):
     photo_path: Path
     telemetry_path: Path
 
+
 @dataclass(kw_only=True)
 class DroneConnectionLost(Event):
     """
@@ -101,9 +109,11 @@ class DroneConnectionLost(Event):
     """
     drone_id: str
 
+
 @dataclass(kw_only=True)
 class MoveStarted(Event):
     drone_id: str
+
 
 @dataclass(kw_only=True)
 class DroneDisconnected(Event):
@@ -114,10 +124,12 @@ class DroneDisconnected(Event):
     """
     drone_id: str
 
+
 @dataclass(kw_only=True)
 class DroneReconnected(Event):
     """TODO"""
     drone_id: str
+
 
 @dataclass(kw_only=True)
 class DroneErrorOccurred(Event):
@@ -129,6 +141,7 @@ class DroneErrorOccurred(Event):
     drone_id: str
     error_message: str
     traceback: str | None = None
+
 
 # --- 3. VLMBridge Events ---
 
@@ -144,6 +157,7 @@ class VlmAnalysisCompleted(Event):
     move: tuple
     found: bool
 
+
 @dataclass(kw_only=True)
 class VlmErrorOccurred(Event):
     """
@@ -155,6 +169,7 @@ class VlmErrorOccurred(Event):
     error_message: str
     traceback: str | None = None
 
+
 @dataclass(kw_only=True)
 class GetPhotoAndTelemetryCommand(Command):
     """
@@ -163,6 +178,7 @@ class GetPhotoAndTelemetryCommand(Command):
     Instructs the drone to take and transmit a photo with telemetry.
     """
     drone_id: str
+
 
 # --- 4. Orchestrator Commands (Saga Actions) ---
 
@@ -176,6 +192,7 @@ class ExecuteMoveCommand(Command):
     drone_id: str
     move: tuple
 
+
 @dataclass(kw_only=True)
 class AnalyzePhotoCommand(Command):
     """
@@ -188,16 +205,19 @@ class AnalyzePhotoCommand(Command):
     photo_path: Path
     telemetry_path: Path
 
+
 @dataclass(kw_only=True)
 class CreateNewSessionCommand(Command):
     """TODO"""
     chat_id: str
     prompt: str
 
+
 @dataclass(kw_only=True)
 class NewSessionCreated(Event):
     """TODO"""
     chat_id: str
+
 
 @dataclass(kw_only=True)
 class ChatErrorOccurred(Event):
@@ -206,43 +226,51 @@ class ChatErrorOccurred(Event):
     error_message: str
     traceback: str | None = None
 
+
 @dataclass(kw_only=True)
 class DeleteSessionCommand(Command):
     """TODO"""
     chat_id: str
+
 
 @dataclass(kw_only=True)
 class SessionDeleted(Event):
     """TODO"""
     chat_id: str
 
+
 @dataclass(kw_only=True)
 class SaveSessionCommand(Command):
     """TODO"""
     chat_id: str
+
 
 @dataclass(kw_only=True)
 class SessionSaved(Event):
     """TODO"""
     chat_id: str
 
+
 @dataclass(kw_only=True)
 class LoadSessionCommand(Command):
     """TODO"""
     chat_id: str
+
 
 @dataclass(kw_only=True)
 class SessionLoaded(Event):
     """TODO"""
     chat_id: str
 
+
 @dataclass(kw_only=True)
 class StartMissionCommand(Command):
     """TODO"""
     mission_id: str
     drone_id: str
-    prompt_type: str # TODO: Enum?
+    prompt_type: str
     prompt_args: Dict[str, Any]
+
 
 # --- 5. State / System Events ---
 
@@ -253,8 +281,9 @@ class StateUpdated(Event):
     Subscribed by: Web Server (for frontend delivery via WebSockets).
     Used to push real-time system state updates to the GUI.
     """
-    state_type: str # e.g., "DRONE_LOCATION", "SEARCH_PHASE_CHANGED"
+    state_type: str  # e.g., "DRONE_LOCATION", "SEARCH_PHASE_CHANGED"
     state_data: Dict[str, Any]
+
 
 @dataclass(kw_only=True)
 class SystemShuttingDown(Event):

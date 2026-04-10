@@ -22,7 +22,7 @@ def get_system_font(size: int) -> ImageFont.FreeTypeFont:
                 raise ValueError(f"Cannot load font from FONT_LOCATION '{font_location}': {e}")
         else:
             raise ValueError(f"Font file specified in FONT_LOCATION does not exist: {font_location}")
-    
+
     # Second priority: Try to find NotoSerif-Bold in common locations
     noto_serif_bold_paths = [
         "/usr/share/fonts/google-noto/NotoSerif-Bold.ttf",
@@ -33,14 +33,14 @@ def get_system_font(size: int) -> ImageFont.FreeTypeFont:
         "/Library/Fonts/NotoSerif-Bold.ttf",
         "C:/Windows/Fonts/NotoSerif-Bold.ttf",
     ]
-    
+
     for font_path in noto_serif_bold_paths:
         if os.path.exists(font_path):
             try:
                 return ImageFont.truetype(font_path, size)
             except (OSError, IOError):
                 continue
-    
+
     # If neither FONT_LOCATION nor NotoSerif-Bold found, raise exception
     raise ValueError(
         "Cannot find required font. Please either:\n"
@@ -48,6 +48,7 @@ def get_system_font(size: int) -> ImageFont.FreeTypeFont:
         "2. Install NotoSerif-Bold font in a standard system location:\n"
         f"   - {', '.join(noto_serif_bold_paths)}"
     )
+
 
 def carthesian(x, y):
     for el_x in x:

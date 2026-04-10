@@ -10,9 +10,9 @@ try:
 except ImportError:
     GEMINI_AVALIABLE = False
 
-
 if GEMINI_AVALIABLE:
     from mission_control.conversation.gemini.gemini_conversation import GeminiConversation
+
 
     class _GeminiFactory(BaseConversationFactory):
         def __init__(self, model_name: str):
@@ -25,6 +25,7 @@ if GEMINI_AVALIABLE:
                 self.model_name,
                 max_tokens=None,  # Avoid forcing max tokens; Gemini handles defaults
             )
+
 
     GeminiFactory = _GeminiFactory
 else:

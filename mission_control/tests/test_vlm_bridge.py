@@ -1,4 +1,3 @@
-
 import unittest
 from unittest.mock import Mock, patch, MagicMock, call
 
@@ -25,11 +24,11 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
 
         mock_parse_telemetry.return_value = ('telemetry_text', 100)
         mock_add_grid.return_value = 'gridded_image'
-        
+
         self.mission_context.conversation.get_latest_message.return_value = (
             "assistant", "<response><move>forward</move></response>"
         )
-        
+
         mock_parse_xml_response.return_value = {'move': 'forward'}
 
         # Act
@@ -54,13 +53,13 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
 
         mock_parse_telemetry.return_value = ('telemetry_text', 100)
         mock_add_grid.return_value = 'gridded_image'
-        
+
         self.mission_context.conversation.get_latest_message.return_value = (
             "assistant", "<response><move>left</move></response>"
         )
-        
+
         mock_parse_xml_response.return_value = {'move': 'left'}
-        
+
         # Act
         await self.bridge.handle_analyze_photo(is_warning=True)
 
@@ -76,7 +75,8 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
     @patch('mission_control.bridges.vlm_bridge.parse_xml_response')
     @patch('mission_control.bridges.vlm_bridge.add_grid')
     @patch('mission_control.bridges.vlm_bridge.parse_telemetry')
-    async def test_send_to_vlm_works_if_transaction_already_started(self, mock_parse_telemetry, mock_add_grid, mock_parse_xml_response):
+    async def test_send_to_vlm_works_if_transaction_already_started(self, mock_parse_telemetry, mock_add_grid,
+                                                                    mock_parse_xml_response):
         # Arrange
         self.mission_context.conversation = MagicMock()
         self.mission_context.last_photo_path_cache = 'dummy_photo.jpg'
@@ -120,19 +120,20 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
     @patch('mission_control.bridges.vlm_bridge.parse_xml_response')
     @patch('mission_control.bridges.vlm_bridge.add_grid')
     @patch('mission_control.bridges.vlm_bridge.parse_telemetry')
-    async def test_send_to_vlm_parsing_error_raises_error(self, mock_parse_telemetry, mock_add_grid, mock_parse_xml_response):
+    async def test_send_to_vlm_parsing_error_raises_error(self, mock_parse_telemetry, mock_add_grid,
+                                                          mock_parse_xml_response):
         # Arrange
         self.mission_context.conversation = MagicMock()
         self.mission_context.last_photo_path_cache = 'dummy_photo.jpg'
         self.mission_context.last_telemetry_path_cache = 'dummy_telemetry.json'
-        
+
         mock_parse_telemetry.return_value = ('telemetry_text', 100)
         mock_add_grid.return_value = 'gridded_image'
-        
+
         self.mission_context.conversation.get_latest_message.return_value = (
             "assistant", "invalid_xml"
         )
-        
+
         mock_parse_xml_response.side_effect = ParsingError("Invalid XML")
 
         # Act & Assert
@@ -172,10 +173,10 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         self.mission_context.conversation = MagicMock()
         self.mission_context.last_photo_path_cache = 'dummy_photo.jpg'
         self.mission_context.last_telemetry_path_cache = 'dummy_telemetry.json'
-        
+
         mock_parse_telemetry.return_value = ('telemetry_text', 100)
         mock_add_grid.return_value = 'gridded_image'
-        
+
         self.mission_context.conversation.commit_transaction.side_effect = Exception("Connection failed")
 
         # Act & Assert

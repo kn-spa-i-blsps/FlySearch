@@ -29,6 +29,7 @@ class EventBus(Protocol):
         """Publishes an event to all registered subscribers."""
         ...
 
+
 class ChatStorageHelper(Protocol):
     """
     Abstract interface for classes managing the persistence (saving and loading)
@@ -46,6 +47,7 @@ class ChatStorageHelper(Protocol):
         Reconstructs and returns a conversation object based on the saved chat identifier.
         """
         ...
+
 
 class PromptHelper(Protocol):
     """
@@ -65,6 +67,7 @@ class PromptHelper(Protocol):
             The ready-to-use prompt string to be sent to the model.
         """
         ...
+
 
 class VLMBridge(Protocol):
     """
@@ -103,6 +106,7 @@ class VLMBridge(Protocol):
         Restores a chat session from persistent storage into the service's memory.
         """
         ...
+
 
 class DataStorageHelper(Protocol):
 

@@ -1,4 +1,3 @@
-
 import base64
 import errno
 import json
@@ -22,7 +21,7 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         self.mock_config.max_ws_mb = 10
         self.mock_config.upload_dir = '/fake/uploads'
         self.mock_config.telemetry_dir = '/fake/telemetry'
-        
+
         self.mock_mission_context = MagicMock()
         self.drone_bridge = DroneBridge(self.mock_config, self.mock_mission_context)
 
@@ -30,11 +29,11 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
     async def test_start_server_success(self, mock_serve):
         """Test successful server start."""
         mock_server_instance = AsyncMock()
-        mock_server_instance.close = MagicMock() # Make close synchronous
+        mock_server_instance.close = MagicMock()  # Make close synchronous
         mock_serve.return_value = mock_server_instance
-        
+
         await self.drone_bridge.start()
-        
+
         mock_serve.assert_called_once_with(
             self.drone_bridge.handler, 'localhost', 8765, max_size=10 * 1024 * 1024
         )
@@ -44,23 +43,23 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
     async def test_start_server_address_in_use(self, mock_serve):
         """Test server start failure due to address in use."""
         mock_serve.side_effect = OSError(errno.EADDRINUSE, "Address already in use")
-        
+
         with self.assertRaises(OSError):
             await self.drone_bridge.start()
-        
+
         self.assertIsNone(self.drone_bridge.server)
 
     async def test_stop_server_success(self):
         """Test successful server and client stop."""
         mock_server = AsyncMock()
-        mock_server.close = MagicMock() # Make the close method synchronous
+        mock_server.close = MagicMock()  # Make the close method synchronous
         mock_client = AsyncMock()
-        
+
         self.drone_bridge.server = mock_server
         self.drone_bridge.client = mock_client
-        
+
         await self.drone_bridge.stop()
-        
+
         mock_server.close.assert_called_once()
         mock_server.wait_closed.assert_called_once()
         mock_client.close.assert_called_once()
@@ -74,7 +73,7 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         mock_ws.__aiter__.return_value = iter([])
 
         await self.drone_bridge.handler(mock_ws)
-        
+
         # Check that the client was set and then reset
         self.assertIsNone(self.drone_bridge.client)
 
@@ -93,11 +92,12 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
     @patch('mission_control.bridges.drone_bridge.DroneBridge._handle_binary_photo', new_callable=AsyncMock)
     @patch('mission_control.bridges.drone_bridge.DroneBridge._handle_telemetry', new_callable=AsyncMock)
     @patch('mission_control.bridges.drone_bridge.DroneBridge._handle_telemetry_photo', new_callable=AsyncMock)
-    async def test_handler_routes_messages(self, mock_handle_telemetry_photo, mock_handle_telemetry, mock_handle_binary_photo):
+    async def test_handler_routes_messages(self, mock_handle_telemetry_photo, mock_handle_telemetry,
+                                           mock_handle_binary_photo):
         """Test that the handler correctly routes different message types."""
         mock_ws = AsyncMock()
         mock_ws.remote_address = ('127.0.0.1', 12345)
-        
+
         messages = [
             b'binary_image_data',
             json.dumps({"type": "TELEMETRY", "data": {"alt": 10}}),
@@ -179,13 +179,13 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         mock_now = MagicMock()
         mock_now.strftime.return_value = "20230101_120000"
         mock_datetime.now.return_value = mock_now
-        
+
         fake_path = '/fake/uploads/img_20230101_120000.jpg'
         mock_path_join.return_value = fake_path
 
         mock_ws = AsyncMock()
         binary_data = b'test_image_data'
-        
+
         await self.drone_bridge._handle_binary_photo(mock_ws, binary_data)
 
         mock_path_join.assert_called_once_with(self.mock_config.upload_dir, 'img_20230101_120000.jpg')
@@ -203,32 +203,33 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         ts = "20230101_120000"
         mock_now.strftime.return_value = ts
         mock_datetime.now.return_value = mock_now
-        
+
         fake_path = f'/fake/telemetry/telemetry_{ts}.json'
         mock_path_join.return_value = fake_path
 
         telemetry_data = {"alt": 15, "lat": 12.34}
         photo_name = "img_20230101_115900.jpg"
-        
+
         await self.drone_bridge._handle_telemetry(telemetry_data, photo_name)
 
         mock_path_join.assert_called_once_with(self.mock_config.telemetry_dir, f'telemetry_{ts}.json')
         mock_file_open.assert_called_once_with(fake_path, 'w', encoding='utf-8')
-        
+
         expected_payload = {
             "received_at": ts,
             "associated_photo": photo_name,
             "data": telemetry_data
         }
         mock_json_dump.assert_called_once_with(expected_payload, mock_file_open(), ensure_ascii=False, indent=2)
-        
+
         self.assertEqual(self.mock_mission_context.last_telemetry_path_cache, fake_path)
 
     @patch('os.path.join')
     @patch('mission_control.bridges.drone_bridge.crop_img_square')
     @patch('mission_control.bridges.drone_bridge.DroneBridge._handle_telemetry', new_callable=AsyncMock)
     @patch('mission_control.bridges.drone_bridge.datetime')
-    async def test_handle_telemetry_photo_success(self, mock_datetime, mock_handle_telemetry, mock_crop, mock_path_join):
+    async def test_handle_telemetry_photo_success(self, mock_datetime, mock_handle_telemetry, mock_crop,
+                                                  mock_path_join):
         """Test successful handling of a photo with telemetry."""
         mock_now = MagicMock()
         ts = "20230101_120000"
@@ -257,7 +258,8 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
     @patch('mission_control.bridges.drone_bridge.crop_img_square', side_effect=Exception("Crop failed"))
     @patch('mission_control.bridges.drone_bridge.DroneBridge._handle_telemetry', new_callable=AsyncMock)
     @patch('mission_control.bridges.drone_bridge.datetime')
-    async def test_handle_telemetry_photo_crop_fails(self, mock_datetime, mock_handle_telemetry, mock_crop, mock_file_open, mock_path_join):
+    async def test_handle_telemetry_photo_crop_fails(self, mock_datetime, mock_handle_telemetry, mock_crop,
+                                                     mock_file_open, mock_path_join):
         """Test fallback to saving raw photo when cropping fails."""
         mock_now = MagicMock()
         ts = "20230101_120000"
@@ -283,9 +285,9 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         """Test sending a simple message to a connected drone."""
         mock_client = AsyncMock()
         self.drone_bridge.client = mock_client
-        
+
         await self.drone_bridge.send_message("TEST_CMD")
-        
+
         mock_client.send.assert_called_once_with("TEST_CMD")
 
     async def test_send_message_no_client_raises_error(self):
@@ -306,9 +308,9 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         """Test sending a 'FOUND' command."""
         mock_client = AsyncMock()
         self.drone_bridge.client = mock_client
-        
+
         await self.drone_bridge.send_move(found=True)
-        
+
         sent_data = json.loads(mock_client.send.call_args[0][0])
         self.assertEqual(sent_data['type'], 'COMMAND')
         self.assertEqual(sent_data['action'], 'FOUND')
@@ -317,9 +319,9 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         """Test sending a 'MOVE' command."""
         mock_client = AsyncMock()
         self.drone_bridge.client = mock_client
-        
+
         await self.drone_bridge.send_move(move=(1.0, 2.5, -3.0))
-        
+
         sent_data = json.loads(mock_client.send.call_args[0][0])
         self.assertEqual(sent_data['type'], 'COMMAND')
         self.assertEqual(sent_data['move'], [1.0, 2.5, -3.0])
@@ -327,14 +329,14 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
     async def test_send_command_invalid_move_raises_error(self):
         """Test send_command raises ValueError for invalid move parameters."""
         self.drone_bridge.client = AsyncMock()
-        
+
         invalid_moves = [
-            (1, 2),          # Too few values
-            (1, 2, 3, 4),    # Too many values
-            ('a', 'b', 'c'), # Non-numeric values
+            (1, 2),  # Too few values
+            (1, 2, 3, 4),  # Too many values
+            ('a', 'b', 'c'),  # Non-numeric values
             None,
         ]
-        
+
         for move in invalid_moves:
             with self.subTest(move=move):
                 with self.assertRaises(ValueError):
@@ -343,7 +345,7 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
     async def test_send_command_no_content_raises_error(self):
         """Test that send_command raises ValueError if no action is specified."""
         self.drone_bridge.client = AsyncMock()
-        
+
         with self.assertRaises(ValueError):
             await self.drone_bridge.send_move()
 
@@ -360,6 +362,7 @@ class TestDroneBridge(unittest.IsolatedAsyncioTestCase):
         mock_ws = AsyncMock()
         with self.assertRaises(DroneInvalidDataError):
             await self.drone_bridge._handle_telemetry_photo(mock_ws, "not-base64", {})
+
 
 if __name__ == '__main__':
     unittest.main()

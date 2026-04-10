@@ -11,6 +11,7 @@ from mission_control.core.interfaces import EventBus, PromptHelper
 
 logger = logging.getLogger(__name__)
 
+
 class MissionState(Enum):
     WAITING_FOR_ACK = auto()
     PAUSED = auto()
@@ -35,7 +36,7 @@ class SearchOrchestrator:
         self.max_moves: int = 0
         self.prompt_helper = prompts
         self.current_move = None
-        
+
         self.event_bus.subscribe(PhotoWithTelemetryReceived, self.handle_photo_and_telemetry)
         self.event_bus.subscribe(VlmAnalysisCompleted, self.handle_vlm_analysis)
         self.event_bus.subscribe(UserDecisionReceived, self.handle_user_decision)
@@ -106,7 +107,6 @@ class SearchOrchestrator:
             await self._terminate_mission(found=False)
             return
 
-
         command = AskUserConfirmationCommand(
             mission_id=self.mission_id,
             reasoning=event.reasoning,
@@ -150,7 +150,6 @@ class SearchOrchestrator:
 
         self.state = MissionState.FLYING
 
-
     async def handle_move_executed(self, event: MoveExecuted):
         if self.drone_id != event.drone_id:
             return
@@ -191,8 +190,6 @@ class SearchOrchestrator:
         if self.pending_command is not None:
             await self.event_bus.publish(self.pending_command)
             self.pending_command = None
-
-
 
     async def handle_drone_disconnected(self, event: DroneDisconnected):
         if self.drone_id != event.drone_id:

@@ -21,10 +21,11 @@ from mission_control.utils.parsers import parse_xml_response, ModelResponse, \
 
 logger = get_configured_logger(__name__)
 
+
 class FlySearchVLMBridge(VLMBridge):
     """ Bridge for the communication between the server and the VLM. """
 
-    def __init__(self, config : Config, event_bus : EventBus, storage: ChatStorageHelper):
+    def __init__(self, config: Config, event_bus: EventBus, storage: ChatStorageHelper):
         self.config = config
         self.event_bus = event_bus
         self.collision_warning_str = "Your move would cause a collision. Make other move."

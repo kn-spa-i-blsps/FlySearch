@@ -11,7 +11,8 @@ from mission_control.conversation.abstract_conversation import Conversation, Rol
 
 
 class GeminiConversation(Conversation):
-    def __init__(self, client: genai.Client, model_name: str, seed=42, max_tokens=None, temperature=None, top_p=None, thinking_budget=None):
+    def __init__(self, client: genai.Client, model_name: str, seed=42, max_tokens=None, temperature=None, top_p=None,
+                 thinking_budget=None):
         self.client = client
         self.model_name = model_name
         self.conversation = []  # This will be populated from chat history
@@ -63,7 +64,7 @@ class GeminiConversation(Conversation):
             raise Exception("Transaction not started")
 
         image = image.convert("RGB")
-        
+
         content = self.transaction_conversation["content"]
 
         content.append(
@@ -141,7 +142,7 @@ class GeminiConversation(Conversation):
 
         self.transaction_conversation = {}
         self.transaction_started = False
-        
+
         role = self.transaction_role
         self.transaction_role = None
 
@@ -151,15 +152,14 @@ class GeminiConversation(Conversation):
         if role == Role.ASSISTANT and send_to_vlm:
             raise Exception("Assistant cannot send messages to VLM")
 
-
         # Get the message parts from the just committed message
         msg = self.conversation[-1]
         parts = self._to_gemini_parts(msg["content"])
 
         response = self._send_message_with_retry(parts)
-        
+
         response_content = str(response.text)
-        
+
         self.logger.info(f"LLM response: {response_content}")
 
         # Add the model's response to the history

@@ -42,7 +42,6 @@ class CLIHandler:
             except NotImplementedError:
                 pass
 
-
         self.print_help()
 
         with patch_stdout():

@@ -1,4 +1,3 @@
-
 import os
 
 import pytest
@@ -9,6 +8,7 @@ from mission_control.conversation.gemini.gemini_factory import GeminiFactory
 # Mark all tests in this file as integration tests
 pytestmark = pytest.mark.integration
 
+
 class TestGeminiConversationIntegration:
 
     @pytest.fixture(scope="class")
@@ -17,7 +17,7 @@ class TestGeminiConversationIntegration:
         api_key = os.getenv("GEMINI_AI_KEY")
         if not api_key:
             pytest.skip("GEMINI_AI_KEY environment variable not set. Skipping integration test.")
-        
+
         # The factory will internally handle the API key configuration
         factory = GeminiFactory(model_name="gemini-2.5-flash")
         return factory.get_conversation()

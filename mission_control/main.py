@@ -15,6 +15,7 @@ from mission_control.vlm.vlm_bridge import FlySearchVLMBridge
 
 logger = get_configured_logger(__name__)
 
+
 async def main():
     config = Config()
     event_bus = MemoryEventBus()
@@ -39,16 +40,16 @@ async def main():
     except DroneCommunicationError as e:
         logger.error(e)
         exit(1)
-    #cli_handler = CLIHandler(event_bus)
+    # cli_handler = CLIHandler(event_bus)
     web_server = WebServer(config, event_bus)
 
-    #repl_task = asyncio.create_task(cli_handler.serve())
+    # repl_task = asyncio.create_task(cli_handler.serve())
     # WEB GUI
     web_task = asyncio.create_task(web_server.serve())
 
     done, pending = await asyncio.wait(
         [
-            #repl_task,
+            # repl_task,
             web_task],
         return_when=asyncio.FIRST_COMPLETED
     )

@@ -414,7 +414,7 @@ class TestOpenAIConversation:
                     pattern[i, j] = [255, 0, 0]  # Red squares
                 else:
                     pattern[i, j] = [0, 255, 0]  # Green squares
-        
+
         image_pil = Image.fromarray(pattern, mode='RGB')
 
         conversation.begin_transaction(Role.USER)
@@ -429,11 +429,11 @@ class TestOpenAIConversation:
 
         # Check that the base64 string starts with the correct JPEG data URI prefix
         assert b64_sent.startswith("data:image/jpeg;base64,")
-        
+
         # Check that the base64 portion is not empty
         base64_part = b64_sent.split(",")[1]
         assert len(base64_part) > 0
-        
+
         # Verify it's valid base64 by attempting to decode it
         import base64
         try:

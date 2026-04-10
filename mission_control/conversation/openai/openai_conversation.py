@@ -10,6 +10,7 @@ from mission_control.utils.logger import get_configured_logger
 
 logger = get_configured_logger(__name__)
 
+
 class OpenAIConversation(Conversation):
     def __init__(self, client: Client, model_name: str, seed=42, max_tokens=300, temperature=0.8, top_p=1.0):
         self.client = client

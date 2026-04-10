@@ -10,6 +10,7 @@ from mission_control.utils.logger import get_configured_logger
 
 logger = get_configured_logger(__name__)
 
+
 async def get_height_async(path):
     """ Parses telemetry data from JSON file asynchronously.
 
@@ -27,6 +28,7 @@ async def get_height_async(path):
         height = 10
 
     return height
+
 
 def parse_prompt_arguments(cmd):
     """Divides arguments for the prompt command.
@@ -53,6 +55,7 @@ def parse_prompt_arguments(cmd):
     _coerce_positive_int(kv, "minimum_altitude")
     return kind, kv
 
+
 def parse_search_arguments(cmd):
     """Divides arguments for the search command.
 
@@ -61,7 +64,8 @@ def parse_search_arguments(cmd):
 
     parts = cmd.split()
     if len(parts) not in [6, 7]:
-        logger.info("Usage: SEARCH <mission_id> <drone_id> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=..]")
+        logger.info(
+            "Usage: SEARCH <mission_id> <drone_id> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=..]")
         raise ValueError
     mission_id = parts[0]
     drone_id = parts[1]
@@ -103,14 +107,17 @@ def _coerce_positive_int(kv: Dict[str, int | str], key: str) -> None:
 
     kv[key] = value
 
+
 @dataclass
 class ModelResponse:
     found: bool = False
     move: Tuple[float, float, float] = (0, 0, 0)
     reasoning: str = ""
 
+
 ACTION_PATTERN = re.compile(r"<action>(.*?)</action>", flags=re.DOTALL | re.IGNORECASE)
 REASONING_PATTERN = re.compile(r"<reasoning>(.*?)</reasoning>", flags=re.DOTALL | re.IGNORECASE)
+
 
 def parse_xml_response(model_response: str) -> ModelResponse:
     model_response_clean = model_response.strip()

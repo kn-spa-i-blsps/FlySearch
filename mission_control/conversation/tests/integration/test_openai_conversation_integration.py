@@ -1,4 +1,3 @@
-
 import os
 
 import pytest
@@ -9,6 +8,7 @@ from mission_control.conversation.openai.openai_factory import OpenAIFactory
 # Mark all tests in this file as integration tests
 pytestmark = pytest.mark.integration
 
+
 class TestOpenAIConversationIntegration:
 
     @pytest.fixture(scope="class")
@@ -17,7 +17,7 @@ class TestOpenAIConversationIntegration:
         api_key = os.getenv("OPEN_AI_KEY")
         if not api_key:
             pytest.skip("OPEN_AI_KEY environment variable not set. Skipping integration test.")
-        
+
         # Use a common and fast model for testing
         model_name = "gpt-3.5-turbo"
         factory = OpenAIFactory(model_name=model_name)

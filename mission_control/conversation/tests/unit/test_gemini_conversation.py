@@ -1,4 +1,3 @@
-
 import pytest
 from PIL import Image
 
@@ -9,6 +8,7 @@ from mission_control.conversation.gemini.gemini_conversation import GeminiConver
 class SimpleObject:
     pass
 
+
 class MockGemini:
     def mock_send_message_function(self, to_return: str) -> callable:
         response_mock = SimpleObject()
@@ -17,7 +17,7 @@ class MockGemini:
         def mocked_fun(*args, **kwargs):
             self.mock_send_message_args.append(args)
             self.mock_send_message_kwargs.append(kwargs)
-            
+
             message = kwargs["message"]
             self.mock_send_message_messages.append(list(message))
             return response_mock
@@ -36,9 +36,10 @@ class MockGemini:
     def mock_create_function(self) -> callable:
         chat_mock = SimpleObject()
         chat_mock.__dict__["send_message"] = self.mock_send_message_function(self.response_text)
-        
+
         def mocked_fun(*args, **kwargs):
             return chat_mock
+
         return mocked_fun
 
     def get_mock_send_message_args(self):
@@ -80,7 +81,7 @@ class TestGeminiConversation:
 
         assert len(gemini_mock.get_mock_send_message_args()) == 1
         assert len(gemini_mock.get_mock_send_message_kwargs()) == 1
-        
+
         sent_messages = gemini_mock.get_mock_send_message_messages()[0]
         assert len(sent_messages) == 2
         assert sent_messages[0].text == "mock_message"

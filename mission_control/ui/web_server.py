@@ -24,6 +24,7 @@ from mission_control.utils.logger import get_configured_logger
 
 logger = get_configured_logger(__name__)
 
+
 @dataclass
 class MissionUIState:
     """ Stores the GUI state for one specific mission. """

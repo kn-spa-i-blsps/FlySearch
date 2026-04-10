@@ -1,4 +1,3 @@
-
 import json
 import unittest
 from unittest.mock import patch, mock_open
@@ -26,7 +25,7 @@ class TestParsers(unittest.TestCase):
     def test_parse_telemetry_missing_data(self, mock_file):
         """Test parsing of telemetry data with missing keys."""
         message, height = get_height_from_telemetry('fake/path.json')
-        self.assertEqual(height, 10) # Default value
+        self.assertEqual(height, 10)  # Default value
         self.assertEqual(message, "Your current altitude is 10 meters above ground level.")
 
     @patch("builtins.open", new_callable=mock_open, read_data='{"data": {"position": {"alt": null}}}')
@@ -82,7 +81,7 @@ class TestParsers(unittest.TestCase):
     def test_parse_search_arguments_invalid(self):
         """Test that parsing invalid search arguments raises ValueError."""
         with self.assertRaises(ValueError):
-            parse_search_arguments("test_search") # Missing kind
+            parse_search_arguments("test_search")  # Missing kind
 
     def test_parse_search_arguments_missing_glimpses(self):
         """Test that SEARCH requires a glimpses argument."""
@@ -117,7 +116,8 @@ class TestParsers(unittest.TestCase):
         self.assertEqual(response_space.move, (1.0, 2.0, 3.0))
 
         # Other XML tags
-        response_other_tags = parse_xml_response("<response><thought>I should move.</thought><action>(-1, 0, 0)</action></response>")
+        response_other_tags = parse_xml_response(
+            "<response><thought>I should move.</thought><action>(-1, 0, 0)</action></response>")
         self.assertEqual(response_other_tags.move, (-1.0, 0.0, 0.0))
 
     def test_parse_xml_response_no_xml_but_found(self):
@@ -134,6 +134,7 @@ class TestParsers(unittest.TestCase):
         """Test that an invalid action format raises a ParsingError."""
         with self.assertRaises(ParsingError):
             parse_xml_response("<action>invalid_move</action>")
+
 
 if __name__ == '__main__':
     unittest.main()

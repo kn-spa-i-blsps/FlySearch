@@ -7,6 +7,7 @@ from mission_control.core.interfaces import EventBus
 
 logger = logging.getLogger(__name__)
 
+
 class MemoryEventBus(EventBus):
     def __init__(self):
         self._subscribers: Dict[Type, List[Callable[[Any], Awaitable[None]]]] = defaultdict(list)
@@ -33,12 +34,12 @@ class MemoryEventBus(EventBus):
         tasks = [asyncio.create_task(self._safe_execute(handler, event)) for handler in handlers]
 
         if wait_for_completion:
-             await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks)
         else:
-             # "Fire and forget"
-             for task in tasks:
-                 self._background_tasks.add(task)
-                 task.add_done_callback(self._background_tasks.discard)
+            # "Fire and forget"
+            for task in tasks:
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
 
     @staticmethod
     async def _safe_execute(handler: Callable, event: Any):

@@ -3,6 +3,7 @@ import sys
 
 debug = True
 
+
 def get_configured_logger(name: str) -> logging.Logger:
     """
     Returns a configured logger.
