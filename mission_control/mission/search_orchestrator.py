@@ -67,11 +67,13 @@ class SearchOrchestrator:
 
             await self.event_bus.publish(CreateNewSessionCommand(chat_id=self.mission_id, prompt=self.initial_prompt), wait_for_completion=True)
             await self.event_bus.publish(SaveSessionCommand(chat_id=self.mission_id), wait_for_completion=True)
+            if self.state == MissionState.ENDED:
+                return
             self.state = MissionState.WAITING_FOR_DRONE
-            await self.event_bus.publish(StartRecordingCommand(drone_id=self.drone_id))
+            await self.event_bus.publish(StartRecordingCommand(drone_id=self.drone_id), wait_for_completion=True)
             await self.event_bus.publish(GetPhotoAndTelemetryCommand(drone_id=self.drone_id))
         except Exception as e:
-            self._cleanup()
+            await self._abort_mission(reason=str(e))
             raise
 
     async def handle_photo_and_telemetry(self, event: PhotoWithTelemetryReceived):
