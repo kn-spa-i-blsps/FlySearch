@@ -171,14 +171,40 @@ class WebSocketDroneBridge:
                         if ok:
                             await self.event_bus.publish(MoveExecuted(drone_id=drone_id))
 
+                        await ws.send(json.dumps({
+                            "type": "ACK",
+                            "of": "MOVE_EXECUTED",
+                            "seq": seq,
+                            "ok": True
+                        }))
+
                     case {"type": "PHOTO_WITH_TELEMETRY", "seq": seq, "photo": photo, "telemetry": telemetry}:
                         logger.info(f"[WS] Received PHOTO_WITH_TELEMETRY from {drone_id} (seq: {seq})")
-                        photo_path, telemetry_path = await self.storage.save_photo_and_telemetry(photo, telemetry)
-                        await self.event_bus.publish(PhotoWithTelemetryReceived(
-                            drone_id=drone_id,
-                            photo_path=photo_path,
-                            telemetry_path=telemetry_path
-                        ))
+                        try:
+                            photo_path, telemetry_path = await self.storage.save_photo_and_telemetry(photo, telemetry)
+                            await self.event_bus.publish(PhotoWithTelemetryReceived(
+                                drone_id=drone_id,
+                                photo_path=photo_path,
+                                telemetry_path=telemetry_path
+                            ))
+
+                            await ws.send(json.dumps({
+                                "type": "ACK",
+                                "of": "PHOTO_WITH_TELEMETRY",
+                                "seq": seq,
+                                "ok": True
+                            }))
+                        except Exception as e:
+                            logger.error(f"[WS] Error saving photo/telemetry for {drone_id}: {e}")
+
+                            # Wysłanie negatywnego ACK w przypadku błędu
+                            await ws.send(json.dumps({
+                                "type": "ACK",
+                                "of": "PHOTO_WITH_TELEMETRY",
+                                "seq": seq,
+                                "ok": False,
+                                "error": str(e)
+                            }))
 
                     case {"type": "ACK", "of": "RECORDING", "action": action, "ok": ok, **ack_rest}:
                         self.video_helper.handle_recording_ack(obj)

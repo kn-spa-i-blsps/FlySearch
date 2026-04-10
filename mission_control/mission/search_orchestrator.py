@@ -179,7 +179,7 @@ class SearchOrchestrator:
         if isinstance(self.pending_command, GetPhotoAndTelemetryCommand):
             self.state = MissionState.WAITING_FOR_DRONE
         elif isinstance(self.pending_command, ExecuteMoveCommand):
-            self.state = MissionState.FLYING
+            self.state = MissionState.WAITING_FOR_ACK
 
         await self.event_bus.publish(self.pending_command)
         self.pending_command = None
