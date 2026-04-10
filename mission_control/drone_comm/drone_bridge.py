@@ -24,7 +24,7 @@ class WebSocketDroneBridge:
 
     def __init__(self, config: Config, event_bus: EventBus, video_helper: VideoHelper, storage: DataStorageHelper):
         self.connected_clients: Dict[str, Any] = {}  # Active drone connections mapping {drone_id: ws_instance}
-        self.disconnected_clients = []  # Tracks drones that lost connection abnormally
+        self.disconnected_clients = set()  # Tracks drones that lost connection abnormally
         self.config = config  # System configuration
         self.event_bus = event_bus
         self.server = None  # WebSocket server instance
@@ -197,7 +197,6 @@ class WebSocketDroneBridge:
                         except Exception as e:
                             logger.error(f"[WS] Error saving photo/telemetry for {drone_id}: {e}")
 
-                            # Wysłanie negatywnego ACK w przypadku błędu
                             await ws.send(json.dumps({
                                 "type": "ACK",
                                 "of": "PHOTO_WITH_TELEMETRY",
@@ -236,7 +235,7 @@ class WebSocketDroneBridge:
             await self.event_bus.publish(DroneDisconnected(drone_id=drone_id))
         except websockets.ConnectionClosedError as e:
             logger.warning(f"[WS] Drone connection broken: {peer}. {self.video_helper.format_disconnect_reason(e)}")
-            self.disconnected_clients.append(drone_id)
+            self.disconnected_clients.add(drone_id)
             await self.event_bus.publish(DroneConnectionLost(drone_id=drone_id))
         except websockets.ConnectionClosed as e:
             logger.warning(f"[WS] disconnected: {peer}. {self.video_helper.format_disconnect_reason(e)}")
@@ -248,7 +247,7 @@ class WebSocketDroneBridge:
             self.video_helper.clear_waiters(self.video_helper.recordings_ack_waiters, "Connection lost before ACK")
             self.video_helper.cleanup_pull_transfers()
 
-            if drone_id is not None and drone_id in self.connected_clients:
+            if drone_id != "" and drone_id in self.connected_clients.get(drone_id) == ws:
                 self.connected_clients.pop(drone_id, None)
                 logger.info(f"[WS] Drone {drone_id} removed from the connected clients registry.")
 

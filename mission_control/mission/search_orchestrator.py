@@ -1,6 +1,8 @@
 import logging
 from enum import Enum, auto
 
+from google.ai.generativelanguage_v1beta.services.permission_service.transports import rest
+
 from mission_control.core.action_status import ActionStatus
 from mission_control.core.events import PhotoWithTelemetryReceived, VlmAnalysisCompleted, StartMissionCommand, \
     CreateNewSessionCommand, GetPhotoAndTelemetryCommand, AnalyzePhotoCommand, \
@@ -50,23 +52,28 @@ class SearchOrchestrator:
         self.event_bus.subscribe(ChatErrorOccurred, self.handle_chat_error)
 
     async def start(self, event: StartMissionCommand):
-        self.mission_id = event.mission_id
-        self.drone_id = event.drone_id
+        try:
+            self.mission_id = event.mission_id
+            self.drone_id = event.drone_id
 
-        kind = event.prompt_type
-        kv = event.prompt_args
+            kind = event.prompt_type
+            kv = event.prompt_args
 
-        self.max_moves = int(kv.get("glimpses", 0))
-        if self.max_moves == 0:
-            raise ValueError("[SEARCH] No glimpses atribute or glimpses set to 0.")
+            self.max_moves = int(kv.get("glimpses", 0))
+            if self.max_moves == 0:
+                raise ValueError("[SEARCH] No glimpses atribute or glimpses set to 0.")
 
-        self.initial_prompt = await self.prompt_helper.generate_prompt(kind, kv)
+            self.initial_prompt = await self.prompt_helper.generate_prompt(kind, kv)
 
-        await self.event_bus.publish(CreateNewSessionCommand(chat_id=self.mission_id, prompt=self.initial_prompt))
-        await self.event_bus.publish(SaveSessionCommand(chat_id=self.mission_id))
-        self.state = MissionState.WAITING_FOR_DRONE
-        await self.event_bus.publish(StartRecordingCommand(drone_id=self.drone_id))
-        await self.event_bus.publish(GetPhotoAndTelemetryCommand(drone_id=self.drone_id))
+            await self.event_bus.publish(CreateNewSessionCommand(chat_id=self.mission_id, prompt=self.initial_prompt))
+            await self.event_bus.publish(SaveSessionCommand(chat_id=self.mission_id))
+            self.state = MissionState.WAITING_FOR_DRONE
+            await self.event_bus.publish(StartRecordingCommand(drone_id=self.drone_id))
+            await self.event_bus.publish(GetPhotoAndTelemetryCommand(drone_id=self.drone_id))
+        except Exception as e:
+            logger.error(f"Failed to start orchestrator: {e}")
+            self._cleanup()
+            raise
 
     async def handle_photo_and_telemetry(self, event: PhotoWithTelemetryReceived):
         if self.drone_id != event.drone_id:
@@ -162,6 +169,8 @@ class SearchOrchestrator:
     async def handle_drone_connection_lost(self, event: DroneConnectionLost):
         if self.drone_id != event.drone_id:
             return
+        if self.state == MissionState.PAUSED:
+            return
         # We only look at this two states, because when FLYING drone always sends info after executing command.
         # If drone cannot send the command (broken connection) sends it repeatedly as long as no ACK is received.
         if self.state == MissionState.WAITING_FOR_DRONE:
@@ -227,7 +236,7 @@ class SearchOrchestrator:
             return
 
         self.state = MissionState.ENDED
-        self.cleanup()
+        self._cleanup()
         await self.event_bus.publish(StopRecordingCommand(drone_id=self.drone_id))
 
         await self.event_bus.publish(
@@ -239,7 +248,7 @@ class SearchOrchestrator:
             )
         )
 
-    def cleanup(self):
+    def _cleanup(self):
         self.event_bus.unsubscribe(PhotoWithTelemetryReceived, self.handle_photo_and_telemetry)
         self.event_bus.unsubscribe(VlmAnalysisCompleted, self.handle_vlm_analysis)
         self.event_bus.unsubscribe(UserDecisionReceived, self.handle_user_decision)
