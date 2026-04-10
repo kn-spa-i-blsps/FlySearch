@@ -57,7 +57,7 @@ class SearchOrchestrator:
 
             kind = event.prompt_type
             kv = event.prompt_args
-            glimpses = kv.get("glimpses", 0)
+            glimpses = int(kv.get("glimpses", 0))
 
             self.max_moves = glimpses - 1
             if self.max_moves == -1:
