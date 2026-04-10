@@ -5,7 +5,7 @@ from time import sleep
 from PIL import Image
 from openai import RateLimitError, Client
 
-from mission_control.conversation.abstract_conversation import Conversation, Role
+from mission_control.ai.conversation.abstract_conversation import Conversation, Role
 from mission_control.utils.logger import get_configured_logger
 
 logger = get_configured_logger(__name__)

@@ -7,7 +7,7 @@ from typing import List, Dict, Any
 import aiofiles
 from PIL import Image
 
-from mission_control.conversation.abstract_conversation import Conversation
+from mission_control.ai.conversation.abstract_conversation import Conversation
 from mission_control.core.exceptions import ChatSaveError, ChatRestoreError
 from mission_control.core.interfaces import ChatStorageHelper
 

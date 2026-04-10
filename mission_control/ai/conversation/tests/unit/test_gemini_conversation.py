@@ -1,8 +1,8 @@
 import pytest
 from PIL import Image
 
-from mission_control.conversation.abstract_conversation import Role
-from mission_control.conversation.gemini.gemini_conversation import GeminiConversation
+from mission_control.ai.conversation.abstract_conversation import Role
+from mission_control.ai.conversation.gemini.gemini_conversation import GeminiConversation
 
 
 class SimpleObject:

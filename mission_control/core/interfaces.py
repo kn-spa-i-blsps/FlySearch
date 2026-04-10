@@ -1,6 +1,6 @@
 from typing import Protocol, Callable, Type, Any, Awaitable, List, Dict
 
-from mission_control.conversation.abstract_conversation import Conversation
+from mission_control.ai.conversation.abstract_conversation import Conversation
 from mission_control.core.events import (
     AnalyzePhotoCommand,
     CreateNewSessionCommand,

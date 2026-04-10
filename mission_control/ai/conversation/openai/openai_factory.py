@@ -2,8 +2,8 @@ import os
 
 from openai import OpenAI, _types
 
-from mission_control.conversation.base_conversation_factory import BaseConversationFactory
-from mission_control.conversation.openai.openai_conversation import OpenAIConversation
+from mission_control.ai.conversation.base_conversation_factory import BaseConversationFactory
+from mission_control.ai.conversation.openai.openai_conversation import OpenAIConversation
 
 
 class OpenAIFactory(BaseConversationFactory):

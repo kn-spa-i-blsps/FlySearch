@@ -5,15 +5,15 @@ from typing import Tuple, List, Dict, Any
 
 from PIL import Image
 
-from mission_control.conversation.abstract_conversation import Role, Conversation
-from mission_control.conversation.conversations import LLM_BACKEND_FACTORIES
+from mission_control.ai.conversation.abstract_conversation import Role, Conversation
+from mission_control.ai.conversation.conversations import LLM_BACKEND_FACTORIES
 from mission_control.core.config import Config
 from mission_control.core.events import AnalyzePhotoCommand, VlmAnalysisCompleted, VlmErrorOccurred, \
     CreateNewSessionCommand, NewSessionCreated, ChatErrorOccurred, DeleteSessionCommand, SessionDeleted, \
     SaveSessionCommand, LoadSessionCommand, SessionSaved, SessionLoaded
 from mission_control.core.exceptions import VLMConnectionError
 from mission_control.core.interfaces import ChatStorageHelper, VLMBridge
-from mission_control.utils.event_bus import EventBus
+from mission_control.core.event_bus import EventBus
 from mission_control.utils.image_processing import add_grid_async
 from mission_control.utils.logger import get_configured_logger
 from mission_control.utils.parsers import parse_xml_response, ModelResponse, \

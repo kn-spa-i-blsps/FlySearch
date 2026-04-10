@@ -13,7 +13,7 @@ from mission_control.core.events import *
 from mission_control.core.exceptions import DroneCommunicationError, DroneInvalidDataError
 from mission_control.core.interfaces import DataStorageHelper
 from mission_control.drone_comm.video_helper import VideoHelper
-from mission_control.utils.event_bus import EventBus
+from mission_control.core.event_bus import EventBus
 from mission_control.utils.logger import get_configured_logger
 
 logger = get_configured_logger(__name__)

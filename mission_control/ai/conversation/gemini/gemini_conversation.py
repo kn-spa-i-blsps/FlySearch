@@ -7,7 +7,7 @@ from google import genai
 from google.genai import types
 from google.genai.errors import APIError, ServerError
 
-from mission_control.conversation.abstract_conversation import Conversation, Role
+from mission_control.ai.conversation.abstract_conversation import Conversation, Role
 
 
 class GeminiConversation(Conversation):

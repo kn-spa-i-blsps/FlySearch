@@ -1,7 +1,7 @@
 import os
 
-from mission_control.conversation.base_conversation_factory import BaseConversationFactory
-from mission_control.conversation.invalid_factory import InvalidFactoryFactory
+from mission_control.ai.conversation.base_conversation_factory import BaseConversationFactory
+from mission_control.ai.conversation.invalid_factory import InvalidFactoryFactory
 
 try:
     from google import genai
@@ -11,7 +11,7 @@ except ImportError:
     GEMINI_AVALIABLE = False
 
 if GEMINI_AVALIABLE:
-    from mission_control.conversation.gemini.gemini_conversation import GeminiConversation
+    from mission_control.ai.conversation.gemini.gemini_conversation import GeminiConversation
 
 
     class _GeminiFactory(BaseConversationFactory):

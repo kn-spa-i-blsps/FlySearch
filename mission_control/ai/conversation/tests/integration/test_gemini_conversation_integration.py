@@ -2,8 +2,8 @@ import os
 
 import pytest
 
-from mission_control.conversation.abstract_conversation import Role
-from mission_control.conversation.gemini.gemini_factory import GeminiFactory
+from mission_control.ai.conversation.abstract_conversation import Role
+from mission_control.ai.conversation.gemini.gemini_factory import GeminiFactory
 
 # Mark all tests in this file as integration tests
 pytestmark = pytest.mark.integration

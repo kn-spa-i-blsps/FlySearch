@@ -274,16 +274,6 @@ class StartMissionCommand(Command):
 
 # --- 5. State / System Events ---
 
-@dataclass(kw_only=True)
-class StateUpdated(Event):
-    """
-    Published by: Domain Bridges / Orchestrator.
-    Subscribed by: Web Server (for frontend delivery via WebSockets).
-    Used to push real-time system state updates to the GUI.
-    """
-    state_type: str  # e.g., "DRONE_LOCATION", "SEARCH_PHASE_CHANGED"
-    state_data: Dict[str, Any]
-
 
 @dataclass(kw_only=True)
 class SystemShuttingDown(Event):
