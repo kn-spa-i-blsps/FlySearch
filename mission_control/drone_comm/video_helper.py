@@ -26,8 +26,8 @@ class VideoHelper:
 
         # Dictionaries holding asyncio.Future objects. We use these to bridge
         # the gap between sending a request and waiting for an ACK from the drone.
-        self._recording_ack_waiters: Dict[str, asyncio.Future[Dict[str, Any]]] = {}
-        self._recordings_ack_waiters: Dict[str, asyncio.Future[Dict[str, Any]]] = {}
+        self.recording_ack_waiters: Dict[str, asyncio.Future[Dict[str, Any]]] = {}
+        self.recordings_ack_waiters: Dict[str, asyncio.Future[Dict[str, Any]]] = {}
 
         # State tracker for incoming file transfers (chunks being pieced together)
         self._pull_transfers: Dict[str, Dict[str, Any]] = {}
@@ -51,23 +51,23 @@ class VideoHelper:
         # If there's already a pending request for this command, cancel it to avoid conflicts.
         loop = asyncio.get_running_loop()
         waiter = loop.create_future()
-        previous = self._recording_ack_waiters.get(cmd_upper)
+        previous = self.recording_ack_waiters.get(cmd_upper)
         if previous is not None and not previous.done():
             previous.cancel()
-        self._recording_ack_waiters[cmd_upper] = waiter
+        self.recording_ack_waiters[cmd_upper] = waiter
 
         try:
             await ws.send(cmd_upper)
         except Exception as e:
             # Bail out early and clean up the future if the send itself fails
-            self._cancel_waiter(self._recording_ack_waiters, cmd_upper)
+            self._cancel_waiter(self.recording_ack_waiters, cmd_upper)
             raise DroneCommandFailedError(f"Failed to send command {cmd_upper}") from e
 
         # Wait for the drone to respond or timeout
         try:
             ack = await asyncio.wait_for(waiter, timeout=timeout_sec)
         except asyncio.TimeoutError as exc:
-            self._cancel_waiter(self._recording_ack_waiters, cmd_upper)
+            self._cancel_waiter(self.recording_ack_waiters, cmd_upper)
             raise DroneCommandFailedError(
                 f"Timed out waiting for {cmd_upper} ACK from drone."
             ) from exc
@@ -86,21 +86,21 @@ class VideoHelper:
 
         loop = asyncio.get_running_loop()
         waiter = loop.create_future()
-        previous = self._recordings_ack_waiters.get("GET_RECORDINGS")
+        previous = self.recordings_ack_waiters.get("GET_RECORDINGS")
         if previous is not None and not previous.done():
             previous.cancel()
-        self._recordings_ack_waiters["GET_RECORDINGS"] = waiter
+        self.recordings_ack_waiters["GET_RECORDINGS"] = waiter
 
         try:
             await ws.send("GET_RECORDINGS")
         except Exception as e:
-            self._cancel_waiter(self._recordings_ack_waiters, "GET_RECORDINGS")
+            self._cancel_waiter(self.recordings_ack_waiters, "GET_RECORDINGS")
             raise DroneCommandFailedError("Failed to send GET_RECORDINGS") from e
 
         try:
             ack = await asyncio.wait_for(waiter, timeout=timeout_sec)
         except asyncio.TimeoutError as exc:
-            self._cancel_waiter(self._recordings_ack_waiters, "GET_RECORDINGS")
+            self._cancel_waiter(self.recordings_ack_waiters, "GET_RECORDINGS")
             raise DroneCommandFailedError(
                 "Timed out waiting for GET_RECORDINGS ACK from drone."
             ) from exc
@@ -141,10 +141,10 @@ class VideoHelper:
 
         loop = asyncio.get_running_loop()
         waiter = loop.create_future()
-        previous = self._recordings_ack_waiters.get("PULL_RECORDINGS")
+        previous = self.recordings_ack_waiters.get("PULL_RECORDINGS")
         if previous is not None and not previous.done():
             previous.cancel()
-        self._recordings_ack_waiters["PULL_RECORDINGS"] = waiter
+        self.recordings_ack_waiters["PULL_RECORDINGS"] = waiter
 
         payload = {
             "type": "RECORDINGS",
@@ -161,14 +161,14 @@ class VideoHelper:
                 f"(files={len(requested_names)}, batch_size={batch}, chunk_bytes={chunk})."
             )
         except Exception as e:
-            self._cancel_waiter(self._recordings_ack_waiters, "PULL_RECORDINGS")
+            self._cancel_waiter(self.recordings_ack_waiters, "PULL_RECORDINGS")
             logger.error(f"[WS] send failed: {e}")
             raise DroneCommandFailedError("Failed to send PULL_RECORDINGS to the drone") from e
 
         try:
             ack = await asyncio.wait_for(waiter, timeout=timeout_sec)
         except asyncio.TimeoutError as exc:
-            self._cancel_waiter(self._recordings_ack_waiters, "PULL_RECORDINGS")
+            self._cancel_waiter(self.recordings_ack_waiters, "PULL_RECORDINGS")
             raise DroneCommandFailedError(
                 "Timed out waiting for PULL_RECORDINGS ACK from drone."
             ) from exc
@@ -224,7 +224,7 @@ class VideoHelper:
             f"recording={ack.get('recording')} ref_count={ack.get('ref_count')} "
             f"path={ack.get('path')} err={ack.get('error')}"
         )
-        waiter = self._recording_ack_waiters.pop(str(action), None)
+        waiter = self.recording_ack_waiters.pop(str(action), None)
         if waiter is not None and not waiter.done():
             waiter.set_result(ack)
 
@@ -237,11 +237,11 @@ class VideoHelper:
             f"count={ack.get('count')} completed={ack.get('completed_count')} "
             f"err={ack.get('error')}"
         )
-        waiter = self._recordings_ack_waiters.pop(str(action), None)
+        waiter = self.recordings_ack_waiters.pop(str(action), None)
         if waiter is not None and not waiter.done():
             waiter.set_result(ack)
 
-    def _clear_waiters(self, waiters: Dict[str, asyncio.Future], reason: str):
+    def clear_waiters(self, waiters: Dict[str, asyncio.Future], reason: str):
         """Rejects all pending futures when the connection is unexpectedly lost."""
         for key, waiter in list(waiters.items()):
             if not waiter.done():
@@ -389,7 +389,7 @@ class VideoHelper:
             "size_bytes_expected": int(state.get("size_bytes_expected", 0)),
         }
 
-    def _cleanup_pull_transfers(self):
+    def cleanup_pull_transfers(self):
         """Closes any dangling file handles from interrupted transfers to avoid file locks."""
         for transfer in self._pull_transfers.values():
             active_files = transfer.get("active_files", {})
