@@ -291,8 +291,8 @@ class WebSocketDroneBridge:
         first_msg = await asyncio.wait_for(ws.recv(), timeout=10.0)
         if isinstance(first_msg, (bytes, bytearray)):
             logger.warning(f"[WS] Expected JSON AUTH payload, but received binary data from {peer}.")
-            await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": False}))
-            return
+            await self._send_ack(ws, of="AUTH", ok=False)
+            return None
 
         auth_obj = json.loads(first_msg.strip())
 
@@ -301,7 +301,7 @@ class WebSocketDroneBridge:
 
             if self.connected_clients.get(drone_id):
                 logger.warning(f"[WS] Drone {drone_id} is already connected. Rejecting connection from {peer}.")
-                await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": False}))
+                await self._send_ack(ws, of="AUTH", ok=False)
                 return None
 
             self.connected_clients[drone_id] = ws
@@ -312,11 +312,11 @@ class WebSocketDroneBridge:
                 self.disconnected_clients.remove(drone_id)
                 await self.event_bus.publish(DroneReconnected(drone_id=drone_id))
 
-            await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": True}))
+            await self._send_ack(ws, of="AUTH", ok=True)
             return drone_id
         else:
             logger.warning(f"[WS] Invalid AUTH payload from {peer}: {auth_obj}")
-            await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": False}))
+            await self._send_ack(ws, of="AUTH", ok=False)
             return None
 
     @staticmethod

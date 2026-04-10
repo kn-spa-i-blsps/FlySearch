@@ -30,6 +30,7 @@ class FlySearchVLMBridge(VLMBridge):
         self.event_bus = event_bus
         self.collision_warning_str = "Your move would cause a collision. Make other move."
         self.conversations = {}
+        self.chat_locks = {}
         self.storage = storage
 
         self.event_bus.subscribe(AnalyzePhotoCommand, self.handle_analyze_photo)
@@ -57,14 +58,18 @@ class FlySearchVLMBridge(VLMBridge):
                 raise VLMConnectionError(f"Chat with id {chat_id} is not initialized. "
                                          f"Use CHAT_INIT first.")
 
-            conversation = self.conversations[chat_id]
-            img, message = await self._prepare_input_async(photo_path, telemetry_path)
-            raw_response = await asyncio.to_thread(
-                self._execute_transaction, conversation, img, message, is_warning
-            )
+            if chat_id not in self.chat_locks:
+                self.chat_locks[chat_id] = asyncio.Lock()
 
-            # Fast, so shouldn't be problematic
-            parsed = self._parse_xml_response_sync(raw_response)
+            async with self.chat_locks[chat_id]:
+                conversation = self.conversations[chat_id]
+                img, message = await self._prepare_input_async(photo_path, telemetry_path)
+                raw_response = await asyncio.to_thread(
+                    self._execute_transaction, conversation, img, message, is_warning
+                )
+
+                # Fast, so shouldn't be problematic
+                parsed = self._parse_xml_response_sync(raw_response)
 
             analysis = VlmAnalysisCompleted(
                 chat_id=chat_id,
@@ -111,6 +116,7 @@ class FlySearchVLMBridge(VLMBridge):
             ]
             conversation = await self._list_to_conversation(init_conversation)
             self.conversations[chat_id] = conversation
+            self.chat_locks[chat_id] = asyncio.Lock()
             logger.info("[VLM] New chat session created successfully.")
             await self.event_bus.publish(NewSessionCreated(chat_id=chat_id))
 
@@ -132,7 +138,7 @@ class FlySearchVLMBridge(VLMBridge):
         """
         chat_id = event.chat_id
         self.conversations.pop(chat_id, None)
-
+        self.chat_locks.pop(chat_id, None)
         logger.info("[VLM] Chat session deleted successfully.")
         await self.event_bus.publish(SessionDeleted(chat_id=chat_id))
 
@@ -149,8 +155,14 @@ class FlySearchVLMBridge(VLMBridge):
             if chat_id not in self.conversations:
                 raise VLMConnectionError(f"Chat with id {chat_id} is not initialized. "
                                          f"Use CHAT_INIT first.")
-            conversation = self.conversations[chat_id]
-            await self.storage.save_chat(chat_id, conversation)
+
+            if chat_id not in self.chat_locks:
+                self.chat_locks[chat_id] = asyncio.Lock()
+
+            async with self.chat_locks[chat_id]:
+                conversation = self.conversations[chat_id]
+                await self.storage.save_chat(chat_id, conversation)
+
             await self.event_bus.publish(SessionSaved(chat_id=chat_id))
         except Exception as e:
             err_event = ChatErrorOccurred(
@@ -174,8 +186,12 @@ class FlySearchVLMBridge(VLMBridge):
             if chat_id in self.conversations:
                 raise VLMConnectionError(f"Chat with id {chat_id} already exists. "
                                          f"Use CHAT_RESET to delete the chat first.")
-            conversation_list = await self.storage.load_chat(chat_id)
-            self.conversations[chat_id] = await self._list_to_conversation(conversation_list)
+            if chat_id not in self.chat_locks:
+                self.chat_locks[chat_id] = asyncio.Lock()
+
+            async with self.chat_locks[chat_id]:
+                conversation_list = await self.storage.load_chat(chat_id)
+                self.conversations[chat_id] = await self._list_to_conversation(conversation_list)
             await self.event_bus.publish(SessionLoaded(chat_id=chat_id))
         except Exception as e:
             err_event = ChatErrorOccurred(
