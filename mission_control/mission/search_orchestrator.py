@@ -162,7 +162,8 @@ class SearchOrchestrator:
     async def handle_drone_connection_lost(self, event: DroneConnectionLost):
         if self.drone_id != event.drone_id:
             return
-
+        # We only look at this two states, because when FLYING drone always sends info after executing command.
+        # If drone cannot send the command (broken connection) sends it repeatedly as long as no ACK is received.
         if self.state == MissionState.WAITING_FOR_DRONE:
             self.pending_command = GetPhotoAndTelemetryCommand(drone_id=self.drone_id)
             self.state = MissionState.PAUSED

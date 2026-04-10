@@ -29,7 +29,10 @@ class MissionManager:
 
         orchestrator = SearchOrchestrator(self.event_bus, self.prompts)
         self.active_missions[mission_id] = orchestrator
-        await orchestrator.start(event)
+        try:
+            await orchestrator.start(event)
+        except Exception:
+            self.active_missions.pop(mission_id)
 
     async def handle_mission_ended(self, event: SearchEnded):
         mission_id = event.mission_id
