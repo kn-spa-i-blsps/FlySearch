@@ -157,8 +157,15 @@ class SearchOrchestrator:
         if self.state != MissionState.PAUSED:
             return
 
+        if isinstance(self.pending_command, GetPhotoAndTelemetryCommand):
+            self.state = MissionState.WAITING_FOR_DRONE
+        elif isinstance(self.pending_command, ExecuteMoveCommand):
+            self.state = MissionState.FLYING
+
         await self.event_bus.publish(self.pending_command)
         self.pending_command = None
+
+
 
     async def handle_drone_disconnected(self, event: DroneDisconnected):
         if self.drone_id != event.drone_id:
