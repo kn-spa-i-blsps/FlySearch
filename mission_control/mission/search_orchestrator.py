@@ -40,6 +40,10 @@ class SearchOrchestrator:
         self.event_bus.subscribe(VlmAnalysisCompleted, self.handle_vlm_analysis)
         self.event_bus.subscribe(UserDecisionReceived, self.handle_user_decision)
         self.event_bus.subscribe(MoveExecuted, self.handle_move_executed)
+        self.event_bus.subscribe(MoveStarted, self.handle_move_started)
+        self.event_bus.subscribe(DroneConnectionLost, self.handle_drone_connection_lost)
+        self.event_bus.subscribe(DroneReconnected, self.handle_drone_reconnected)
+        self.event_bus.subscribe(DroneDisconnected, self.handle_drone_disconnected)
 
         self.event_bus.subscribe(DroneErrorOccurred, self.handle_drone_error)
         self.event_bus.subscribe(VlmErrorOccurred, self.handle_vlm_error)
@@ -161,9 +165,10 @@ class SearchOrchestrator:
 
         if self.state == MissionState.WAITING_FOR_DRONE:
             self.pending_command = GetPhotoAndTelemetryCommand(drone_id=self.drone_id)
+            self.state = MissionState.PAUSED
         elif self.state == MissionState.WAITING_FOR_ACK:
             self.pending_command = ExecuteMoveCommand(drone_id=self.drone_id, move=self.current_move)
-        self.state = MissionState.PAUSED
+            self.state = MissionState.PAUSED
 
     async def handle_drone_reconnected(self, event: DroneReconnected):
         if self.drone_id != event.drone_id:
@@ -238,6 +243,10 @@ class SearchOrchestrator:
         self.event_bus.unsubscribe(VlmAnalysisCompleted, self.handle_vlm_analysis)
         self.event_bus.unsubscribe(UserDecisionReceived, self.handle_user_decision)
         self.event_bus.unsubscribe(MoveExecuted, self.handle_move_executed)
+        self.event_bus.unsubscribe(MoveStarted, self.handle_move_started)
+        self.event_bus.unsubscribe(DroneConnectionLost, self.handle_drone_connection_lost)
+        self.event_bus.unsubscribe(DroneReconnected, self.handle_drone_reconnected)
+        self.event_bus.unsubscribe(DroneDisconnected, self.handle_drone_disconnected)
 
         self.event_bus.unsubscribe(DroneErrorOccurred, self.handle_drone_error)
         self.event_bus.unsubscribe(VlmErrorOccurred, self.handle_vlm_error)
