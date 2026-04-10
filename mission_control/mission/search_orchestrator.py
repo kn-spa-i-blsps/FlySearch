@@ -6,12 +6,13 @@ from mission_control.core.events import PhotoWithTelemetryReceived, VlmAnalysisC
     CreateNewSessionCommand, GetPhotoAndTelemetryCommand, AnalyzePhotoCommand, \
     AskUserConfirmationCommand, UserDecisionReceived, ExecuteMoveCommand, SaveSessionCommand, MoveExecuted, SearchEnded, \
     DroneErrorOccurred, VlmErrorOccurred, ChatErrorOccurred, StartRecordingCommand, DroneConnectionLost, \
-    StopRecordingCommand, DroneReconnected, DroneDisconnected
+    StopRecordingCommand, DroneReconnected, DroneDisconnected, MoveStarted
 from mission_control.core.interfaces import EventBus, PromptHelper
 
 logger = logging.getLogger(__name__)
 
 class MissionState(Enum):
+    WAITING_FOR_ACK = auto()
     PAUSED = auto()
     IDLE = auto()
     WAITING_FOR_DRONE = auto()
@@ -33,6 +34,7 @@ class SearchOrchestrator:
         self.is_warning: bool = False
         self.max_moves: int = 0
         self.prompt_helper = prompts
+        self.current_move = None
         
         self.event_bus.subscribe(PhotoWithTelemetryReceived, self.handle_photo_and_telemetry)
         self.event_bus.subscribe(VlmAnalysisCompleted, self.handle_vlm_analysis)
@@ -122,12 +124,24 @@ class SearchOrchestrator:
             await self.event_bus.publish(GetPhotoAndTelemetryCommand(drone_id=self.drone_id))
 
         if event.decision == ActionStatus.CONFIRMED:
+            self.current_move = event.move
             command = ExecuteMoveCommand(
                 drone_id=self.drone_id,
                 move=event.move
             )
-            self.state = MissionState.FLYING
+            self.state = MissionState.WAITING_FOR_ACK
             await self.event_bus.publish(command)
+
+    # We need to know, in case of connection loss, if command was delivered, and the move performed.
+    async def handle_move_started(self, event: MoveStarted):
+        if self.drone_id != event.drone_id:
+            return
+        if self.state != MissionState.WAITING_FOR_ACK:
+            logger.warning("[SEARCH] Move started, but we are not waiting for the ack.")
+            return
+
+        self.state = MissionState.FLYING
+
 
     async def handle_move_executed(self, event: MoveExecuted):
         if self.drone_id != event.drone_id:
@@ -147,8 +161,8 @@ class SearchOrchestrator:
 
         if self.state == MissionState.WAITING_FOR_DRONE:
             self.pending_command = GetPhotoAndTelemetryCommand(drone_id=self.drone_id)
-        elif self.state == MissionState.FLYING:
-            self.pending_command = ExecuteMoveCommand(drone_id=self.drone_id, move=event.move)
+        elif self.state == MissionState.WAITING_FOR_ACK:
+            self.pending_command = ExecuteMoveCommand(drone_id=self.drone_id, move=self.current_move)
         self.state = MissionState.PAUSED
 
     async def handle_drone_reconnected(self, event: DroneReconnected):

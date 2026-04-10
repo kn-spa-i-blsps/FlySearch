@@ -102,7 +102,10 @@ class DroneConnectionLost(Event):
     Emitted when the connection to the Physical Drone drops abnormally.
     """
     drone_id: str
-    move: tuple | None = None
+
+@dataclass(kw_only=True)
+class MoveStarted(Event):
+    drone_id: str
 
 @dataclass(kw_only=True)
 class DroneDisconnected(Event):

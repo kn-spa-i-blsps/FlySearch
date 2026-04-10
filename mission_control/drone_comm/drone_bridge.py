@@ -126,7 +126,7 @@ class WebSocketDroneBridge:
 
                     if drone_id in self.disconnected_clients:
                         logger.info(f"[WS] Drone {drone_id} reconnected.")
-                        self.disconnected_clients.pop(drone_id)
+                        self.disconnected_clients.remove(drone_id)
                         await self.event_bus.publish(DroneReconnected(drone_id=drone_id))
 
                     await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": True}))
@@ -156,11 +156,20 @@ class WebSocketDroneBridge:
                     case {"type": "ACK", "of": "COMMAND", "seq": seq, "ok": ok, **ack_rest}:
                         action = ack_rest.get("action", "UNKNOWN")
                         err = ack_rest.get("error")
-                        executed = ack_rest.get("executed")
                         logger.debug(
                             f"[ACK ← {drone_id}] COMMAND action={action} seq={seq} "
-                            f"ok={ok} executed={executed} err={err}"
+                            f"ok={ok} err={err}"
                         )
+                        if action == "MOVE" and ok:
+                            await self.event_bus.publish(MoveStarted(drone_id=drone_id))
+
+                    case {"type": "MOVE_EXECUTED", "seq": seq, "ok": ok}:
+                        logger.debug(
+                            f"[ACK ← {drone_id}] MOVE_EXECUTED seq={seq} "
+                            f"ok={ok}"
+                        )
+                        if ok:
+                            await self.event_bus.publish(MoveExecuted(drone_id=drone_id))
 
                     case {"type": "PHOTO_WITH_TELEMETRY", "seq": seq, "photo": photo, "telemetry": telemetry}:
                         logger.info(f"[WS] Received PHOTO_WITH_TELEMETRY from {drone_id} (seq: {seq})")
@@ -202,6 +211,7 @@ class WebSocketDroneBridge:
         except websockets.ConnectionClosedError as e:
             logger.warning(f"[WS] Drone connection broken: {peer}. {self.video_helper.format_disconnect_reason(e)}")
             self.disconnected_clients.append(drone_id)
+            await self.event_bus.publish(DroneConnectionLost(drone_id=drone_id))
         except websockets.ConnectionClosed as e:
             logger.warning(f"[WS] disconnected: {peer}. {self.video_helper.format_disconnect_reason(e)}")
         except Exception as e:
@@ -277,7 +287,7 @@ class WebSocketDroneBridge:
         except ConnectionClosedOK as e:
             await self.event_bus.publish(DroneDisconnected(drone_id=drone_id))
         except ConnectionClosedError as e:
-            await self.event_bus.publish(DroneConnectionLost(drone_id=drone_id, move=move))
+            await self.event_bus.publish(DroneConnectionLost(drone_id=drone_id))
         except DroneCommunicationError:
             if drone_id in self.disconnected_clients:
                 await self.event_bus.publish(DroneConnectionLost(drone_id=drone_id))
