@@ -235,8 +235,9 @@ class WebSocketDroneBridge:
             await self.event_bus.publish(DroneDisconnected(drone_id=drone_id))
         except websockets.ConnectionClosedError as e:
             logger.warning(f"[WS] Drone connection broken: {peer}. {self.video_helper.format_disconnect_reason(e)}")
-            self.disconnected_clients.add(drone_id)
-            await self.event_bus.publish(DroneConnectionLost(drone_id=drone_id))
+            if drone_id:
+                self.disconnected_clients.add(drone_id)
+                await self.event_bus.publish(DroneConnectionLost(drone_id=drone_id))
         except websockets.ConnectionClosed as e:
             logger.warning(f"[WS] disconnected: {peer}. {self.video_helper.format_disconnect_reason(e)}")
         except Exception as e:
@@ -281,11 +282,11 @@ class WebSocketDroneBridge:
         except Exception as e:
             error_event = DroneErrorOccurred(
                 drone_id=event.drone_id,
-                error_message=f"[WS] Failed to send move command to drone {event.drone_id}: {str(e)}",
+                error_message=f"[WS] Failed to send get_photo_telemetry request to drone {event.drone_id}: {str(e)}",
                 traceback=traceback.format_exc()
             )
             await self.event_bus.publish(error_event)
-            logger.error(f"[WS] Failed to send request to drone {event.drone_id}: {e}")
+            logger.error(f"[WS] Failed to send get_photo_telemetry request to drone {event.drone_id}: {e}")
 
     async def send_move(self, event: ExecuteMoveCommand):
         """ Sends a movement command vector to the drone. """

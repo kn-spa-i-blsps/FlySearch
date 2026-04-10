@@ -57,15 +57,16 @@ class SearchOrchestrator:
 
             kind = event.prompt_type
             kv = event.prompt_args
+            glimpses = kv.get("glimpses", 0)
 
-            self.max_moves = int(kv.get("glimpses", 0))
-            if self.max_moves == 0:
-                raise ValueError("[SEARCH] No glimpses atribute or glimpses set to 0.")
+            self.max_moves = glimpses - 1
+            if self.max_moves == -1:
+                raise ValueError("[SEARCH] No glimpses attribute or glimpses set to 0.")
 
             self.initial_prompt = await self.prompt_helper.generate_prompt(kind, kv)
 
-            await self.event_bus.publish(CreateNewSessionCommand(chat_id=self.mission_id, prompt=self.initial_prompt))
-            await self.event_bus.publish(SaveSessionCommand(chat_id=self.mission_id))
+            await self.event_bus.publish(CreateNewSessionCommand(chat_id=self.mission_id, prompt=self.initial_prompt), wait_for_completion=True)
+            await self.event_bus.publish(SaveSessionCommand(chat_id=self.mission_id), wait_for_completion=True)
             self.state = MissionState.WAITING_FOR_DRONE
             await self.event_bus.publish(StartRecordingCommand(drone_id=self.drone_id))
             await self.event_bus.publish(GetPhotoAndTelemetryCommand(drone_id=self.drone_id))
