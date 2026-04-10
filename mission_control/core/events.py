@@ -99,10 +99,24 @@ class DroneConnectionLost(Event):
     """
     Published by: DroneBridge.
     Subscribed by: Search Saga Orchestrator.
-    Emitted when the connection to the Physical Drone drops.
+    Emitted when the connection to the Physical Drone drops abnormally.
     """
     drone_id: str
-    last_known_telemetry: Optional[Dict[str, float]] = None
+    move: tuple | None = None
+
+@dataclass(kw_only=True)
+class DroneDisconnected(Event):
+    """
+    Published by: DroneBridge.
+    Subscribed by: Search Saga Orchestrator.
+    Emitted when the connection to the Physical Drone drops normally.
+    """
+    drone_id: str
+
+@dataclass(kw_only=True)
+class DroneReconnected(Event):
+    """TODO"""
+    drone_id: str
 
 @dataclass(kw_only=True)
 class DroneErrorOccurred(Event):

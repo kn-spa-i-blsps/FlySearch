@@ -5,12 +5,14 @@ from mission_control.core.action_status import ActionStatus
 from mission_control.core.events import PhotoWithTelemetryReceived, VlmAnalysisCompleted, StartMissionCommand, \
     CreateNewSessionCommand, GetPhotoAndTelemetryCommand, AnalyzePhotoCommand, \
     AskUserConfirmationCommand, UserDecisionReceived, ExecuteMoveCommand, SaveSessionCommand, MoveExecuted, SearchEnded, \
-    DroneErrorOccurred, VlmErrorOccurred, ChatErrorOccurred, StartRecordingCommand
+    DroneErrorOccurred, VlmErrorOccurred, ChatErrorOccurred, StartRecordingCommand, DroneConnectionLost, \
+    StopRecordingCommand, DroneReconnected, DroneDisconnected
 from mission_control.core.interfaces import EventBus, PromptHelper
 
 logger = logging.getLogger(__name__)
 
 class MissionState(Enum):
+    PAUSED = auto()
     IDLE = auto()
     WAITING_FOR_DRONE = auto()
     WAITING_FOR_VLM = auto()
@@ -21,6 +23,7 @@ class MissionState(Enum):
 
 class SearchOrchestrator:
     def __init__(self, event_bus: EventBus, prompts: PromptHelper):
+        self.pending_command = None
         self.moves_performed = 0
         self.event_bus = event_bus
         self.mission_id: str = ""
@@ -30,7 +33,7 @@ class SearchOrchestrator:
         self.is_warning: bool = False
         self.max_moves: int = 0
         self.prompt_helper = prompts
-
+        
         self.event_bus.subscribe(PhotoWithTelemetryReceived, self.handle_photo_and_telemetry)
         self.event_bus.subscribe(VlmAnalysisCompleted, self.handle_vlm_analysis)
         self.event_bus.subscribe(UserDecisionReceived, self.handle_user_decision)
@@ -86,11 +89,11 @@ class SearchOrchestrator:
         await self.event_bus.publish(SaveSessionCommand(chat_id=self.mission_id))
 
         if event.found:
-            self._terminate_mission(found=True)
+            await self._terminate_mission(found=True)
             return
 
         if self.moves_performed >= self.max_moves:
-            self._terminate_mission(found=False)
+            await self._terminate_mission(found=False)
             return
 
 
@@ -110,7 +113,7 @@ class SearchOrchestrator:
             return
 
         if event.decision == ActionStatus.CANCELLED:
-            self._terminate_mission(found=False)
+            await self._terminate_mission(found=False)
             return
 
         if event.decision == ActionStatus.WARNING:
@@ -138,6 +141,33 @@ class SearchOrchestrator:
         self.state = MissionState.WAITING_FOR_DRONE
         await self.event_bus.publish(GetPhotoAndTelemetryCommand(drone_id=self.drone_id))
 
+    async def handle_drone_connection_lost(self, event: DroneConnectionLost):
+        if self.drone_id != event.drone_id:
+            return
+
+        if self.state == MissionState.WAITING_FOR_DRONE:
+            self.pending_command = GetPhotoAndTelemetryCommand(drone_id=self.drone_id)
+        elif self.state == MissionState.FLYING:
+            self.pending_command = ExecuteMoveCommand(drone_id=self.drone_id, move=event.move)
+        self.state = MissionState.PAUSED
+
+    async def handle_drone_reconnected(self, event: DroneReconnected):
+        if self.drone_id != event.drone_id:
+            return
+        if self.state != MissionState.PAUSED:
+            return
+
+        await self.event_bus.publish(self.pending_command)
+        self.pending_command = None
+
+    async def handle_drone_disconnected(self, event: DroneDisconnected):
+        if self.drone_id != event.drone_id:
+            return
+
+        logger.info("[SEARCH] Drone disconnected. Ending mission.")
+
+        await self._terminate_mission(found=False)
+
     async def handle_drone_error(self, event: DroneErrorOccurred):
         if self.drone_id != event.drone_id:
             return
@@ -163,7 +193,7 @@ class SearchOrchestrator:
 
         logger.error(f"[SEARCH] Mission {self.mission_id} aborted. Reason: {reason}")
 
-        self._terminate_mission(found=False, error_message=reason)
+        await self._terminate_mission(found=False, error_message=reason)
 
     async def _terminate_mission(self, found: bool, error_message: str | None = None):
         if self.state == MissionState.ENDED:

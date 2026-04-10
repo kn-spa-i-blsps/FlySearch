@@ -6,6 +6,7 @@ import traceback
 from collections import defaultdict
 
 import websockets
+from websockets import ConnectionClosedError, ConnectionClosedOK
 
 from mission_control.core.config import Config
 from mission_control.core.events import *
@@ -23,7 +24,7 @@ class WebSocketDroneBridge:
 
     def __init__(self, config: Config, event_bus: EventBus, video_helper: VideoHelper, storage: DataStorageHelper):
         self.connected_clients: Dict[str, Any] = {}  # Active drone connections mapping {drone_id: ws_instance}
-        self.disconnected_clients = {}  # Tracks drones that lost connection abnormally
+        self.disconnected_clients = []  # Tracks drones that lost connection abnormally
         self.config = config  # System configuration
         self.event_bus = event_bus
         self.server = None  # WebSocket server instance
@@ -123,6 +124,11 @@ class WebSocketDroneBridge:
                     self.connected_clients[drone_id] = ws
                     logger.info(f"[WS] Authorization successful. Registered drone: {drone_id}")
 
+                    if drone_id in self.disconnected_clients:
+                        logger.info(f"[WS] Drone {drone_id} reconnected.")
+                        self.disconnected_clients.pop(drone_id)
+                        await self.event_bus.publish(DroneReconnected(drone_id=drone_id))
+
                     await ws.send(json.dumps({"type": "ACK", "of": "AUTH", "ok": True}))
                 else:
                     logger.warning(f"[WS] Invalid AUTH payload from {peer}: {auth_obj}")
@@ -192,17 +198,19 @@ class WebSocketDroneBridge:
 
         except websockets.ConnectionClosedOK as e:
             logger.info(f"[WS] Drone disconnected gracefully: {peer}. {self.video_helper.format_disconnect_reason(e)}")
+            await self.event_bus.publish(DroneDisconnected(drone_id=drone_id))
         except websockets.ConnectionClosedError as e:
             logger.warning(f"[WS] Drone connection broken: {peer}. {self.video_helper.format_disconnect_reason(e)}")
+            self.disconnected_clients.append(drone_id)
         except websockets.ConnectionClosed as e:
             logger.warning(f"[WS] disconnected: {peer}. {self.video_helper.format_disconnect_reason(e)}")
         except Exception as e:
             logger.error(f"[WS] error: {e}")
             logger.debug(traceback.format_exc())
         finally:
-            self.video_helper._clear_waiters(self.video_helper._recording_ack_waiters, "Connection lost before ACK")
-            self.video_helper._clear_waiters(self.video_helper._recordings_ack_waiters, "Connection lost before ACK")
-            self.video_helper._cleanup_pull_transfers()
+            self.video_helper.clear_waiters(self.video_helper.recording_ack_waiters, "Connection lost before ACK")
+            self.video_helper.clear_waiters(self.video_helper.recordings_ack_waiters, "Connection lost before ACK")
+            self.video_helper.cleanup_pull_transfers()
 
             if drone_id is not None and drone_id in self.connected_clients:
                 self.connected_clients.pop(drone_id, None)
@@ -214,20 +222,10 @@ class WebSocketDroneBridge:
         """
         Transmits a JSON dictionary to the connected drone via WebSocket.
         """
-        try:
-            if drone_id not in self.connected_clients:
-                raise DroneCommunicationError(f"Drone {drone_id} is not connected.")
-            client = self.connected_clients[drone_id]
-            await client.send(json.dumps(payload))
-
-        except Exception as e:
-            error_event = DroneErrorOccurred(
-                drone_id=drone_id,
-                error_message=f"[WS] Failed to send JSON payload to drone {drone_id}: {str(e)}",
-                traceback=traceback.format_exc()
-            )
-            await self.event_bus.publish(error_event)
-            logger.error(f"[WS] Failed to send message to drone {drone_id}: {e}")
+        if drone_id not in self.connected_clients:
+            raise DroneCommunicationError(f"Drone {drone_id} is not connected.")
+        client = self.connected_clients[drone_id]
+        await client.send(json.dumps(payload))
 
     async def handle_get_photo_telemetry(self, event: GetPhotoAndTelemetryCommand):
         payload = {
@@ -236,7 +234,23 @@ class WebSocketDroneBridge:
             "seq": self._get_seq(event.drone_id)
         }
         logger.info(f"[WS] Sending GET_PHOTO_TELEMETRY to {event.drone_id}")
-        await self.send_message(event.drone_id, payload)
+        try:
+            await self.send_message(event.drone_id, payload)
+        except ConnectionClosedOK as e:
+            await self.event_bus.publish(DroneDisconnected(drone_id=event.drone_id))
+        except ConnectionClosedError as e:
+            await self.event_bus.publish(DroneConnectionLost(drone_id=event.drone_id))
+        except DroneCommunicationError:
+            if event.drone_id in self.disconnected_clients:
+                await self.event_bus.publish(DroneConnectionLost(drone_id=event.drone_id))
+        except Exception as e:
+            error_event = DroneErrorOccurred(
+                drone_id=event.drone_id,
+                error_message=f"[WS] Failed to send move command to drone {event.drone_id}: {str(e)}",
+                traceback=traceback.format_exc()
+            )
+            await self.event_bus.publish(error_event)
+            logger.error(f"[WS] Failed to send request to drone {event.drone_id}: {e}")
 
     async def send_move(self, event: ExecuteMoveCommand):
         """ Sends a movement command vector to the drone. """
@@ -260,7 +274,13 @@ class WebSocketDroneBridge:
                 raise ValueError("[WS] No move content provided.")
 
             await self.send_message(drone_id, payload)
-
+        except ConnectionClosedOK as e:
+            await self.event_bus.publish(DroneDisconnected(drone_id=drone_id))
+        except ConnectionClosedError as e:
+            await self.event_bus.publish(DroneConnectionLost(drone_id=drone_id, move=move))
+        except DroneCommunicationError:
+            if drone_id in self.disconnected_clients:
+                await self.event_bus.publish(DroneConnectionLost(drone_id=drone_id))
         except Exception as e:
             error_event = DroneErrorOccurred(
                 drone_id=drone_id,
