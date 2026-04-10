@@ -1,8 +1,6 @@
 import logging
 from enum import Enum, auto
 
-from google.ai.generativelanguage_v1beta.services.permission_service.transports import rest
-
 from mission_control.core.action_status import ActionStatus
 from mission_control.core.events import PhotoWithTelemetryReceived, VlmAnalysisCompleted, StartMissionCommand, \
     CreateNewSessionCommand, GetPhotoAndTelemetryCommand, AnalyzePhotoCommand, \
@@ -71,7 +69,6 @@ class SearchOrchestrator:
             await self.event_bus.publish(StartRecordingCommand(drone_id=self.drone_id))
             await self.event_bus.publish(GetPhotoAndTelemetryCommand(drone_id=self.drone_id))
         except Exception as e:
-            logger.error(f"Failed to start orchestrator: {e}")
             self._cleanup()
             raise
 
@@ -191,8 +188,9 @@ class SearchOrchestrator:
         elif isinstance(self.pending_command, ExecuteMoveCommand):
             self.state = MissionState.WAITING_FOR_ACK
 
-        await self.event_bus.publish(self.pending_command)
-        self.pending_command = None
+        if self.pending_command is not None:
+            await self.event_bus.publish(self.pending_command)
+            self.pending_command = None
 
 
 

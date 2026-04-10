@@ -1,8 +1,11 @@
 
 import unittest
 from unittest.mock import MagicMock, patch, mock_open
-from mission_control.prompt_helpers.prompt_helper import FlySearchPromptHelper
+
 from mission_control.prompt_generation.prompts import Prompts
+
+from mission_control.prompt_helpers.prompt_helper import FlySearchPromptHelper
+
 
 class TestPromptManager(unittest.TestCase):
 

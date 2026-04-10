@@ -1,7 +1,7 @@
 import base64
 import io
-
 from time import sleep
+
 from PIL import Image
 from openai import RateLimitError, Client
 

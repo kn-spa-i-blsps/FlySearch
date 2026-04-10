@@ -1,15 +1,16 @@
 
+import json
 import unittest
 from unittest.mock import patch, mock_open
-import json
+
 from mission_control.utils.parsers import (
     get_height_from_telemetry,
     parse_prompt_arguments,
     parse_search_arguments,
     parse_xml_response,
-    ModelResponse,
     ParsingError
 )
+
 
 class TestParsers(unittest.TestCase):
 

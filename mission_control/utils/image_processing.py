@@ -1,7 +1,5 @@
 import io
 
-from PIL import Image
-
 from mission_control.utils import add_guardrails as gd
 
 

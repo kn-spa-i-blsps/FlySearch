@@ -1,7 +1,7 @@
 from enum import Enum
 
-from mission_control.conversation.openai.openai_factory import OpenAIFactory
 from mission_control.conversation.gemini.gemini_factory import GeminiFactory
+from mission_control.conversation.openai.openai_factory import OpenAIFactory
 
 
 class LLMBackends(str, Enum):

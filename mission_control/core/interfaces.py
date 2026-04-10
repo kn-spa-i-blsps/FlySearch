@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Protocol, Callable, Type, Any, Awaitable, List, Dict
 
 from mission_control.conversation.abstract_conversation import Conversation
@@ -9,6 +8,7 @@ from mission_control.core.events import (
     SaveSessionCommand,
     LoadSessionCommand
 )
+
 
 class EventBus(Protocol):
     """

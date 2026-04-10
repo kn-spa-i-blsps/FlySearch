@@ -1,9 +1,9 @@
-import pytest
 import numpy as np
-
+import pytest
 from PIL import Image
-from mission_control.conversation.openai.openai_conversation import OpenAIConversation
+
 from mission_control.conversation.abstract_conversation import Role
+from mission_control.conversation.openai.openai_conversation import OpenAIConversation
 
 
 class SimpleObject:

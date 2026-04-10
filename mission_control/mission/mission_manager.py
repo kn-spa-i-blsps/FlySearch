@@ -31,7 +31,8 @@ class MissionManager:
         self.active_missions[mission_id] = orchestrator
         try:
             await orchestrator.start(event)
-        except Exception:
+        except Exception as e:
+            logger.error(f"[MISSION MANAGER] Failed to start mission {mission_id}: {e}", exc_info=True)
             self.active_missions.pop(mission_id)
 
     async def handle_mission_ended(self, event: SearchEnded):

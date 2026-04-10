@@ -2,9 +2,9 @@
 import unittest
 from unittest.mock import Mock, patch, MagicMock, call
 
-from mission_control.vlm.vlm_bridge import VLMBridge
 from mission_control.core.exceptions import VLMPreconditionsNotMetError, VLMParseError, VLMConnectionError
 from mission_control.utils.parsers import ParsingError
+from mission_control.vlm.vlm_bridge import VLMBridge
 
 
 class TestVLMBridge(unittest.IsolatedAsyncioTestCase):

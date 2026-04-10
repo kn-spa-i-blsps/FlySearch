@@ -247,7 +247,7 @@ class WebSocketDroneBridge:
             self.video_helper.clear_waiters(self.video_helper.recordings_ack_waiters, "Connection lost before ACK")
             self.video_helper.cleanup_pull_transfers()
 
-            if drone_id != "" and drone_id in self.connected_clients.get(drone_id) == ws:
+            if drone_id != "" and self.connected_clients.get(drone_id) == ws:
                 self.connected_clients.pop(drone_id, None)
                 logger.info(f"[WS] Drone {drone_id} removed from the connected clients registry.")
 

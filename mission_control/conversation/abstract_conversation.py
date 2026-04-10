@@ -1,6 +1,6 @@
 import typing
-
 from enum import Enum
+
 from PIL import Image
 
 

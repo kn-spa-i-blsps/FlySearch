@@ -1,8 +1,10 @@
 
 import os
+
 import pytest
-from mission_control.conversation.openai.openai_factory import OpenAIFactory
+
 from mission_control.conversation.abstract_conversation import Role
+from mission_control.conversation.openai.openai_factory import OpenAIFactory
 
 # Mark all tests in this file as integration tests
 pytestmark = pytest.mark.integration

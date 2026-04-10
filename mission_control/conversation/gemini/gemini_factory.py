@@ -1,7 +1,7 @@
 import os
 
-from mission_control.conversation.invalid_factory import InvalidFactoryFactory
 from mission_control.conversation.base_conversation_factory import BaseConversationFactory
+from mission_control.conversation.invalid_factory import InvalidFactoryFactory
 
 try:
     from google import genai

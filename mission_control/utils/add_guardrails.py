@@ -4,8 +4,8 @@ import math
 import os
 
 import PIL.Image
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import ImageDraw, ImageFont
+
 
 def get_system_font(size: int) -> ImageFont.FreeTypeFont:
     """

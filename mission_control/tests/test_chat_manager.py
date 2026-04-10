@@ -1,12 +1,13 @@
 
-import unittest
-from unittest.mock import MagicMock, patch, mock_open, call
 import json
+import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch, mock_open, call
 
-from mission_control.vlm.chat_storage_helper import ChatSessionManager
-from mission_control.core.exceptions import ChatSessionError, ChatSaveError, ChatRestoreError
 from mission_control.conversation.abstract_conversation import Role
+from mission_control.core.exceptions import ChatSessionError, ChatSaveError, ChatRestoreError
+from mission_control.vlm.chat_storage_helper import ChatSessionManager
+
 
 class TestChatSessionManager(unittest.IsolatedAsyncioTestCase):
 

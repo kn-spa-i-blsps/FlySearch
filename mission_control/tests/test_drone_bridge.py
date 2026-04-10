@@ -1,14 +1,14 @@
 
+import base64
+import errno
+import json
 import unittest
 from unittest.mock import MagicMock, patch, AsyncMock, mock_open
-import json
-import errno
-import base64
 
+from mission_control.done_comm import DroneBridge
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 from websockets.frames import Close
 
-from mission_control.done_comm import DroneBridge
 from mission_control.core.exceptions import NoDroneConnectedError, DroneCommandFailedError, DroneInvalidDataError, \
     DroneAlreadyConnectedError
 
