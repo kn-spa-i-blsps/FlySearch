@@ -44,11 +44,63 @@ Once the `main.py` script is running, the following commands are available in th
 * `CHAT_INIT` / `CHAT_SAVE <name>` / `CHAT_RETRIEVE <name>` / `CHAT_RESET`: Manages session persistence.
 * `SEND_TO_VLM` / `ADD_WARNING`: Manually triggers the VLM or sends a collision warning.
 
-## Current Development
+## Architecture
+The system is based on an event-driven architecture.
+```mermaid
+graph TD
+    classDef broker fill:#f9f,stroke:#333,stroke-width:2px,color:#000;
+    classDef service fill:#bbf,stroke:#333,stroke-width:1px,color:#000;
+    classDef external fill:#ddd,stroke:#333,stroke-width:1px,color:#000;
+    classDef actor fill:#ffb,stroke:#333,stroke-width:1px,color:#000;
+    classDef orchestrator fill:#fbf,stroke:#333,stroke-width:1px,color:#000;
+    classDef storage fill:#dfd,stroke:#333,stroke-width:1px,color:#000;
 
-**TODO**
-* Add reconnection handling during search loop i.e. when drone loses connection for a while.
-* Add async handling for synchronous blocking functions such as open, PIL, image cropping and grid adding (use aiofiles, asyncio.to_thread.
+    User((Operator Ground Control)):::actor
+    PhysicalDrone[Physical Drone]:::external
+    VLMModel[VLM Backend Gemini/OpenAI]:::external
 
-**FUTURE**
-* Event-driven architecture - instead of using Mission Context class, we could use asynchronous communication for cleaner workflow.
+    subgraph "Interfaces (UI)"
+        CLI[CLI Handler]:::service
+        WEB[Web Server / GUI]:::service
+    end
+
+    subgraph "Message Bus (Event Bus)"
+        BUS{{In-memory Event Bus}}:::broker
+    end
+
+    subgraph "Domain Bridges & Core"
+        DroneBridge[DroneBridge]:::service
+        VLMBridge[VLMBridge]:::service
+        Orchestrator[SearchOrchestrator]:::orchestrator
+    end
+
+    subgraph "Storage"
+        DroneStorage[(FileDataStorageHelper)]:::storage
+        ChatStorage[(FileChatStorageHelper)]:::storage
+    end
+
+    %% Communication with the external world
+    User -->|"Types in console"| CLI
+    User -->|"Clicks in browser"| WEB
+    DroneBridge <-->|"WebSocket"| PhysicalDrone
+    VLMBridge <-->|"REST API"| VLMModel
+
+    %% Storage Dependencies
+    DroneBridge <-->|"Saves/Loads Media & Telemetry"| DroneStorage
+    VLMBridge <-->|"Saves/Loads Chat Sessions"| ChatStorage
+
+    %% Event publishing (dashed line)
+    CLI -.->|"Publishes:<br/>StartMissionCommand<br/>UserDecisionReceived"| BUS
+    WEB -.->|"Publishes:<br/>StartMissionCommand<br/>UserDecisionReceived"| BUS
+
+    DroneBridge -.->|"Publishes:<br/>PhotoWithTelemetryReceived<br/>MoveStarted<br/>MoveExecuted<br/>DroneConnectionLost<br/>DroneDisconnected<br/>DroneReconnected<br/>DroneErrorOccurred"| BUS
+    VLMBridge -.->|"Publishes:<br/>VlmAnalysisCompleted<br/>VlmErrorOccurred<br/>ChatErrorOccurred<br/>Session Events"| BUS
+
+    Orchestrator -.->|"Publishes:<br/>GetPhotoAndTelemetryCommand<br/>AnalyzePhotoCommand<br/>ExecuteMoveCommand<br/>AskUserConfirmationCommand<br/>Start/StopRecordingCommand<br/>Session Commands<br/>SearchEnded"| BUS
+
+    %% Event subscribing
+    BUS -.->|"Subscribes:<br/>PhotoWithTelemetryReceived<br/>VlmAnalysisCompleted<br/>UserDecisionReceived<br/>MoveEvents<br/>ConnectionEvents<br/>ErrorEvents"| Orchestrator
+    BUS -.->|"Subscribes:<br/>GetPhotoAndTelemetryCommand<br/>ExecuteMoveCommand<br/>Start/StopRecordingCommand<br/>RecordingsCommands"| DroneBridge
+    BUS -.->|"Subscribes:<br/>AnalyzePhotoCommand<br/>Create/Delete/Save/LoadSessionCommand"| VLMBridge
+    BUS -.->|"Subscribes:<br/>AskUserConfirmationCommand<br/>SearchEnded"| WEB
+```
