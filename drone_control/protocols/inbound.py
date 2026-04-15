@@ -6,6 +6,7 @@ IN_SEND_PHOTO = "SEND_PHOTO"
 IN_TELEMETRY = "TELEMETRY"
 IN_PHOTO_WITH_TELEMETRY = "PHOTO_WITH_TELEMETRY"
 IN_COMMAND = "COMMAND"
+IN_GET_PHOTO_TELEMETRY = "GET_PHOTO_TELEMETRY"
 IN_START_RECORDING = "START_RECORDING"
 IN_STOP_RECORDING = "STOP_RECORDING"
 IN_GET_RECORDINGS = "GET_RECORDINGS"
@@ -40,6 +41,8 @@ def parse_inbound_message(message: Any) -> InboundMessage:
         except Exception:
             return InboundMessage(kind="TEXT", raw=message)
 
+        if isinstance(obj, dict) and obj.get("type") == IN_COMMAND and obj.get("action") == IN_GET_PHOTO_TELEMETRY:
+            return InboundMessage(kind=IN_GET_PHOTO_TELEMETRY, raw=message, json_obj=obj)
         if isinstance(obj, dict) and obj.get("type") == IN_COMMAND:
             return InboundMessage(kind=IN_COMMAND, raw=message, json_obj=obj)
         if (

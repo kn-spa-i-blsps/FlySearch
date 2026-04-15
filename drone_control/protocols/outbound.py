@@ -10,11 +10,14 @@ def build_photo_with_telemetry_payload(
     return {"type": "PHOTO_WITH_TELEMETRY", "photo": photo_base64, "telemetry": telemetry}
 
 def build_command_ack(
-    *, seq: Optional[int], ok: bool, executed: bool = False, error: Optional[str] = None
+    *, seq: Optional[int], ok: bool, action: Optional[str] = None,
+    executed: bool = False, error: Optional[str] = None
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {"type": "ACK", "of": "COMMAND", "ok": ok}
     if seq is not None:
         payload["seq"] = seq
+    if action is not None:
+        payload["action"] = action
     if ok:
         payload["executed"] = executed
     elif error is not None:

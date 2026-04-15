@@ -9,6 +9,7 @@ from drone_control.managers.acquisition_manager import AcquisitionManager
 from drone_control.managers.command_manager import CommandManager
 from drone_control.protocols.inbound import (
     IN_COMMAND,
+    IN_GET_PHOTO_TELEMETRY,
     IN_PHOTO_WITH_TELEMETRY,
     IN_SEND_PHOTO,
     IN_TELEMETRY,
@@ -19,6 +20,7 @@ from drone_control.protocols.inbound import (
     parse_inbound_message
 )
 from drone_control.protocols.outbound import (
+    build_command_ack,
     build_telemetry_payload,
     invalid_message_response,
 )
@@ -56,13 +58,18 @@ class MessageRouter:
             print("[RPi] Sent TELEMETRY json")
             return
 
-        if parsed.kind == IN_PHOTO_WITH_TELEMETRY:
+        if parsed.kind == IN_GET_PHOTO_TELEMETRY and parsed.json_obj is not None:
+            seq = parsed.json_obj.get("seq")
+            # Immediate ACK: tell the server we received the command and hardware is ready.
+            ws.send(json.dumps(build_command_ack(seq=seq, ok=True, action=IN_GET_PHOTO_TELEMETRY)))
+            # Capture and send photo + telemetry with the echoed seq.
             payload = self.acquisition.build_photo_with_telemetry()
+            payload["seq"] = seq
             ws.send(json.dumps(payload))
             telem_keys = list((payload.get("telemetry") or {}).keys())
             print(
                 "[RPi] Sent PHOTO_WITH_TELEMETRY "
-                f"(photo={payload.get('photo') is not None}, telem_keys={telem_keys})"
+                f"(seq={seq}, photo={payload.get('photo') is not None}, telem_keys={telem_keys})"
             )
             return
 
@@ -289,14 +296,41 @@ class MessageRouter:
             return
 
         if parsed.kind == IN_COMMAND and parsed.json_obj is not None:
-            ack = self.command_manager.handle_command(parsed.json_obj)
-            if ack is None:
-                return
-            try:
-                ws.send(json.dumps(ack))
-                print(f"[RPi] ACK sent (seq={ack.get('seq')}, executed={ack.get('executed', False)})")
-            except Exception:
-                pass
+            obj = parsed.json_obj
+            action = obj.get("action")
+            server_seq = obj.get("seq")
+
+            if action == "MOVE":
+                # 1. Immediate receipt ACK.
+                ws.send(json.dumps(build_command_ack(seq=server_seq, ok=True, action="MOVE")))
+                print(f"[RPi] MOVE immediate ACK sent (seq={server_seq})")
+                # 2. Execute the move (blocking on RPi).
+                move_ok = False
+                try:
+                    result = self.command_manager.handle_command(obj)
+                    move_ok = bool(result.get("ok", False)) if result else False
+                except Exception as exc:
+                    print(f"[RPi] MOVE execution error: {exc}")
+                # 3. Notify the server once the drone has actually moved.
+                # ok reflects whether the command was handled successfully, not whether
+                # the drone physically flew (exec_moves may be disabled in test mode).
+                ws.send(json.dumps({"type": "MOVE_EXECUTED", "seq": server_seq, "ok": move_ok}))
+                print(f"[RPi] MOVE_EXECUTED sent (seq={server_seq}, ok={move_ok})")
+            else:
+                ack = self.command_manager.handle_command(obj)
+                if ack is None:
+                    return
+                try:
+                    ws.send(json.dumps(ack))
+                    print(f"[RPi] ACK sent (seq={ack.get('seq')})")
+                except Exception:
+                    pass
+            return
+
+        # Server ACKs (e.g. ACK for PHOTO_WITH_TELEMETRY, ACK for MOVE_EXECUTED) — log and ignore.
+        if parsed.kind == "JSON" and parsed.json_obj is not None and parsed.json_obj.get("type") == "ACK":
+            obj = parsed.json_obj
+            print(f"[RPi] Server ACK received (of={obj.get('of')}, seq={obj.get('seq')}, ok={obj.get('ok')})")
             return
 
         if isinstance(message, str):
