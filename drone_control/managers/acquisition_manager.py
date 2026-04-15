@@ -14,12 +14,6 @@ class AcquisitionManager:
         self.telemetry_sensor = telemetry_sensor
         self.recording_sensor = recording_sensor
 
-    def capture_photo_bytes(self) -> bytes:
-        return self.photo_sensor.capture_bytes()
-
-    def capture_telemetry(self) -> dict[str, Any]:
-        return self.telemetry_sensor.snapshot()
-
     def build_photo_with_telemetry(self) -> dict[str, Any]:
         photo_base64 = None
         try:

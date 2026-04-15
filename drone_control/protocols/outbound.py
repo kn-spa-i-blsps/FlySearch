@@ -1,9 +1,6 @@
 from typing import Any, Optional
 
 
-def build_telemetry_payload(data: dict[str, Any]) -> dict[str, Any]:
-    return {"type": "TELEMETRY", "data": data}
-
 def build_photo_with_telemetry_payload(
     *, photo_base64: Optional[str], telemetry: dict[str, Any]
 ) -> dict[str, Any]:

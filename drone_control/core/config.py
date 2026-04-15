@@ -2,8 +2,6 @@ import argparse
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
-
 
 @dataclass
 class Config:
@@ -25,7 +23,7 @@ class Config:
     exec_moves: bool
 
     @classmethod
-    def from_cli(cls, argv: Optional[list[str]] = None) -> "Config":
+    def from_cli(cls, argv=None) -> "Config":
         parser = argparse.ArgumentParser()
         parser.add_argument("--server", default=os.environ.get("SERVER_URL", "ws://127.0.0.1:8080"))
         parser.add_argument("--drone_id", default=os.environ.get("DRONE_ID", "drone_01"))

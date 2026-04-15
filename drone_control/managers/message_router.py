@@ -10,9 +10,6 @@ from drone_control.managers.command_manager import CommandManager
 from drone_control.protocols.inbound import (
     IN_COMMAND,
     IN_GET_PHOTO_TELEMETRY,
-    IN_PHOTO_WITH_TELEMETRY,
-    IN_SEND_PHOTO,
-    IN_TELEMETRY,
     IN_START_RECORDING,
     IN_STOP_RECORDING,
     IN_GET_RECORDINGS,
@@ -21,7 +18,6 @@ from drone_control.protocols.inbound import (
 )
 from drone_control.protocols.outbound import (
     build_command_ack,
-    build_telemetry_payload,
     invalid_message_response,
 )
 from drone_control.utils.time import now_ts
@@ -45,18 +41,6 @@ class MessageRouter:
         print(f"Received: {preview}")
 
         parsed = parse_inbound_message(message)
-
-        if parsed.kind == IN_SEND_PHOTO:
-            photo_data = self.acquisition.capture_photo_bytes()
-            ws.send(photo_data, opcode=websocket.ABNF.OPCODE_BINARY)
-            print("Sent photo bytes")
-            return
-
-        if parsed.kind == IN_TELEMETRY:
-            telemetry = self.acquisition.capture_telemetry()
-            ws.send(json.dumps(build_telemetry_payload(telemetry)))
-            print("[RPi] Sent TELEMETRY json")
-            return
 
         if parsed.kind == IN_GET_PHOTO_TELEMETRY and parsed.json_obj is not None:
             seq = parsed.json_obj.get("seq")

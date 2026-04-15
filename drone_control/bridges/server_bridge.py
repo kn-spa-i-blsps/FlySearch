@@ -11,7 +11,7 @@ class ServerBridge:
     def __init__(self, *, config: Config, router: MessageRouter):
         self.config = config
         self.router = router
-        self._authenticated = False
+        self._authenticated = False # flag that tracks whether the drone successfully sent the AUTH handshake to server
 
     @staticmethod
     def _close_with_reason(ws: websocket.WebSocketApp, *, status: int, reason: str) -> None:

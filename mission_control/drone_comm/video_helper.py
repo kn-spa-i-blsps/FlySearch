@@ -147,7 +147,7 @@ class VideoHelper:
         self.recordings_ack_waiters["PULL_RECORDINGS"] = waiter
 
         payload = {
-            "type": "RECORDINGS",
+            "type": "COMMAND",
             "action": "PULL_RECORDINGS",
             "names": requested_names,
             "batch_size": batch,
