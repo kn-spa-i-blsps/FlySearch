@@ -14,19 +14,19 @@ from drone_control.protocols.inbound import (
 )
 
 
-def test_plain_start_recording():
-    msg = parse_inbound_message("START_RECORDING")
+def test_start_recording_json():
+    msg = parse_inbound_message(json.dumps({"type": "COMMAND", "action": "START_RECORDING"}))
     assert msg.kind == IN_START_RECORDING
-    assert msg.json_obj is None
+    assert msg.json_obj is not None
 
 
-def test_plain_stop_recording():
-    msg = parse_inbound_message("STOP_RECORDING")
+def test_stop_recording_json():
+    msg = parse_inbound_message(json.dumps({"type": "COMMAND", "action": "STOP_RECORDING"}))
     assert msg.kind == IN_STOP_RECORDING
 
 
-def test_plain_get_recordings():
-    msg = parse_inbound_message("GET_RECORDINGS")
+def test_get_recordings_json():
+    msg = parse_inbound_message(json.dumps({"type": "COMMAND", "action": "GET_RECORDINGS"}))
     assert msg.kind == IN_GET_RECORDINGS
 
 

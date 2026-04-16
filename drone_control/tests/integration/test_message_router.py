@@ -147,7 +147,7 @@ class TestRecordingCommands:
         router, _ = _make_router(tmp_path)
         ws = _ws()
 
-        router.on_message(ws, "START_RECORDING")
+        router.on_message(ws, json.dumps({"type": "COMMAND", "action": "START_RECORDING"}))
 
         assert len(ws.sent) == 1
         ack = _sent_json(ws, 0)
@@ -160,7 +160,7 @@ class TestRecordingCommands:
         router, _ = _make_router(tmp_path)
         ws = _ws()
 
-        router.on_message(ws, "STOP_RECORDING")
+        router.on_message(ws, json.dumps({"type": "COMMAND", "action": "STOP_RECORDING"}))
 
         ack = _sent_json(ws, 0)
         assert ack["action"] == "STOP_RECORDING"
@@ -170,7 +170,7 @@ class TestRecordingCommands:
         router, _ = _make_router(tmp_path)
         ws = _ws()
 
-        router.on_message(ws, "GET_RECORDINGS")
+        router.on_message(ws, json.dumps({"type": "COMMAND", "action": "GET_RECORDINGS"}))
 
         ack = _sent_json(ws, 0)
         assert ack["action"] == "GET_RECORDINGS"
