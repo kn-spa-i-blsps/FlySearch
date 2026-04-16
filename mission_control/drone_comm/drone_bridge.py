@@ -401,5 +401,8 @@ class WebSocketDroneBridge:
                     payload=end_rest,
                 )
 
+            case {"type": "ERROR", "message": message}:
+                logger.warning(f"[WS] Drone {drone_id} reported an error: {message}")
+
             case _:
                 logger.warning(f"[WS] Unrecognized message type from {drone_id}: {obj.get('type')}")

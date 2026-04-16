@@ -1,3 +1,4 @@
+import json
 from typing import Any, Optional
 
 
@@ -22,9 +23,12 @@ def build_command_ack(
     return payload
 
 def invalid_message_response() -> str:
-    return (
-        "Message sent in invalid format. Accepted format: "
-        "JSON {'type':'COMMAND','action':'<ACTION>'} where ACTION is one of "
-        "GET_PHOTO_TELEMETRY, START_RECORDING, STOP_RECORDING, GET_RECORDINGS, "
-        "PULL_RECORDINGS, MOVE, FOUND."
-    )
+    return json.dumps({
+        "type": "ERROR",
+        "message": (
+            "Message sent in invalid format. Accepted format: "
+            "JSON {'type':'COMMAND','action':'<ACTION>'} where ACTION is one of "
+            "GET_PHOTO_TELEMETRY, START_RECORDING, STOP_RECORDING, GET_RECORDINGS, "
+            "PULL_RECORDINGS, MOVE, FOUND."
+        ),
+    })
