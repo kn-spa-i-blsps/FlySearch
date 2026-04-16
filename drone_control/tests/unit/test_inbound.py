@@ -3,44 +3,40 @@ import json
 
 import pytest
 
-from drone_control.protocols.inbound import (
-    IN_COMMAND,
-    IN_GET_PHOTO_TELEMETRY,
-    IN_GET_RECORDINGS,
-    IN_PULL_RECORDINGS,
-    IN_START_RECORDING,
-    IN_STOP_RECORDING,
-    parse_inbound_message,
-)
+from drone_control.protocols.inbound import IN_COMMAND, parse_inbound_message
 
 
 def test_start_recording_json():
     msg = parse_inbound_message(json.dumps({"type": "COMMAND", "action": "START_RECORDING"}))
-    assert msg.kind == IN_START_RECORDING
-    assert msg.json_obj is not None
+    assert msg.kind == IN_COMMAND
+    assert msg.json_obj["action"] == "START_RECORDING"
 
 
 def test_stop_recording_json():
     msg = parse_inbound_message(json.dumps({"type": "COMMAND", "action": "STOP_RECORDING"}))
-    assert msg.kind == IN_STOP_RECORDING
+    assert msg.kind == IN_COMMAND
+    assert msg.json_obj["action"] == "STOP_RECORDING"
 
 
 def test_get_recordings_json():
     msg = parse_inbound_message(json.dumps({"type": "COMMAND", "action": "GET_RECORDINGS"}))
-    assert msg.kind == IN_GET_RECORDINGS
+    assert msg.kind == IN_COMMAND
+    assert msg.json_obj["action"] == "GET_RECORDINGS"
 
 
 def test_get_photo_telemetry_json():
     raw = json.dumps({"type": "COMMAND", "action": "GET_PHOTO_TELEMETRY", "seq": 7})
     msg = parse_inbound_message(raw)
-    assert msg.kind == IN_GET_PHOTO_TELEMETRY
+    assert msg.kind == IN_COMMAND
+    assert msg.json_obj["action"] == "GET_PHOTO_TELEMETRY"
     assert msg.json_obj["seq"] == 7
 
 
 def test_pull_recordings_json():
     raw = json.dumps({"type": "COMMAND", "action": "PULL_RECORDINGS", "names": ["a.mp4"]})
     msg = parse_inbound_message(raw)
-    assert msg.kind == IN_PULL_RECORDINGS
+    assert msg.kind == IN_COMMAND
+    assert msg.json_obj["action"] == "PULL_RECORDINGS"
     assert msg.json_obj["names"] == ["a.mp4"]
 
 
