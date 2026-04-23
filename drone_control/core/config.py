@@ -2,13 +2,12 @@ import argparse
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
-
 
 @dataclass
 class Config:
     """Builds runtime configuration from CLI args + env vars"""
     server: str
+    drone_id: str
     width: int
     height: int
     quality: int
@@ -24,9 +23,10 @@ class Config:
     exec_moves: bool
 
     @classmethod
-    def from_cli(cls, argv: Optional[list[str]] = None) -> "Config":
+    def from_cli(cls, argv=None) -> "Config":
         parser = argparse.ArgumentParser()
         parser.add_argument("--server", default=os.environ.get("SERVER_URL", "ws://127.0.0.1:8080"))
+        parser.add_argument("--drone_id", default=os.environ.get("DRONE_ID", "drone_01"))
         parser.add_argument("--width", default=int(os.environ.get("WIDTH", "480")), type=int)
         parser.add_argument("--height", default=int(os.environ.get("HEIGHT", "480")), type=int)
         parser.add_argument("--quality", default=int(os.environ.get("QUALITY", "90")), type=int)
@@ -45,6 +45,7 @@ class Config:
 
         cfg = cls(
             server=args.server,
+            drone_id=args.drone_id,
             width=args.width,
             height=args.height,
             quality=args.quality,

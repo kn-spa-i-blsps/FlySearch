@@ -57,7 +57,7 @@ class VideoHelper:
         self.recording_ack_waiters[cmd_upper] = waiter
 
         try:
-            await ws.send(cmd_upper)
+            await ws.send(json.dumps({"type": "COMMAND", "action": cmd_upper}))
         except Exception as e:
             # Bail out early and clean up the future if the send itself fails
             self._cancel_waiter(self.recording_ack_waiters, cmd_upper)
@@ -92,7 +92,7 @@ class VideoHelper:
         self.recordings_ack_waiters["GET_RECORDINGS"] = waiter
 
         try:
-            await ws.send("GET_RECORDINGS")
+            await ws.send(json.dumps({"type": "COMMAND", "action": "GET_RECORDINGS"}))
         except Exception as e:
             self._cancel_waiter(self.recordings_ack_waiters, "GET_RECORDINGS")
             raise DroneCommandFailedError("Failed to send GET_RECORDINGS") from e
@@ -147,7 +147,7 @@ class VideoHelper:
         self.recordings_ack_waiters["PULL_RECORDINGS"] = waiter
 
         payload = {
-            "type": "RECORDINGS",
+            "type": "COMMAND",
             "action": "PULL_RECORDINGS",
             "names": requested_names,
             "batch_size": batch,

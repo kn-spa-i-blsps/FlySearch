@@ -12,30 +12,33 @@ class CommandManager:
         self.flight_controller = flight_controller
 
     def handle_command(self, payload: dict[str, Any]) -> dict[str, Any] | None:
-        seq = None
+        # Echo the server's seq back in the ACK so the server can correlate responses.
+        server_seq = payload.get("seq")
+        action = payload.get("action")
+        log_seq = None
         try:
-            seq = self.logger.next_seq()
+            log_seq = self.logger.next_seq()
 
             executed = False
-            if payload.get("action") == "FOUND":
-                self.logger.store_found(seq)
+            if action == "FOUND":
+                self.logger.store_found(log_seq)
                 print("[RPi] COMMAND received: FOUND")
             elif "move" in payload:
                 x, y, z = payload["move"]
                 move = (float(x), float(y), float(z))
                 print(f"[RPi] COMMAND received: MOVE (x={x}, y={y}, z={z})")
                 executed = self.flight_controller.maybe_execute_move(move)
-                self.logger.store_move(seq, move)
+                self.logger.store_move(log_seq, move)
             else:
                 print(f"[RPi] Unknown COMMAND payload: {payload}")
                 return None
 
             print(
                 "[RPi] COMMAND stored "
-                f"(seq={seq}) -> {self.logger.runtime_context.session_file.name}; "
+                f"(seq={log_seq}) -> {self.logger.runtime_context.session_file.name}; "
                 "latest_command.json updated"
             )
-            return build_command_ack(seq=seq, ok=True, executed=executed)
+            return build_command_ack(seq=server_seq, ok=True, action=action, executed=executed)
         except Exception as exc:
             print(f"[RPi] COMMAND store error: {exc}")
-            return build_command_ack(seq=seq, ok=False, error=str(exc))
+            return build_command_ack(seq=server_seq, ok=False, action=action, error=str(exc))
