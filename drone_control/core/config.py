@@ -22,6 +22,7 @@ class Config:
     telemetry_timeout: float
     move_method: int
     exec_moves: bool
+    shutter_speed: int | None
 
     @classmethod
     def from_cli(cls, argv: Optional[list[str]] = None) -> "Config":
@@ -40,6 +41,8 @@ class Config:
         parser.add_argument("--move_method", default=int(os.environ.get("MOVE_METHOD", "0")), type=int)
         parser.add_argument("--exec_moves", default=int(os.environ.get("EXECUTE_MOVES", "1")), type=int)
         parser.add_argument("--telemetry_template", default=os.environ.get("TELEMETRY_TEMPLATE", "telemetry.json"))
+        _shutter_env = os.environ.get("SHUTTER_SPEED", "")
+        parser.add_argument("--shutter_speed", default=int(_shutter_env) if _shutter_env else None, type=int)
 
         args = parser.parse_args(argv)
 
@@ -58,6 +61,7 @@ class Config:
             telemetry_timeout=args.telemetry_timeout,
             move_method=args.move_method,
             exec_moves=bool(args.exec_moves),
+            shutter_speed=args.shutter_speed,
         )
         cfg.ensure_directories()
         return cfg

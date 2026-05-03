@@ -17,11 +17,13 @@ class PhotoSensor(Sensor):
         height: int,
         quality: int,
         video_device: str,
+        shutter_speed: int | None = None,
     ):
         self.width = width
         self.height = height
         self.quality = quality
         self.video_device = video_device
+        self.shutter_speed = shutter_speed
 
     def health(self) -> dict[str, object]:
         return {
@@ -40,6 +42,7 @@ class PhotoSensor(Sensor):
                 height=self.height,
                 quality=self.quality,
                 video_device=self.video_device,
+                shutter_speed=self.shutter_speed,
             )
             with tmp_path.open("rb") as file_obj:
                 return file_obj.read()

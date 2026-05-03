@@ -22,6 +22,7 @@ class DroneControl:
             height=self.config.height,
             quality=self.config.quality,
             video_device=self.config.video_device,
+            shutter_speed=self.config.shutter_speed,
         )
 
         self.telemetry_sensor = TelemetrySensor(
