@@ -311,6 +311,7 @@ def capture_photo(
     height: int,
     quality: int,
     video_device: str,
+    shutter_speed: int | None = None,
 ) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
 
@@ -320,6 +321,8 @@ def capture_photo(
             active_camera = _CAMERA_STATE["camera"] if _CAMERA_STATE["recording"] else None
             if active_camera is not None:
                 try:
+                    if shutter_speed is not None:
+                        active_camera.set_controls({"AeEnable": False, "ExposureTime": shutter_speed})
                     active_camera.capture_file(str(destination), name="lores")
                     _validate_captured_image(destination)
                     _make_square(destination, quality)
@@ -339,6 +342,8 @@ def capture_photo(
             cfg = cam.create_still_configuration(main={"size": (width, height)})
             cam.configure(cfg)
             cam.start()
+            if shutter_speed is not None:
+                cam.set_controls({"AeEnable": False, "ExposureTime": shutter_speed})
             cam.capture_file(str(destination))
         finally:
             if cam is not None:
