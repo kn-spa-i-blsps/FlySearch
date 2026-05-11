@@ -65,7 +65,6 @@ RECORD_FPS=30
 Run this command on **both** machines to build the respective containers:
 
 ```bash
-cd docker
 docker build -t flysearch:latest .
 ```
 

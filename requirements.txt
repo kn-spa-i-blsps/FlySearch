@@ -12,6 +12,5 @@ prompt_toolkit
 pytest
 uvicorn
 fastapi
-
 aiofiles
 pydantic

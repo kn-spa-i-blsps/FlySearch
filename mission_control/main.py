@@ -10,8 +10,8 @@ from mission_control.ai.prompt_helpers.prompt_helper import FlySearchPromptHelpe
 from mission_control.ui.web_server import WebServer
 from mission_control.core.event_bus import MemoryEventBus
 from mission_control.utils.logger import get_configured_logger
-from mission_control.ai.vlm.chat_storage_helper import FileChatStorageHelper
-from mission_control.ai.vlm.vlm_bridge import FlySearchVLMBridge
+from mission_control.ai.conversation.chat_storage_helper import FileChatStorageHelper
+from mission_control.ai.vision.vlm_bridge import FlySearchVLMBridge
 
 logger = get_configured_logger(__name__)
 
