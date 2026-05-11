@@ -103,18 +103,8 @@ class FlySearchVLMBridge(VLMBridge):
             if chat_id in self.conversations:
                 raise VLMConnectionError(f"Chat with id {chat_id} already exists. "
                                          f"Use CHAT_RESET to delete the chat first.")
-            init_conversation = [
-                {
-                    "role": "user",
-                    "parts": [
-                        {
-                            "type": "text",
-                            "data": prompt
-                        }
-                    ]
-                }
-            ]
-            conversation = await self._list_to_conversation(init_conversation)
+            conversation = self._create_empty_conversation()
+            conversation.add_text_message(prompt)
             self.conversations[chat_id] = conversation
             self.chat_locks[chat_id] = asyncio.Lock()
             logger.info("[VLM] New chat session created successfully.")
@@ -204,9 +194,12 @@ class FlySearchVLMBridge(VLMBridge):
 
     ''' ------------------------------------------------------------------------- '''
 
-    async def _list_to_conversation(self, raw_history: List[Dict[str, Any]]) -> Conversation:
+    def _create_empty_conversation(self):
         factory = LLM_BACKEND_FACTORIES[self.config.model_backend](self.config.model_name)
-        conversation = factory.get_conversation()
+        return factory.get_conversation()
+
+    async def _list_to_conversation(self, raw_history: List[Dict[str, Any]]) -> Conversation:
+        conversation = self._create_empty_conversation()
 
         for message in raw_history:
             role = Role(message['role'])

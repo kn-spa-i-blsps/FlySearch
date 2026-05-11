@@ -31,7 +31,6 @@ class GeminiConversation(Conversation):
         self.transaction_started = False
         self.transaction_role = None
         self.transaction_conversation = {}
-        self._chat_history_synced = True
 
     def begin_transaction(self, role: Role):
         if self.transaction_started:
@@ -148,15 +147,10 @@ class GeminiConversation(Conversation):
         self.transaction_role = None
 
         if not send_to_vlm:
-            self._chat_history_synced = False
             return
 
         if role == Role.ASSISTANT and send_to_vlm:
             raise Exception("Assistant cannot send messages to VLM")
-
-        if not self._chat_history_synced:
-            self._rebuild_chat_with_history()
-
         # Get the message parts from the just committed message
         msg = self.conversation[-1]
         parts = self._to_gemini_parts(msg["content"])
@@ -173,20 +167,6 @@ class GeminiConversation(Conversation):
             "content": response_content
         }
         self.conversation.append(response_message)
-
-    def _rebuild_chat_with_history(self):
-        history = []
-        for msg in self.conversation[:-1]:
-            role = "user" if msg["role"] == "user" else "model"
-            parts = self._to_gemini_parts(msg["content"])
-            history.append(types.Content(role=role, parts=parts))
-
-        self.chat = self.client.chats.create(
-            model=self.model_name,
-            config=self._get_generation_config(),
-            history=history
-        )
-        self._chat_history_synced = True
 
     def rollback_transaction(self):
         self.transaction_conversation = {}

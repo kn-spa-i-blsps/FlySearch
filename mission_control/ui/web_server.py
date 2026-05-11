@@ -360,7 +360,8 @@ class WebServer:
             "custom_status": m_state.custom_status,
             "photo_path": m_state.last_photo_name,
             "parsed_action": m_state.parsed_action,
-            "chat_history": m_state.chat_history
+            "chat_history": m_state.chat_history,
+            "pending_move": m_state.pending_move
         }
 
         for ws in list(m_state.connected_websockets):
@@ -475,7 +476,9 @@ class WebServer:
                             img.style.display = "block";
                         }
 
-                        if (data.custom_status) {
+                        if (data.waiting && data.pending_move) {
+                            document.getElementById('vlm-action').innerText = `Awaiting confirmation for move: [${data.pending_move}]`;
+                        } else if (data.custom_status && !data.waiting) {
                             document.getElementById('vlm-action').innerText = data.custom_status;
                         } else if (data.parsed_action) {
                             if (data.parsed_action.found || data.parsed_action.move) {
@@ -521,6 +524,19 @@ class WebServer:
                     document.getElementById('controls').style.display = "none";
                     document.getElementById('vlm-action').innerText = "Sending data to drone/VLM...";
                 }
+                
+                document.addEventListener('keydown', function(event) {
+                const controls = document.getElementById('controls');
+                if (controls.style.display === 'flex') {
+                    if (event.key === 'Enter') {
+                        sendDecision('CONFIRMED');
+                    } else if (event.key.toLowerCase() === 'w') {
+                        sendDecision('WARNING');
+                    } else if (event.key.toLowerCase() === 'n' || event.key === 'Escape') {
+                        sendDecision('CANCELLED');
+                    }
+                }
+            });
             </script>
         </body>
         </html>
