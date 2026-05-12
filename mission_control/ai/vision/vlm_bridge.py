@@ -28,7 +28,7 @@ class FlySearchVLMBridge(VLMBridge):
     def __init__(self, config: Config, event_bus: EventBus, storage: ChatStorageHelper):
         self.config = config
         self.event_bus = event_bus
-        self.collision_warning_str = "Your move would cause a collision. Make other move."
+        self.collision_warning_str = "Your move would cause a collision. Make another move."
         self.conversations = {}
         self.chat_locks = {}
         self.storage = storage
@@ -104,6 +104,7 @@ class FlySearchVLMBridge(VLMBridge):
                 raise VLMConnectionError(f"Chat with id {chat_id} already exists. "
                                          f"Use CHAT_RESET to delete the chat first.")
             conversation = self._create_empty_conversation()
+            conversation.begin_transaction(Role.USER)
             conversation.add_text_message(prompt)
             self.conversations[chat_id] = conversation
             self.chat_locks[chat_id] = asyncio.Lock()
@@ -225,7 +226,12 @@ class FlySearchVLMBridge(VLMBridge):
     def _execute_transaction(self, conversation: Conversation, img: Image.Image,
                              message: str, is_warning: bool) -> str:
         try:
-            conversation.begin_transaction(Role.USER)
+            # Begin transaction throws exception when the transaction has already started.
+            # Transaction is started when the initial prompt is added.
+            try:
+                conversation.begin_transaction(Role.USER)
+            except Exception as e:
+                pass
 
             if is_warning:
                 # Warning: Warning text + image with a grid + telemetry context
