@@ -104,7 +104,9 @@ class FlySearchVLMBridge(VLMBridge):
                 raise VLMConnectionError(f"Chat with id {chat_id} already exists. "
                                          f"Use CHAT_RESET to delete the chat first.")
             conversation = self._create_empty_conversation()
+            conversation.begin_transaction(Role.USER)
             conversation.add_text_message(prompt)
+            conversation.commit_transaction(send_to_vlm=False)
             self.conversations[chat_id] = conversation
             self.chat_locks[chat_id] = asyncio.Lock()
             logger.info("[VLM] New chat session created successfully.")

@@ -19,7 +19,7 @@ from mission_control.utils.logger import get_configured_logger
 logger = get_configured_logger(__name__)
 
 
-class WebSocketDroneBridgeA:
+class WebSocketDroneBridge:
     """ Handles WebSocket communication between the server and the drone. """
 
     def __init__(self, config: Config, event_bus: EventBus, video_helper: VideoHelper, storage: DataStorageHelper):
