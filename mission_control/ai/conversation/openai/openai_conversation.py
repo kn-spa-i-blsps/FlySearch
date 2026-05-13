@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import io
 from time import sleep
@@ -52,7 +53,7 @@ class OpenAIConversation(Conversation):
                 "text": text
             })
 
-    def add_image_message(self, image: Image.Image):
+    async def add_image_message(self, image: Image.Image):
         if not self.transaction_started:
             raise Exception("Transaction not started")
 
@@ -95,7 +96,7 @@ class OpenAIConversation(Conversation):
                 fail = True
         return response
 
-    def commit_transaction(self, send_to_vlm=False):
+    async def commit_transaction(self, send_to_vlm=False):
         if not self.transaction_started:
             raise Exception("Transaction not started")
 
@@ -111,23 +112,24 @@ class OpenAIConversation(Conversation):
         if not send_to_vlm:
             return
 
-        response = self.get_answer_from_openai(
-            model=self.model_name,
-            messages=self.conversation,
-            max_tokens=self.max_tokens,
-            seed=self.seed,
-            temperature=self.temperature,
-            top_p=self.top_p
+        response = await asyncio.to_thread(
+            self.get_answer_from_openai,
+            self.model_name,
+            self.conversation,
+            self.max_tokens,
+            self.seed,
+            self.temperature,
+            self.top_p
         )
 
         response_content = str(response.choices[0].message.content)
-        response_role = Role.ASSISTANT
 
         logger.info("llm response:", response_content)
 
-        self.begin_transaction(response_role)
-        self.add_text_message(response_content)
-        self.commit_transaction(send_to_vlm=False)
+        self.conversation.append({
+            "role": "assistant",
+            "content": response_content
+        })
 
     def rollback_transaction(self):
         self.transaction_conversation = {}
