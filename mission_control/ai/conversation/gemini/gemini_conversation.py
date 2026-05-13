@@ -1,3 +1,4 @@
+import asyncio
 import io
 import logging
 from time import sleep
@@ -22,11 +23,6 @@ class GeminiConversation(Conversation):
         self.top_p = top_p
         self.thinking_budget = thinking_budget
         self.logger = logging.getLogger(__name__)
-
-        self.chat = self.client.chats.create(
-            model=self.model_name,
-            config=self._get_generation_config()
-        )
 
         self.transaction_started = False
         self.transaction_role = None
@@ -59,11 +55,17 @@ class GeminiConversation(Conversation):
                 "text": text
             })
 
-    def add_image_message(self, image: Image.Image):
+    async def add_image_message(self, image: Image.Image):
         if not self.transaction_started:
             raise Exception("Transaction not started")
 
-        image = image.convert("RGB")
+        def process_image():
+            img = image.convert("RGB")
+            buffer = io.BytesIO()
+            img.save(buffer, format='JPEG', quality=95)
+            return buffer.getvalue()
+
+        image_bytes = await asyncio.to_thread(process_image)
 
         content = self.transaction_conversation["content"]
 
@@ -71,6 +73,7 @@ class GeminiConversation(Conversation):
             {
                 "type": "image",
                 "image": image,
+                "image_bytes": image_bytes
             }
         )
 
@@ -83,13 +86,8 @@ class GeminiConversation(Conversation):
                 if sub["type"] == "text":
                     parts.append(types.Part.from_text(text=sub["text"]))
                 elif sub["type"] == "image":
-                    # Convert PIL Image to bytes
-                    img = sub["image"]
-                    buffer = io.BytesIO()
-                    img.save(buffer, format='JPEG', quality=95)
-                    buffer.seek(0)
                     parts.append(types.Part.from_bytes(
-                        data=buffer.read(),
+                        data=sub["image_bytes"],
                         mime_type='image/jpeg'
                     ))
                 else:
@@ -110,13 +108,15 @@ class GeminiConversation(Conversation):
             config_dict["thinking_config"] = types.ThinkingConfig(thinking_budget=self.thinking_budget)
         return types.GenerateContentConfig(**config_dict) if config_dict else None
 
-    def _send_message_with_retry(self, parts):
+    async def _send_message_with_retry(self, contents):
         retries = 3
         delay = 5  # seconds
         for i in range(retries):
             try:
-                response = self.chat.send_message(
-                    message=parts
+                response = await self.client.aio.models.generate_content(
+                    model=self.model_name,
+                    contents=contents,
+                    config=self._get_generation_config()
                 )
                 return response
             except (APIError, ServerError) as e:
@@ -133,7 +133,7 @@ class GeminiConversation(Conversation):
                 raise e
         raise Exception("Failed to get response after multiple retries")
 
-    def commit_transaction(self, send_to_vlm=False):
+    async def commit_transaction(self, send_to_vlm=False):
         if not self.transaction_started:
             raise Exception("Transaction not started")
 
@@ -151,11 +151,18 @@ class GeminiConversation(Conversation):
 
         if role == Role.ASSISTANT and send_to_vlm:
             raise Exception("Assistant cannot send messages to VLM")
-        # Get the message parts from the just committed message
-        msg = self.conversation[-1]
-        parts = self._to_gemini_parts(msg["content"])
 
-        response = self._send_message_with_retry(parts)
+        contents = []
+        for msg in self.conversation:
+            msg_role = "user" if msg["role"] == "user" else "model"
+            contents.append(
+                types.Content(
+                    role=msg_role,
+                    parts=self._to_gemini_parts(msg["content"])
+                )
+            )
+
+        response = await self._send_message_with_retry(contents)
 
         response_content = str(response.text)
 

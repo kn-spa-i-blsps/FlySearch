@@ -21,12 +21,12 @@ class Conversation:
         pass
 
     # Adds image message to be sent (later)
-    def add_image_message(self, image: Image.Image):
+    async def add_image_message(self, image: Image.Image):
         pass
 
     # Sends all messages added since begin_transaction() was called if send_to_vlm is True
     # Otherwise, messages are only added to the conversation
-    def commit_transaction(self, send_to_vlm: bool):
+    async def commit_transaction(self, send_to_vlm: bool):
         pass
 
     # Messages added since begin_transaction() was called are discarded

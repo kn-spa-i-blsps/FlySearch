@@ -28,7 +28,7 @@ class FlySearchVLMBridge(VLMBridge):
     def __init__(self, config: Config, event_bus: EventBus, storage: ChatStorageHelper):
         self.config = config
         self.event_bus = event_bus
-        self.collision_warning_str = "Your move would cause a collision. Make other move."
+        self.collision_warning_str = "Your move would cause a collision. Make another move."
         self.conversations = {}
         self.chat_locks = {}
         self.storage = storage
@@ -64,9 +64,7 @@ class FlySearchVLMBridge(VLMBridge):
             async with self.chat_locks[chat_id]:
                 conversation = self.conversations[chat_id]
                 img, message = await self._prepare_input_async(photo_path, telemetry_path)
-                raw_response = await asyncio.to_thread(
-                    self._execute_transaction, conversation, img, message, is_warning
-                )
+                raw_response = await self._execute_transaction(conversation, img, message, is_warning)
 
                 # Fast, so shouldn't be problematic
                 parsed = self._parse_xml_response_sync(raw_response)
@@ -106,7 +104,7 @@ class FlySearchVLMBridge(VLMBridge):
             conversation = self._create_empty_conversation()
             conversation.begin_transaction(Role.USER)
             conversation.add_text_message(prompt)
-            conversation.commit_transaction(send_to_vlm=False)
+            await conversation.commit_transaction(send_to_vlm=False)
             self.conversations[chat_id] = conversation
             self.chat_locks[chat_id] = asyncio.Lock()
             logger.info("[VLM] New chat session created successfully.")
@@ -211,9 +209,9 @@ class FlySearchVLMBridge(VLMBridge):
                 if part['type'] == 'text':
                     conversation.add_text_message(part['data'])
                 elif part['type'] == 'image':
-                    conversation.add_image_message(part['data'])
+                    await conversation.add_image_message(part['data'])
 
-            conversation.commit_transaction(send_to_vlm=False)
+            await conversation.commit_transaction(send_to_vlm=False)
 
         return conversation
 
@@ -224,8 +222,8 @@ class FlySearchVLMBridge(VLMBridge):
         img = await add_grid_async(photo_path, drone_height)
         return img, message
 
-    def _execute_transaction(self, conversation: Conversation, img: Image.Image,
-                             message: str, is_warning: bool) -> str:
+    async def _execute_transaction(self, conversation: Conversation, img: Image.Image,
+                                   message: str, is_warning: bool) -> str:
         try:
             conversation.begin_transaction(Role.USER)
 
@@ -234,11 +232,11 @@ class FlySearchVLMBridge(VLMBridge):
                 conversation.add_text_message(self.collision_warning_str)
 
             # Standard Step: image with a grid + telemetry context
-            conversation.add_image_message(img)
+            await conversation.add_image_message(img)
             conversation.add_text_message(message)
 
             # Send message.
-            conversation.commit_transaction(send_to_vlm=True)
+            await conversation.commit_transaction(send_to_vlm=True)
 
             role, message = conversation.get_latest_message()
         except Exception as e:
