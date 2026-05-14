@@ -77,7 +77,7 @@ class PullRecordingsCommand(Command):
 @dataclass(kw_only=True)
 class RecordingsListReceived(Event):
     drone_id: str
-    recordings: List[str] = field(default_factory=list)
+    recordings: List[Dict[str, Any]] = field(default_factory=list)
     error: Optional[str] = None
 
 

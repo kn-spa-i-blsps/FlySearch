@@ -432,11 +432,14 @@ class WebServer:
                         }}
 
                         document.getElementById('rec-count').textContent = `${{recordings.length}} recording(s) found`;
-                        document.getElementById('rec-list').innerHTML = recordings.map(name => {{
+                        document.getElementById('rec-list').innerHTML = recordings.map(rec => {{
+                            const name = rec.name;
                             const safeId = 'rec-' + name.replace(/[^a-zA-Z0-9_-]/g, '_');
+                            const sizeMB = (rec.size_bytes / (1024 * 1024)).toFixed(1);
+                            const meta = `${{sizeMB}} MB · ${{rec.record_fps}} fps · ${{rec.mtime}}`;
                             return `<div class="rec-item">
                                 <input type="checkbox" id="${{safeId}}" data-name="${{name}}" checked>
-                                <label for="${{safeId}}">${{name}}</label>
+                                <label for="${{safeId}}">${{name}} <span style="color:#7f8c8d; font-size:11px; font-family:sans-serif;">${{meta}}</span></label>
                             </div>`;
                         }}).join('');
 
