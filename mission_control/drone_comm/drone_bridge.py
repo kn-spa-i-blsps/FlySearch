@@ -256,11 +256,14 @@ class WebSocketDroneBridge:
             ws = self.connected_clients.get(drone_id)
             if not ws:
                 raise DroneCommunicationError(f"Drone {drone_id} is not connected.")
-
             ack = await self.video_helper.send_get_recordings(ws)
             logger.info(f"[WS] Recordings list received from {drone_id}: {ack}")
-
+            await self.event_bus.publish(RecordingsListReceived(
+                drone_id=drone_id,
+                recordings=ack.get("recordings", [])
+            ))
         except Exception as e:
+            await self.event_bus.publish(RecordingsListReceived(drone_id=drone_id, error=str(e)))
             await self.event_bus.publish(
                 DroneErrorOccurred(drone_id=drone_id, error_message=f"Failed to fetch recordings list: {e}",
                                    traceback=traceback.format_exc()))
@@ -272,7 +275,6 @@ class WebSocketDroneBridge:
             ws = self.connected_clients.get(drone_id)
             if not ws:
                 raise DroneCommunicationError(f"Drone {drone_id} is not connected.")
-
             ack = await self.video_helper.send_pull_recordings(
                 ws,
                 names=event.names,
@@ -280,8 +282,12 @@ class WebSocketDroneBridge:
                 chunk_bytes=getattr(event, "chunk_bytes", None)
             )
             logger.info(f"[WS] Successfully pulled recordings from {drone_id}. Results: {ack.get('processed_results')}")
-
+            await self.event_bus.publish(RecordingsPullCompleted(
+                drone_id=drone_id,
+                results=ack.get("processed_results", [])
+            ))
         except Exception as e:
+            await self.event_bus.publish(RecordingsPullCompleted(drone_id=drone_id, error=str(e)))
             await self.event_bus.publish(
                 DroneErrorOccurred(drone_id=drone_id, error_message=f"Pull recordings transfer failed: {e}",
                                    traceback=traceback.format_exc()))

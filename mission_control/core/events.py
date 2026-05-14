@@ -75,6 +75,20 @@ class PullRecordingsCommand(Command):
 
 
 @dataclass(kw_only=True)
+class RecordingsListReceived(Event):
+    drone_id: str
+    recordings: List[str] = field(default_factory=list)
+    error: Optional[str] = None
+
+
+@dataclass(kw_only=True)
+class RecordingsPullCompleted(Event):
+    drone_id: str
+    results: List[Dict[str, Any]] = field(default_factory=list)
+    error: Optional[str] = None
+
+
+@dataclass(kw_only=True)
 class UserDecisionReceived(Event):
     """
     Published by: CLI Handler / Web Server.

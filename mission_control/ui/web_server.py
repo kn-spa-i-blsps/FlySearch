@@ -4,11 +4,11 @@ import os
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, Set, Optional, Tuple
+from typing import Dict, List, Set, Optional, Tuple
 
 import uvicorn
 from PIL import Image
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -17,7 +17,8 @@ from mission_control.core.action_status import ActionStatus
 from mission_control.core.config import Config
 from mission_control.core.events import (
     StartMissionCommand, CreateNewSessionCommand, PhotoWithTelemetryReceived,
-    VlmAnalysisCompleted, AskUserConfirmationCommand, SearchEnded, UserDecisionReceived
+    VlmAnalysisCompleted, AskUserConfirmationCommand, SearchEnded, UserDecisionReceived,
+    GetRecordingsListCommand, PullRecordingsCommand, RecordingsListReceived, RecordingsPullCompleted,
 )
 from mission_control.core.interfaces import EventBus
 from mission_control.utils.logger import get_configured_logger
@@ -48,11 +49,18 @@ class MissionCreateRequest(BaseModel):
     min_altitude: int
 
 
+class PullRecordingsRequest(BaseModel):
+    drone_id: str
+    names: List[str]
+
+
 class WebServer:
     def __init__(self, config: Config, event_bus: EventBus):
         self.config = config
         self.event_bus = event_bus
         self.app = FastAPI(title="Mission Control GUI")
+        self._recordings_waiters: Dict[str, asyncio.Future] = {}
+        self._pull_waiters: Dict[str, asyncio.Future] = {}
 
         # --- MULTI-TENANT GUI STATE ---
         # Dictionary storing a separate browser window state for each mission_id
@@ -67,6 +75,8 @@ class WebServer:
         # Endpoint registers.
         self.app.add_api_route("/", self.get_index, methods=["GET"])
         self.app.add_api_route("/api/missions", self.api_start_mission, methods=["POST"])
+        self.app.add_api_route("/api/recordings", self.api_get_recordings, methods=["GET"])
+        self.app.add_api_route("/api/recordings/pull", self.api_pull_recordings, methods=["POST"])
         self.app.add_api_route("/{mission_id}", self.get_mission_gui, methods=["GET"])
         self.app.add_api_websocket_route("/ws/{mission_id}", self.websocket_endpoint)
 
@@ -80,6 +90,8 @@ class WebServer:
         self.event_bus.subscribe(VlmAnalysisCompleted, self.handle_vlm_analysis)
         self.event_bus.subscribe(AskUserConfirmationCommand, self.handle_ask_confirmation)
         self.event_bus.subscribe(SearchEnded, self.handle_search_ended)
+        self.event_bus.subscribe(RecordingsListReceived, self.handle_recordings_list_received)
+        self.event_bus.subscribe(RecordingsPullCompleted, self.handle_recordings_pull_completed)
 
     def _get_or_create_mission(self, mission_id: str) -> MissionUIState:
         if mission_id not in self.missions:
@@ -178,6 +190,44 @@ class WebServer:
         # Respond with the URL to the new mission's dashboard
         return {"status": "ok", "url": f"/{req.mission_id}"}
 
+    async def api_get_recordings(self, drone_id: str = Query(...)):
+        """Endpoint: GET /api/recordings?drone_id=..."""
+        loop = asyncio.get_running_loop()
+        waiter = loop.create_future()
+        self._recordings_waiters[drone_id] = waiter
+        await self.event_bus.publish(GetRecordingsListCommand(drone_id=drone_id))
+        try:
+            event = await asyncio.wait_for(waiter, timeout=10.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="Drone did not respond in time.")
+        if event.error:
+            raise HTTPException(status_code=502, detail=event.error)
+        return {"status": "ok", "recordings": event.recordings}
+
+    async def api_pull_recordings(self, req: PullRecordingsRequest):
+        """Endpoint: POST /api/recordings/pull"""
+        loop = asyncio.get_running_loop()
+        waiter = loop.create_future()
+        self._pull_waiters[req.drone_id] = waiter
+        await self.event_bus.publish(PullRecordingsCommand(drone_id=req.drone_id, names=req.names))
+        try:
+            event = await asyncio.wait_for(waiter, timeout=300.0)
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="Pull timed out.")
+        if event.error:
+            raise HTTPException(status_code=502, detail=event.error)
+        return {"status": "ok", "results": event.results}
+
+    async def handle_recordings_list_received(self, event: RecordingsListReceived):
+        waiter = self._recordings_waiters.pop(event.drone_id, None)
+        if waiter and not waiter.done():
+            waiter.set_result(event)
+
+    async def handle_recordings_pull_completed(self, event: RecordingsPullCompleted):
+        waiter = self._pull_waiters.pop(event.drone_id, None)
+        if waiter and not waiter.done():
+            waiter.set_result(event)
+
     async def get_index(self):
         """ Endpoint: GET / (Mission Launcher & Active Missions GUI) """
         if self.missions:
@@ -203,9 +253,10 @@ class WebServer:
             <meta charset="UTF-8">
             <title>FlySearch - Mission Hub</title>
             <style>
-                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; align-items: flex-start; height: 100vh; margin: 0; padding-top: 50px; }}
-                .container {{ display: flex; gap: 30px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }}
+                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; margin: 0; padding: 50px 20px 80px; box-sizing: border-box; }}
+                .container {{ display: flex; gap: 30px; align-items: flex-start; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 900px; }}
                 .card {{ background: #fff; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 400px; }}
+                .card-wide {{ width: 100%; max-width: 830px; }}
                 h2 {{ color: #2c3e50; margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px; text-align: center; }}
 
                 /* Form Styles */
@@ -213,7 +264,8 @@ class WebServer:
                 label {{ display: block; margin-bottom: 5px; font-weight: bold; color: #34495e; font-size: 14px; }}
                 input, select {{ width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; font-size: 14px; }}
                 button {{ width: 100%; padding: 12px; background: #0078D7; color: white; font-weight: bold; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 10px; transition: background 0.2s; }}
-                button:hover {{ background: #005a9e; }}
+                button:hover:not(:disabled) {{ opacity: 0.88; }}
+                button:disabled {{ opacity: 0.5; cursor: not-allowed; }}
 
                 /* Mission List Styles */
                 .mission-list {{ list-style: none; padding: 0; margin: 0; }}
@@ -222,6 +274,28 @@ class WebServer:
                 .mission-list a {{ text-decoration: none; color: #2c3e50; display: block; padding: 15px; }}
                 .mission-title {{ font-weight: bold; font-size: 16px; margin-bottom: 5px; }}
                 .empty-state {{ text-align: center; color: #7f8c8d; font-style: italic; margin-top: 20px; }}
+
+                /* Recordings Styles */
+                .rec-toolbar {{ display: flex; gap: 10px; align-items: flex-end; }}
+                .rec-toolbar .form-group {{ flex: 1; margin-bottom: 0; }}
+                .rec-toolbar button {{ width: auto; margin-top: 0; padding: 10px 20px; font-size: 14px; }}
+                .rec-list-header {{ display: flex; justify-content: space-between; align-items: center; margin: 16px 0 8px; }}
+                .rec-list-header label {{ display: inline; font-weight: normal; margin-bottom: 0; }}
+                .rec-list-header input[type=checkbox] {{ width: auto; margin-right: 6px; }}
+                #rec-list {{ max-height: 260px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 6px; }}
+                .rec-item {{ display: flex; align-items: center; padding: 9px 14px; border-bottom: 1px solid #f0f0f0; }}
+                .rec-item:last-child {{ border-bottom: none; }}
+                .rec-item:hover {{ background: #f8f9fa; }}
+                .rec-item input[type=checkbox] {{ width: 16px; height: 16px; margin: 0 10px 0 0; cursor: pointer; flex-shrink: 0; }}
+                .rec-item label {{ font-family: monospace; font-size: 13px; cursor: pointer; color: #2c3e50; }}
+                #btn-pull {{ background: #e67e22; }}
+                #btn-pull:hover:not(:disabled) {{ background: #ca6f1e; opacity: 1; }}
+                #rec-status {{ margin-top: 12px; font-size: 14px; color: #7f8c8d; min-height: 20px; }}
+                .pull-result {{ padding: 7px 12px; border-radius: 4px; margin: 5px 0; font-size: 13px; }}
+                .pull-ok {{ background: #d5f0da; color: #155724; }}
+                .pull-err {{ background: #fde8e8; color: #721c24; }}
+                #pull-results {{ margin-top: 16px; }}
+                #pull-results strong {{ display: block; margin-bottom: 6px; color: #2c3e50; }}
             </style>
         </head>
         <body>
@@ -268,6 +342,33 @@ class WebServer:
                     <h2>Active Missions</h2>
                     {active_missions_html}
                 </div>
+
+                <div class="card card-wide">
+                    <h2>Drone Recordings</h2>
+                    <div class="rec-toolbar">
+                        <div class="form-group">
+                            <label>Drone ID</label>
+                            <input type="text" id="rec-drone-id" placeholder="e.g., drone_01">
+                        </div>
+                        <button id="btn-get-rec" onclick="getRecordings()">GET RECORDINGS</button>
+                    </div>
+
+                    <div id="rec-status"></div>
+
+                    <div id="rec-list-wrapper" style="display:none;">
+                        <div class="rec-list-header">
+                            <strong id="rec-count"></strong>
+                            <label>
+                                <input type="checkbox" id="rec-select-all" onchange="toggleSelectAll()" checked>
+                                Select all
+                            </label>
+                        </div>
+                        <div id="rec-list"></div>
+                        <button id="btn-pull" onclick="pullRecordings()">PULL SELECTED</button>
+                    </div>
+
+                    <div id="pull-results"></div>
+                </div>
             </div>
 
             <script>
@@ -277,7 +378,7 @@ class WebServer:
                 }}
 
                 document.getElementById('mission-form').addEventListener('submit', async (e) => {{
-                    e.preventDefault(); 
+                    e.preventDefault();
 
                     const payload = {{
                         mission_id: document.getElementById('mission_id').value.trim(),
@@ -303,6 +404,106 @@ class WebServer:
                         alert(`Error: ${{errorData.detail || 'Failed to launch mission.'}}`);
                     }}
                 }});
+
+                async function getRecordings() {{
+                    const droneId = document.getElementById('rec-drone-id').value.trim();
+                    if (!droneId) {{ alert('Please enter a Drone ID.'); return; }}
+
+                    const btn = document.getElementById('btn-get-rec');
+                    btn.disabled = true;
+                    document.getElementById('rec-status').textContent = 'Fetching recordings from drone…';
+                    document.getElementById('rec-list-wrapper').style.display = 'none';
+                    document.getElementById('pull-results').innerHTML = '';
+
+                    try {{
+                        const resp = await fetch(`/api/recordings?drone_id=${{encodeURIComponent(droneId)}}`);
+                        const data = await resp.json();
+
+                        if (!resp.ok) {{
+                            document.getElementById('rec-status').textContent = `Error: ${{data.detail || 'Failed to fetch recordings'}}`;
+                            return;
+                        }}
+
+                        const recordings = data.recordings || [];
+
+                        if (recordings.length === 0) {{
+                            document.getElementById('rec-status').textContent = 'No recordings found on drone.';
+                            return;
+                        }}
+
+                        document.getElementById('rec-count').textContent = `${{recordings.length}} recording(s) found`;
+                        document.getElementById('rec-list').innerHTML = recordings.map(name => {{
+                            const safeId = 'rec-' + name.replace(/[^a-zA-Z0-9_-]/g, '_');
+                            return `<div class="rec-item">
+                                <input type="checkbox" id="${{safeId}}" data-name="${{name}}" checked>
+                                <label for="${{safeId}}">${{name}}</label>
+                            </div>`;
+                        }}).join('');
+
+                        document.getElementById('rec-select-all').checked = true;
+                        document.getElementById('rec-list-wrapper').style.display = 'block';
+                        document.getElementById('rec-status').textContent = '';
+                    }} catch (e) {{
+                        document.getElementById('rec-status').textContent = `Network error: ${{e.message}}`;
+                    }} finally {{
+                        btn.disabled = false;
+                    }}
+                }}
+
+                function toggleSelectAll() {{
+                    const checked = document.getElementById('rec-select-all').checked;
+                    document.querySelectorAll('#rec-list input[type=checkbox]').forEach(cb => cb.checked = checked);
+                }}
+
+                async function pullRecordings() {{
+                    const droneId = document.getElementById('rec-drone-id').value.trim();
+                    const selected = Array.from(
+                        document.querySelectorAll('#rec-list input[type=checkbox]:checked')
+                    ).map(cb => cb.dataset.name);
+
+                    if (selected.length === 0) {{ alert('Please select at least one recording.'); return; }}
+
+                    const btn = document.getElementById('btn-pull');
+                    btn.disabled = true;
+                    btn.textContent = `Pulling ${{selected.length}} recording(s)…`;
+                    document.getElementById('pull-results').innerHTML =
+                        '<p style="color:#7f8c8d; margin:0;">Transfer in progress — this may take several minutes for large recordings.</p>';
+
+                    try {{
+                        const resp = await fetch('/api/recordings/pull', {{
+                            method: 'POST',
+                            headers: {{ 'Content-Type': 'application/json' }},
+                            body: JSON.stringify({{ drone_id: droneId, names: selected }})
+                        }});
+                        const data = await resp.json();
+
+                        if (!resp.ok) {{
+                            document.getElementById('pull-results').innerHTML =
+                                `<p style="color:#c0392b; margin:0;">Error: ${{data.detail || 'Pull failed'}}</p>`;
+                            return;
+                        }}
+
+                        const results = data.results || [];
+                        const rows = results.map(r => {{
+                            const ok = r.pulled_ok && r.convert_ok;
+                            const icon = ok ? '✓' : '✗';
+                            const fileName = r.mp4_path ? r.mp4_path.split('/').pop() : r.name;
+                            const note = ok
+                                ? `saved as ${{fileName}}`
+                                : (r.pull_error || r.convert_error || 'unknown error');
+                            return `<div class="pull-result ${{ok ? 'pull-ok' : 'pull-err'}}">${{icon}} <strong>${{r.name}}</strong> — ${{note}}</div>`;
+                        }}).join('');
+
+                        document.getElementById('pull-results').innerHTML =
+                            `<strong>Pull complete (${{results.length}} file(s)):</strong>${{rows}}`;
+                    }} catch (e) {{
+                        document.getElementById('pull-results').innerHTML =
+                            `<p style="color:#c0392b; margin:0;">Network error: ${{e.message}}</p>`;
+                    }} finally {{
+                        btn.disabled = false;
+                        btn.textContent = 'PULL SELECTED';
+                    }}
+                }}
             </script>
         </body>
         </html>
