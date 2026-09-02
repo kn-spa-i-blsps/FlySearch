@@ -18,17 +18,17 @@ def crop_img_square(photo_data):
 
     return img.crop((left, top, right, bottom)), side
 
-def add_grid(photo_path, drone_height):
+def add_grid(photo_path, drone_height, camera_fov_degrees=None):
     """ Adds grid to the image.
 
     That grid shows how many meters drone have to move to be above that point.
     """
 
     img = Image.open(photo_path)
-    img_grid = gd.dot_matrix_two_dimensional_drone(
-        img=img,
-        drone_height=drone_height
-    )
+    kwargs = {"img": img, "drone_height": drone_height}
+    if camera_fov_degrees is not None:
+        kwargs["camera_fov_degrees"] = camera_fov_degrees
+    img_grid = gd.dot_matrix_two_dimensional_drone(**kwargs)
     # It might seem redundant, but without it while sending
     # original photo from the file is taken (Python optimization)
     img_grid.save("tmp.png")

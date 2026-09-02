@@ -51,6 +51,11 @@ OPEN_AI_KEY=your_key_here # or GEMINI_AI_KEY=your_key_here
 RECORDINGS_DIR=/recordings
 PULL_BATCH_SIZE=2
 PULL_CHUNK_BYTES=524288
+
+# Camera FOV (degrees) of the square photo the grid overlay is drawn on.
+# Default matches an Arducam M12 / Sony IMX477 rig's vertical FOV; if you're
+# on different hardware, verify (and retune) with scripts/calibrate_grid_scale.py.
+FOV_ANGLE=10.8
 ```
 
 **Raspberry Pi (Producer) `.env` configuration:**
@@ -171,3 +176,50 @@ All mission data is safely logged on the laptop (server side) for post-flight an
 * `saved_chats/` - Full VLM conversation history.
 * `prompts/` - Prompt text and metadata.
 * `recordings/` - Pulled raw video (`/raw`), metadata (`/meta`), and converted formats (`/mp4`).
+
+---
+
+## 8. Diagnostics & Calibration Tools
+
+Two standalone scripts under `scripts/` let you sanity-check the physical setup before trusting a mission. Neither is part of the automated test suite — both talk to real hardware/artifacts and are meant to be run manually. Run them from the repo root with `python3 -m scripts.<name>`.
+
+### Movement accuracy check
+`scripts/check_movement_accuracy.py` commands the real vehicle (or a SITL instance) 1m forward, backward, left, and right in turn, and compares the *actual* displacement (read from MAVLink `LOCAL_POSITION_NED`) against what was commanded. The four legs cancel out, so a fully successful run returns the drone to its start point.
+
+```bash
+# status/dry-run only — connects, prints vehicle mode/armed state, sends nothing:
+python3 -m scripts.check_movement_accuracy --device /dev/ttyAMA0
+
+# actually move the vehicle:
+python3 -m scripts.check_movement_accuracy --device /dev/ttyAMA0 --execute
+
+# against SITL instead of real hardware:
+python3 -m scripts.check_movement_accuracy --device udp:127.0.0.1:14550 --execute
+```
+It refuses to send anything unless the vehicle reports `GUIDED` + armed, and asks for a `y/N` confirmation before every leg. Run `--help` for all options (distance, tolerance, movement method, timeouts).
+
+### Grid scale calibration
+`scripts/calibrate_grid_scale.py` checks whether the meter-distance grid overlay the VLM sees (`mission_control/utils/add_guardrails.py`) actually matches reality for your camera. It works from an already-captured photo of a physical ground reference (e.g. two marks on a tape measure) taken at a known height — no drone/MAVLink connection needed.
+
+```bash
+# 1) crop & preview the photo the way the mission pipeline does:
+python3 -m scripts.calibrate_grid_scale --photo shot.jpg --prepare
+# -> writes shot.square.png; open it and note the pixel coords of two points
+#    a known real-world distance apart.
+
+# 2) run the calibration:
+python3 -m scripts.calibrate_grid_scale --photo shot.jpg --height 20 \
+    --ref-pixel1 120,340 --ref-pixel2 480,340 --ref-distance 5.0
+```
+It prints the predicted vs. measured meters-per-pixel scale, the error percentage, and a suggested `FOV_ANGLE`/`camera_fov_degrees` value, and writes `shot.grid_check.png` with the production overlay burned in for a visual check.
+
+---
+
+## 9. Running Tests
+
+The offline unit test suite (no hardware, no camera) covers command parsing, chat/prompt management, the VLM/drone bridges, and the grid-overlay scale math:
+
+```bash
+pip install -r requirements.txt
+pytest mission_control drone_control
+```

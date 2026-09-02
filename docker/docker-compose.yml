@@ -55,7 +55,7 @@ services:
         MAX_WS_MB: "${MAX_WS_MB:-25}"
         WS_PING_INTERVAL: "${WS_PING_INTERVAL:-20}"
         WS_PING_TIMEOUT: "${WS_PING_TIMEOUT:-none}"
-        FOV_ANGLE: "${FOV_ANGLE:-90}"
+        FOV_ANGLE: "${FOV_ANGLE:-10.8}"
         OPEN_AI_KEY: "${OPEN_AI_KEY}"
         GEMINI_AI_KEY: "${GEMINI_AI_KEY}"
         MODEL_BACKEND: "${MODEL_BACKEND}"

@@ -66,7 +66,11 @@ class VLMBridge:
 
         # --- Image Processing ---
         try:
-            img_new = add_grid(self.mission_context.last_photo_path_cache, drone_height)
+            img_new = add_grid(
+                self.mission_context.last_photo_path_cache,
+                drone_height,
+                camera_fov_degrees=self.config.fov_degrees,
+            )
         except FileNotFoundError as e:
             print(f"Error: No photo found '{self.mission_context.last_photo_path_cache}'. Photo may be deleted.")
             raise e
