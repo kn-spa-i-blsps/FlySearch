@@ -235,21 +235,14 @@ def _method_accel_ned(master: Any, dx: float, dy: float, dz: float) -> bool:
 
     return True
 
-def send_vector_command(
-    *,
-    vector: tuple[float, float, float],
-    device: str = "/dev/ttyAMA0",
-    baud: int = 57600,
-    method_id: int = 0,
-) -> bool:
-    """Connects to Pixhawk and dispatches to one of methods 0..3 based on method_id."""
-    dx, dy, dz = vector
+def send_vector_command_via(master: Any, *, vector: tuple[float, float, float], method_id: int = 0) -> bool:
+    """Dispatch to one of methods 0..3, reusing an already-connected MAVLink session.
 
-    try:
-        master = _connect(device, baud)
-    except Exception as exc:
-        print("[dispatcher] Connection error:", exc)
-        return False
+    Split out of send_vector_command so callers that need to read telemetry
+    (e.g. before/after a move) can share one connection instead of opening a
+    second one, which would fail outright on a serial device.
+    """
+    dx, dy, dz = vector
 
     if method_id == 0:
         return _method_position_offset(master, dx, dy, dz)
@@ -262,3 +255,19 @@ def send_vector_command(
 
     print(f"[dispatcher] Invalid method_id: {method_id} (expected 0..3)")
     return False
+
+def send_vector_command(
+    *,
+    vector: tuple[float, float, float],
+    device: str = "/dev/ttyAMA0",
+    baud: int = 57600,
+    method_id: int = 0,
+) -> bool:
+    """Connects to Pixhawk and dispatches to one of methods 0..3 based on method_id."""
+    try:
+        master = _connect(device, baud)
+    except Exception as exc:
+        print("[dispatcher] Connection error:", exc)
+        return False
+
+    return send_vector_command_via(master, vector=vector, method_id=method_id)

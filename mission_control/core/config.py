@@ -45,6 +45,11 @@ class Config:
         self.gemini_api_key = os.environ.get("GEMINI_AI_KEY", None)
         self.gpt_api_key = os.environ.get("OPEN_AI_KEY", None)
 
+        # Camera horizontal FOV of the square photo the grid overlay is drawn on.
+        # Default matches the Arducam M12 / Sony IMX477 rig's vertical FOV (see
+        # mission_control.utils.add_guardrails.DEFAULT_CAMERA_FOV_DEGREES).
+        self.fov_degrees = float(os.environ.get("FOV_ANGLE", "10.8"))
+
     @staticmethod
     def _optional_float_env(name: str, default: float | None) -> float | None:
         raw = os.environ.get(name, None)
