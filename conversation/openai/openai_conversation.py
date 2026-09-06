@@ -9,7 +9,8 @@ from conversation.abstract_conversation import Conversation, Role
 
 
 class OpenAIConversation(Conversation):
-    def __init__(self, client: Client, model_name: str, seed=42, max_tokens=300, temperature=0.8, top_p=1.0):
+    def __init__(self, client: Client, model_name: str, seed=42, max_tokens=300, temperature=0.8, top_p=1.0,
+                 extra_body=None):
         self.client = client
         self.conversation = []
         self.model_name = model_name
@@ -17,6 +18,9 @@ class OpenAIConversation(Conversation):
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.top_p = top_p
+        # vLLM-specific passthrough (e.g. {"chat_template_kwargs": {"enable_thinking": False}}).
+        # Real OpenAI cloud models ignore/reject unknown fields, so this stays None there.
+        self.extra_body = extra_body
 
         self.transaction_started = False
         self.transaction_role = None
@@ -70,7 +74,7 @@ class OpenAIConversation(Conversation):
             }
         )
 
-    def get_answer_from_openai(self, model, messages, max_tokens, seed, temperature, top_p):
+    def get_answer_from_openai(self, model, messages, max_tokens, seed, temperature, top_p, extra_body=None):
         fail = True
         response = None
 
@@ -82,7 +86,8 @@ class OpenAIConversation(Conversation):
                     max_tokens=max_tokens,
                     # seed=seed,
                     temperature=temperature,
-                    top_p=top_p
+                    top_p=top_p,
+                    extra_body=extra_body
                 )
                 fail = False
             except RateLimitError as e:
@@ -114,7 +119,8 @@ class OpenAIConversation(Conversation):
             max_tokens=self.max_tokens,
             seed=self.seed,
             temperature=self.temperature,
-            top_p=self.top_p
+            top_p=self.top_p,
+            extra_body=self.extra_body
         )
 
         response_content = str(response.choices[0].message.content)
