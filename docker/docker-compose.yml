@@ -23,7 +23,7 @@ x-producer-vols: &producer_vols
 
 x-producer-common: &producer_common
   image: flysearch:latest
-  build: 
+  build:
     context: ..
     dockerfile: Dockerfile
   command: >
@@ -32,12 +32,12 @@ x-producer-common: &producer_common
   working_dir: /app
   volumes: *producer_vols
   environment: *producer_env
-  tty: true 
+  tty: true
   stdin_open: true
 
 services:
   server:
-    build: 
+    build:
       context: ..
       dockerfile: Dockerfile
     image: flysearch:latest
@@ -73,10 +73,10 @@ services:
     tty: true
     stdin_open: true
     ports:
-      - "100.76.85.16:8080:8080"
+      - "<your-ip-address>:8080:8080"
       - "127.0.0.1:8000:8000"
     profiles: ["server"]
-    
+
   # drone / RPi hardware for actual workflow
   producer:
     <<: *producer_common
@@ -106,7 +106,7 @@ services:
       - /dev/v4l-subdev0:/dev/v4l-subdev0
       - /dev/v4l-subdev1:/dev/v4l-subdev1
       - /dev/v4l-subdev2:/dev/v4l-subdev2
-    
+
   # no-drone / laptop-friendly for tests without drone
   producer_test:
     <<: *producer_common
