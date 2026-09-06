@@ -58,6 +58,15 @@ PULL_CHUNK_BYTES=524288
 FOV_ANGLE=10.8
 ```
 
+**Benchmarking against a self-hosted model (e.g. a LoRA finetune):** `MODEL_BACKEND=openai` talks to any OpenAI-compatible chat-completions endpoint, not just api.openai.com — set `OPENAI_BASE_URL` to point it at a self-hosted server instead (e.g. `vllm serve` exposing both a finetune and its base model on one URL, selected by `MODEL_NAME`):
+```dotenv
+MODEL_BACKEND=openai
+MODEL_NAME=flylora                          # or e.g. Qwen/Qwen3.5-9B for the base model
+OPENAI_BASE_URL=http://<vllm-host>:8000/v1
+OPEN_AI_KEY=not-needed                       # vLLM ignores this unless you configured auth
+```
+To compare multiple models, restart `mission_control` between runs with a different `MODEL_BACKEND`/`MODEL_NAME`/`OPENAI_BASE_URL` in `.env` — there's no in-session model switch.
+
 **Raspberry Pi (Producer) `.env` configuration:**
 ```dotenv
 SERVER_URL=ws://<LAPTOP_IP>:8080 # Might need to use wss:// if using Cloudflare Tunnel
