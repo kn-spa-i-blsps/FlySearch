@@ -76,14 +76,28 @@ RECORD_FPS=30
 ```
 
 ### 2. Build Docker Images
-Run this command on **both** machines to build the respective containers:
+
+#### Laptop
+Run this command on the laptop to build the Mission Control image:
 
 ```bash
 cd docker
-docker build -t flysearch:latest .
+docker compose --profile server build server
 ```
 
----
+#### Raspberry Pi
+Run this command on the Raspberry Pi to build the drone producer image:
+
+```bash
+cd docker
+docker compose --profile producer build producer
+```
+
+For hardware-free testing, build `producer_test` instead:
+
+```bash
+docker compose --profile producer_test build producer_test
+```
 
 ## 4. Running the System
 
