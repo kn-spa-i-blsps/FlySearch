@@ -43,6 +43,7 @@ Once the `main.py` script is running, the following commands are available in th
 * `PROMPT <FS-1|FS-2>`: Generates the system instructions.
 * `CHAT_INIT` / `CHAT_SAVE <name>` / `CHAT_RETRIEVE <name>` / `CHAT_RESET`: Manages session persistence.
 * `SEND_TO_VLM` / `ADD_WARNING`: Manually triggers the VLM or sends a collision warning.
+* `PING_VLM [prompt]`: Sends an isolated VLM probe. Without a prompt, it uses the default greeting; otherwise it sends the supplied prompt.
 
 ## Architecture
 The system is based on an event-driven architecture.

@@ -75,6 +75,7 @@ class MissionControl:
             "add_warning": lambda c, a: self.vlm.send_to_vlm(
                 is_warning=True
             ),
+            "ping_vlm": lambda c, a: self.vlm.ping_vlm(a),
 
             "q":    lambda c, a: self._signal_handler_wrapper(),
             "quit": lambda c, a: self._signal_handler_wrapper(),
@@ -430,7 +431,7 @@ def print_help():
     print("    PHOTO_WITH_TELEMETRY | START_RECORDING | STOP_RECORDING | GET_RECORDINGS | PULL_RECORDINGS <names> | MOVE")
 
     print("VLM communication:")
-    print("    SEND_TO_VLM | ADD_WARNING")
+    print("    SEND_TO_VLM | ADD_WARNING | PING_VLM [prompt]")
 
 
 if __name__ == "__main__":

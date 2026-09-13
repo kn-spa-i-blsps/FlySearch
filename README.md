@@ -187,6 +187,7 @@ You can also run individual commands in the `mission_control` CLI to manually co
 | `CHAT_INIT` | Initializes the VLM chat context (requires `PROMPT` first). |
 | `PHOTO_WITH_TELEMETRY` | Captures and caches current image + MAVLink telemetry. |
 | `SEND_TO_VLM` | Sends cached photo + telemetry to the VLM for analysis. |
+| `PING_VLM [prompt]` | Sends an isolated VLM probe. Without a prompt, it uses the default greeting; otherwise it sends the supplied prompt. |
 | `MOVE` | Executes the previously generated relative movement vector. |
 | `START_RECORDING` | Starts saving `.h264` video on the RPi. |
 | `GET_RECORDINGS` | Lists available `.h264` files on the RPi. |

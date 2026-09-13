@@ -126,7 +126,8 @@ class OpenAIConversation(Conversation):
         response_content = str(response.choices[0].message.content)
         response_role = Role.ASSISTANT
 
-        print("llm response:", response_content)
+        if not getattr(self, "suppress_response_output", False):
+            print("llm response:", response_content)
 
         self.begin_transaction(response_role)
         self.add_text_message(response_content)

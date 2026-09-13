@@ -1,5 +1,9 @@
 
+import asyncio
+import io
+import sys
 import unittest
+from types import ModuleType
 from unittest.mock import Mock, patch, MagicMock, call
 
 from mission_control.bridges.vlm_bridge import VLMBridge
@@ -181,6 +185,67 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         # Act & Assert
         with self.assertRaises(VLMConnectionError):
             await self.bridge.send_to_vlm()
+
+    async def test_ping_vlm_reports_latency_for_a_response(self):
+        self.config.model_backend = "test-backend"
+        self.config.model_name = "test-model"
+        self.config.vlm_ping_timeout_seconds = 1.0
+
+        with patch.object(self.bridge, '_send_ping_request', return_value='hello FlySearch') as send_ping, \
+                patch('sys.stdout', new_callable=io.StringIO) as stdout:
+            result = await self.bridge.ping_vlm()
+
+        self.assertTrue(result)
+        send_ping.assert_called_once_with(self.bridge.PING_PROMPT)
+        self.assertIn('[VLM PING] OK: response received in', stdout.getvalue())
+        self.assertIn("'hello FlySearch'", stdout.getvalue())
+
+    async def test_ping_vlm_uses_an_alternative_prompt(self):
+        self.config.model_backend = "test-backend"
+        self.config.model_name = "test-model"
+        self.config.vlm_ping_timeout_seconds = 1.0
+        prompt = "Reply with the current model name."
+
+        with patch.object(self.bridge, '_send_ping_request', return_value='test-model') as send_ping, \
+                patch('sys.stdout', new_callable=io.StringIO) as stdout:
+            result = await self.bridge.ping_vlm(prompt)
+
+        self.assertTrue(result)
+        send_ping.assert_called_once_with(prompt)
+        self.assertNotIn('expected greeting', stdout.getvalue())
+
+    def test_send_ping_request_suppresses_backend_response_echo(self):
+        self.config.model_backend = "test-backend"
+        self.config.model_name = "test-model"
+        conversation = MagicMock()
+        conversation.get_latest_message.return_value = ("assistant", "pong")
+        factory = MagicMock()
+        factory.return_value.get_conversation.return_value = conversation
+        conversations = ModuleType('conversation.conversations')
+        conversations.LLM_BACKEND_FACTORIES = {"test-backend": factory}
+
+        with patch.dict(sys.modules, {'conversation.conversations': conversations}):
+            response = self.bridge._send_ping_request("Reply with pong.")
+
+        self.assertEqual(response, "pong")
+        self.assertTrue(conversation.suppress_response_output)
+        conversation.add_text_message.assert_called_once_with("Reply with pong.")
+
+    async def test_ping_vlm_reports_timeout_as_communication_error(self):
+        self.config.model_backend = "test-backend"
+        self.config.model_name = "test-model"
+        self.config.vlm_ping_timeout_seconds = 0.01
+
+        async def never_returns(*_args, **_kwargs):
+            await asyncio.Future()
+
+        with patch('mission_control.bridges.vlm_bridge.asyncio.to_thread', side_effect=never_returns), \
+                patch('sys.stdout', new_callable=io.StringIO) as stdout:
+            result = await self.bridge.ping_vlm()
+
+        self.assertFalse(result)
+        self.assertIn('COMMUNICATION ERROR', stdout.getvalue())
+        self.assertIn('no response within', stdout.getvalue())
 
 
 if __name__ == '__main__':
