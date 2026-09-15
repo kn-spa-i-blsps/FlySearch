@@ -85,9 +85,11 @@ class FlySearchVLMBridge(VLMBridge):
                 img, message = await self._prepare_input_async(
                     photo_path, telemetry_path
                 )
+                logger.info("[VLM] Sending photo and telemetry to the model.")
                 raw_response = await self._execute_transaction(
                     conversation, img, message, is_warning
                 )
+                logger.info("[VLM] Received response from the model.")
 
                 # Fast, so shouldn't be problematic
                 parsed = self._parse_xml_response_sync(raw_response)

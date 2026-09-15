@@ -461,7 +461,7 @@ class WebServer:
                         const recordings = data.recordings || [];
 
                         if (recordings.length === 0) {{
-                            document.getElementById('rec-status').textContent = 'No recordings found on drone.';
+                            document.getElementById('rec-status').textContent = 'No recordings found on the drone.';
                             return;
                         }}
 
@@ -765,7 +765,7 @@ class WebServer:
                     document.getElementById('controls').style.display = "none";
                     document.getElementById('vlm-action').innerText = "Sending data to drone/VLM...";
                 }
-                
+
                 document.addEventListener('keydown', function(event) {
                 const controls = document.getElementById('controls');
                 if (controls.style.display === 'flex') {

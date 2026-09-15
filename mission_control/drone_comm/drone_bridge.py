@@ -199,6 +199,7 @@ class WebSocketDroneBridge:
         if drone_id not in self.connected_clients:
             raise DroneCommunicationError(f"Drone {drone_id} is not connected.")
         client = self.connected_clients[drone_id]
+        logger.debug(f"[WS] Sending message to {drone_id}: {payload}")
         await client.send(json.dumps(payload))
 
     async def handle_get_photo_telemetry(self, event: GetPhotoAndTelemetryCommand):

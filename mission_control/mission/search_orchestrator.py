@@ -1,4 +1,3 @@
-import logging
 from enum import Enum, auto
 
 from mission_control.core.action_status import ActionStatus
@@ -27,8 +26,9 @@ from mission_control.core.events import (
     VlmErrorOccurred,
 )
 from mission_control.core.interfaces import EventBus, PromptHelper
+from mission_control.utils.logger import get_configured_logger
 
-logger = logging.getLogger(__name__)
+logger = get_configured_logger(__name__)
 
 
 class MissionState(Enum):
