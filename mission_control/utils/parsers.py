@@ -1,7 +1,6 @@
 import json
 import re
 from dataclasses import dataclass
-from typing import Dict, Tuple
 
 import aiofiles
 
@@ -12,9 +11,9 @@ logger = get_configured_logger(__name__)
 
 
 async def get_height_async(path):
-    """ Parses telemetry data from JSON file asynchronously.
+    """Parses telemetry data from JSON file asynchronously.
 
-        Returns height in meters.
+    Returns height in meters.
     """
 
     async with aiofiles.open(path, "r", encoding="utf-8") as f:
@@ -33,19 +32,21 @@ async def get_height_async(path):
 def parse_prompt_arguments(cmd):
     """Divides arguments for the prompt command.
 
-        Returns kind of prompt and dictionary of arguments.
+    Returns kind of prompt and dictionary of arguments.
     """
 
     parts = cmd.split()
     if len(parts) < 1:
-        logger.info("Usage: PROMPT FS-1|FS-2 [object=.. glimpses=.. area=.. minimum_altitude=..]")
+        logger.info(
+            "Usage: PROMPT FS-1|FS-2 [object=.. glimpses=.. area=.. minimum_altitude=..]"
+        )
         raise ValueError
     kind = parts[0].upper()
     if kind not in ("FS-1", "FS-2"):
         logger.info("Kind must be FS-1 or FS-2")
         raise ValueError
 
-    kv: Dict[str, int | str] = {}
+    kv: dict[str, int | str] = {}
     for token in parts[1:]:
         if "=" in token:
             k, v = token.split("=", 1)
@@ -59,23 +60,23 @@ def parse_prompt_arguments(cmd):
 def parse_search_arguments(cmd):
     """Divides arguments for the search command.
 
-        Returns name, kind of prompt and dictionary of arguments.
+    Returns name, kind of prompt and dictionary of arguments.
     """
 
     parts = cmd.split()
     if len(parts) not in [6, 7]:
         logger.info(
-            "Usage: SEARCH <mission_id> <drone_id> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=..]")
+            "Usage: SEARCH <mission_id> <drone_id> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=..]"
+        )
         raise ValueError
     mission_id = parts[0]
     drone_id = parts[1]
     kind = parts[2].upper()
-    if kind not in ("FS-1"
-                    "", "FS-2"):
+    if kind not in ("FS-1", "FS-2"):
         logger.info("Kind must be FS-1 or FS-2")
         raise ValueError
 
-    kv: Dict[str, int | str] = {}
+    kv: dict[str, int | str] = {}
     for token in parts[3:]:
         if "=" in token:
             k, v = token.split("=", 1)
@@ -90,7 +91,7 @@ def parse_search_arguments(cmd):
     return mission_id, drone_id, kind, kv
 
 
-def _coerce_positive_int(kv: Dict[str, int | str], key: str) -> None:
+def _coerce_positive_int(kv: dict[str, int | str], key: str) -> None:
     """Convert numeric CLI options to positive integers in place."""
     if key not in kv:
         return
@@ -111,12 +112,14 @@ def _coerce_positive_int(kv: Dict[str, int | str], key: str) -> None:
 @dataclass
 class ModelResponse:
     found: bool = False
-    move: Tuple[float, float, float] = (0, 0, 0)
+    move: tuple[float, float, float] = (0, 0, 0)
     reasoning: str = ""
 
 
 ACTION_PATTERN = re.compile(r"<action>(.*?)</action>", flags=re.DOTALL | re.IGNORECASE)
-REASONING_PATTERN = re.compile(r"<reasoning>(.*?)</reasoning>", flags=re.DOTALL | re.IGNORECASE)
+REASONING_PATTERN = re.compile(
+    r"<reasoning>(.*?)</reasoning>", flags=re.DOTALL | re.IGNORECASE
+)
 
 
 def parse_xml_response(model_response: str) -> ModelResponse:

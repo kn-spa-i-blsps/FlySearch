@@ -2,7 +2,9 @@ import pytest
 from PIL import Image
 
 from mission_control.ai.conversation.abstract_conversation import Role
-from mission_control.ai.conversation.gemini.gemini_conversation import GeminiConversation
+from mission_control.ai.conversation.gemini.gemini_conversation import (
+    GeminiConversation,
+)
 
 
 class SimpleObject:
@@ -35,7 +37,9 @@ class MockGemini:
 
     def mock_create_function(self) -> callable:
         chat_mock = SimpleObject()
-        chat_mock.__dict__["send_message"] = self.mock_send_message_function(self.response_text)
+        chat_mock.__dict__["send_message"] = self.mock_send_message_function(
+            self.response_text
+        )
 
         def mocked_fun(*args, **kwargs):
             return chat_mock

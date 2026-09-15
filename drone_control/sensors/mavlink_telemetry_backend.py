@@ -20,7 +20,9 @@ _receiver_thread: threading.Thread | None = None
 _receiver_stop_event = threading.Event()
 
 
-def _request_data_streams(master: Any, position_hz: int = 5, extra1_hz: int = 10, ext_status_hz: int = 2) -> None:
+def _request_data_streams(
+    master: Any, position_hz: int = 5, extra1_hz: int = 10, ext_status_hz: int = 2
+) -> None:
     try:
         target_system = master.target_system
         target_component = master.target_component
@@ -87,7 +89,9 @@ def _ensure_connection(device: str, baud: int, heartbeat_timeout: float = 5.0) -
 
     hb = _master.wait_heartbeat(timeout=heartbeat_timeout)
     if hb is None:
-        raise TimeoutError(f"[MAV] No HEARTBEAT on {device} within {heartbeat_timeout} s")
+        raise TimeoutError(
+            f"[MAV] No HEARTBEAT on {device} within {heartbeat_timeout} s"
+        )
 
     print(
         f"[MAV] Got HEARTBEAT: system={_master.target_system}, "

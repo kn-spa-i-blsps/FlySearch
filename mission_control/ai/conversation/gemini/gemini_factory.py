@@ -1,6 +1,8 @@
 import os
 
-from mission_control.ai.conversation.base_conversation_factory import BaseConversationFactory
+from mission_control.ai.conversation.base_conversation_factory import (
+    BaseConversationFactory,
+)
 from mission_control.ai.conversation.invalid_factory import InvalidFactoryFactory
 
 try:
@@ -11,8 +13,9 @@ except ImportError:
     GEMINI_AVALIABLE = False
 
 if GEMINI_AVALIABLE:
-    from mission_control.ai.conversation.gemini.gemini_conversation import GeminiConversation
-
+    from mission_control.ai.conversation.gemini.gemini_conversation import (
+        GeminiConversation,
+    )
 
     class _GeminiFactory(BaseConversationFactory):
         def __init__(self, model_name: str):
@@ -25,7 +28,6 @@ if GEMINI_AVALIABLE:
                 self.model_name,
                 max_tokens=None,  # Avoid forcing max tokens; Gemini handles defaults
             )
-
 
     GeminiFactory = _GeminiFactory
 else:

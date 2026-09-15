@@ -1,9 +1,10 @@
-from datetime import datetime
 import uuid
+from datetime import datetime
 
 
 def now_ts() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+
 
 def build_session_id() -> str:
     shortid = uuid.uuid4().hex[:8]

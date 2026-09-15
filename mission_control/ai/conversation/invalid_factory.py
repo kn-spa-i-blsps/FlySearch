@@ -1,4 +1,6 @@
-from mission_control.ai.conversation.base_conversation_factory import BaseConversationFactory
+from mission_control.ai.conversation.base_conversation_factory import (
+    BaseConversationFactory,
+)
 
 
 def InvalidFactoryFactory(backend):

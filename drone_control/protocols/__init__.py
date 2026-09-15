@@ -5,7 +5,7 @@ from drone_control.protocols.outbound import (
 )
 
 __all__ = [
-    "parse_inbound_message",
     "build_command_ack",
     "build_photo_with_telemetry_payload",
+    "parse_inbound_message",
 ]

@@ -1,12 +1,10 @@
 class MissionControlError(Exception):
-    """ Base for whole mission control module's errors. """
-    pass
+    """Base for whole mission control module's errors."""
 
 
 # --- Drone's Exceptions ---
 class DroneError(MissionControlError):
-    """ Base for drone's exceptions. """
-    pass
+    """Base for drone's exceptions."""
 
 
 class ServerError(DroneError):
@@ -30,13 +28,11 @@ class DroneCommunicationError(DroneError):
 
 
 class DroneDisconnectedError(DroneCommunicationError):
-    """ When drone disconnects naturally. """
-    pass
+    """When drone disconnects naturally."""
 
 
 class DroneConnectionLostError(DroneCommunicationError):
-    """ When drone disconnects unexpectedly (i.e. due to connection problems). """
-    pass
+    """When drone disconnects unexpectedly (i.e. due to connection problems)."""
 
 
 class DroneInvalidDataError(DroneError):
@@ -45,8 +41,7 @@ class DroneInvalidDataError(DroneError):
 
 # --- VLM's Exceptions ---
 class VLMError(MissionControlError):
-    """ Base for VLM's exceptions. """
-    pass
+    """Base for VLM's exceptions."""
 
 
 class VLMConnectionError(VLMError):
@@ -58,14 +53,12 @@ class VLMParseError(VLMError):
 
 
 class VLMPreconditionsNotMetError(VLMError):
-    """ Raised when preconditions for sending data to VLM are not met. """
-    pass
+    """Raised when preconditions for sending data to VLM are not met."""
 
 
 # --- Chat's Exceptions ---
 class ChatError(MissionControlError):
-    """ Base for chat manager's exceptions. """
-    pass
+    """Base for chat manager's exceptions."""
 
 
 class ChatSessionError(ChatError):

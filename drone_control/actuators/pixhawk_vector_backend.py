@@ -18,6 +18,7 @@ DEFAULT_VEL_SEND_RATE_HZ = 5.0
 DEFAULT_ACCEL_MAG = 0.5
 DEFAULT_ACCEL_SEND_RATE_HZ = 5.0
 
+
 def _connect(device: str, baud: int, heartbeat_timeout: float = 5.0) -> Any:
     """Open connection to MAVLink device."""
     if mavutil is None:
@@ -25,6 +26,7 @@ def _connect(device: str, baud: int, heartbeat_timeout: float = 5.0) -> Any:
     master = mavutil.mavlink_connection(device, baud=baud)
     master.wait_heartbeat(timeout=heartbeat_timeout)
     return master
+
 
 def _get_mode(master: Any) -> str:
     """Get current mode from MAVLink device."""
@@ -39,11 +41,13 @@ def _get_mode(master: Any) -> str:
     except Exception:
         return "UNKNOWN"
 
+
 def _is_guided(master: Any) -> bool:
     """Check if guided mode is enabled."""
     mode = _get_mode(master)
     print(f"[vector_move] Current mode: {mode}")
     return mode == "GUIDED"
+
 
 def _method_position_offset(master: Any, dx: float, dy: float, dz: float) -> bool:
     """Method 0: Send single-position offset target: "move by (dx, dy, dx)"."""
@@ -72,6 +76,7 @@ def _method_position_offset(master: Any, dx: float, dy: float, dz: float) -> boo
     except Exception as exc:
         print("[M0] Error:", exc)
         return False
+
 
 def _method_velocity_ned(master: Any, dx: float, dy: float, dz: float) -> bool:
     """Method 1: convert (dx, dy, dz) to a constant velocity in LOCAL_NED (in world frame) and send it repeatedly for the required duration."""
@@ -121,6 +126,7 @@ def _method_velocity_ned(master: Any, dx: float, dy: float, dz: float) -> bool:
         time.sleep(dt)
 
     return True
+
 
 def _method_velocity_body(master: Any, dx: float, dy: float, dz: float) -> bool:
     """Method 2: Similar idea as Method 1, but velocity is in BODY_NED (drone frame)."""
@@ -175,6 +181,7 @@ def _method_velocity_body(master: Any, dx: float, dy: float, dz: float) -> bool:
         time.sleep(dt)
 
     return True
+
 
 def _method_accel_ned(master: Any, dx: float, dy: float, dz: float) -> bool:
     """Method 3: Convert (dx, dy, dz) into a constant acceleration vector."""
@@ -235,7 +242,10 @@ def _method_accel_ned(master: Any, dx: float, dy: float, dz: float) -> bool:
 
     return True
 
-def send_vector_command_via(master: Any, *, vector: tuple[float, float, float], method_id: int = 0) -> bool:
+
+def send_vector_command_via(
+    master: Any, *, vector: tuple[float, float, float], method_id: int = 0
+) -> bool:
     """Dispatch to one of methods 0..3, reusing an already-connected MAVLink session.
 
     Split out of send_vector_command so callers that need to read telemetry
@@ -255,6 +265,7 @@ def send_vector_command_via(master: Any, *, vector: tuple[float, float, float], 
 
     print(f"[dispatcher] Invalid method_id: {method_id} (expected 0..3)")
     return False
+
 
 def send_vector_command(
     *,

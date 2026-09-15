@@ -8,13 +8,16 @@ from drone_control.managers.message_router import MessageRouter
 
 class ServerBridge:
     """Server bridge class for WS transport."""
+
     def __init__(self, *, config: Config, router: MessageRouter):
         self.config = config
         self.router = router
-        self._authenticated = False # flag that tracks whether the drone successfully sent the AUTH handshake to server
+        self._authenticated = False  # flag that tracks whether the drone successfully sent the AUTH handshake to server
 
     @staticmethod
-    def _close_with_reason(ws: websocket.WebSocketApp, *, status: int, reason: str) -> None:
+    def _close_with_reason(
+        ws: websocket.WebSocketApp, *, status: int, reason: str
+    ) -> None:
         """
         Try to close with a WS close frame (status/reason).
         Falls back to plain close for older websocket-client APIs.
@@ -63,7 +66,9 @@ class ServerBridge:
             self.config.server,
             on_open=self._on_open,
             on_error=lambda _ws, err: print(f"[RPi] WS error: {err}"),
-            on_close=lambda _ws, code, msg: print(f"[RPi] WS closed code={code} msg={msg}"),
+            on_close=lambda _ws, code, msg: print(
+                f"[RPi] WS closed code={code} msg={msg}"
+            ),
             on_message=self._on_message,
         )
         try:

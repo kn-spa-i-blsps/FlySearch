@@ -4,12 +4,16 @@ import json
 import logging
 import subprocess
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 import websockets
 from websockets.frames import CloseCode
 
-from mission_control.core.exceptions import NoDroneConnectedError, DroneCommandFailedError, DroneConnectionLostError
+from mission_control.core.exceptions import (
+    DroneCommandFailedError,
+    DroneConnectionLostError,
+    NoDroneConnectedError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +30,15 @@ class VideoHelper:
 
         # Dictionaries holding asyncio.Future objects. We use these to bridge
         # the gap between sending a request and waiting for an ACK from the drone.
-        self.recording_ack_waiters: Dict[str, asyncio.Future[Dict[str, Any]]] = {}
-        self.recordings_ack_waiters: Dict[str, asyncio.Future[Dict[str, Any]]] = {}
+        self.recording_ack_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        self.recordings_ack_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
 
         # State tracker for incoming file transfers (chunks being pieced together)
-        self._pull_transfers: Dict[str, Dict[str, Any]] = {}
+        self._pull_transfers: dict[str, dict[str, Any]] = {}
 
-    async def send_recording_command(self, ws, cmd: str, timeout_sec: float = 5.0) -> Dict[str, Any]:
+    async def send_recording_command(
+        self, ws, cmd: str, timeout_sec: float = 5.0
+    ) -> dict[str, Any]:
         """
         Sends a START or STOP recording command to the drone and waits for the acknowledgment.
         """
@@ -79,7 +85,7 @@ class VideoHelper:
 
         return ack
 
-    async def send_get_recordings(self, ws, timeout_sec: float = 5.0) -> Dict[str, Any]:
+    async def send_get_recordings(self, ws, timeout_sec: float = 5.0) -> dict[str, Any]:
         """Fetches the list of available recordings from the drone."""
         if ws is None:
             raise NoDroneConnectedError("No drone is connected.")
@@ -112,14 +118,14 @@ class VideoHelper:
         return ack
 
     async def send_pull_recordings(
-            self,
-            ws,
-            *,
-            names: list[str],
-            batch_size: int | None = None,
-            chunk_bytes: int | None = None,
-            timeout_sec: float = 300.0,  # 5 minutes timeout for large file transfers
-    ) -> Dict[str, Any]:
+        self,
+        ws,
+        *,
+        names: list[str],
+        batch_size: int | None = None,
+        chunk_bytes: int | None = None,
+        timeout_sec: float = 300.0,  # 5 minutes timeout for large file transfers
+    ) -> dict[str, Any]:
         """
         Requests the drone to stream back the specified recording files.
         Files are sent in chunks to avoid overwhelming the WebSocket connection.
@@ -127,17 +133,29 @@ class VideoHelper:
         if ws is None:
             raise NoDroneConnectedError("No drone is connected.")
 
-        requested_names = [name for name in names if isinstance(name, str) and name.strip()]
+        requested_names = [
+            name for name in names if isinstance(name, str) and name.strip()
+        ]
         if not requested_names:
             raise ValueError("No valid recording names provided.")
 
         # Fallback to config defaults if not explicitly provided
-        batch = int(batch_size) if batch_size is not None else int(self.config.pull_batch_size)
-        chunk = int(chunk_bytes) if chunk_bytes is not None else int(self.config.pull_chunk_bytes)
+        batch = (
+            int(batch_size)
+            if batch_size is not None
+            else int(self.config.pull_batch_size)
+        )
+        chunk = (
+            int(chunk_bytes)
+            if chunk_bytes is not None
+            else int(self.config.pull_chunk_bytes)
+        )
 
         # Enforce sane limits to prevent memory exhaustion
         batch = max(1, min(batch, 32))
-        chunk = max(64 * 1024, min(chunk, 2 * 1024 * 1024))  # Between 64KB and 2MB per chunk
+        chunk = max(
+            64 * 1024, min(chunk, 2 * 1024 * 1024)
+        )  # Between 64KB and 2MB per chunk
 
         loop = asyncio.get_running_loop()
         waiter = loop.create_future()
@@ -163,7 +181,9 @@ class VideoHelper:
         except Exception as e:
             self._cancel_waiter(self.recordings_ack_waiters, "PULL_RECORDINGS")
             logger.error(f"[WS] send failed: {e}")
-            raise DroneCommandFailedError("Failed to send PULL_RECORDINGS to the drone") from e
+            raise DroneCommandFailedError(
+                "Failed to send PULL_RECORDINGS to the drone"
+            ) from e
 
         try:
             ack = await asyncio.wait_for(waiter, timeout=timeout_sec)
@@ -175,12 +195,14 @@ class VideoHelper:
 
         # Once the transfer finishes, we finalize the files (e.g., format conversion)
         transfer_id = ack.get("transfer_id")
-        processed_results = await self._finalize_pull_transfer(transfer_id=str(transfer_id) if transfer_id else None)
+        processed_results = await self._finalize_pull_transfer(
+            transfer_id=str(transfer_id) if transfer_id else None
+        )
         ack["processed_results"] = processed_results
 
         return ack
 
-    ''' ---------- HELPER METHODS ----------'''
+    """ ---------- HELPER METHODS ----------"""
 
     @staticmethod
     def format_disconnect_reason(exc: websockets.ConnectionClosed) -> str:
@@ -209,13 +231,13 @@ class VideoHelper:
             return f"code={code}, reason={reason}, details={details}"
         return f"code={code}, details={details}"
 
-    def _cancel_waiter(self, waiter_dict: Dict[str, asyncio.Future], key: str):
+    def _cancel_waiter(self, waiter_dict: dict[str, asyncio.Future], key: str):
         """Safely removes and cancels a pending future."""
         waiter = waiter_dict.pop(key, None)
         if waiter is not None and not waiter.done():
             waiter.cancel()
 
-    def handle_recording_ack(self, ack: Dict[str, Any]):
+    def handle_recording_ack(self, ack: dict[str, Any]):
         """Resolves the future waiting for a RECORDING action ACK."""
         action = ack.get("action")
         ok = ack.get("ok")
@@ -228,7 +250,7 @@ class VideoHelper:
         if waiter is not None and not waiter.done():
             waiter.set_result(ack)
 
-    def handle_recordings_ack(self, ack: Dict[str, Any]):
+    def handle_recordings_ack(self, ack: dict[str, Any]):
         """Resolves the future waiting for a RECORDINGS action ACK."""
         action = ack.get("action")
         ok = ack.get("ok")
@@ -241,16 +263,16 @@ class VideoHelper:
         if waiter is not None and not waiter.done():
             waiter.set_result(ack)
 
-    def clear_waiters(self, waiters: Dict[str, asyncio.Future], reason: str):
+    def clear_waiters(self, waiters: dict[str, asyncio.Future], reason: str):
         """Rejects all pending futures when the connection is unexpectedly lost."""
         for key, waiter in list(waiters.items()):
             if not waiter.done():
-                waiter.set_exception(
-                    DroneConnectionLostError(f"{reason} for {key}.")
-                )
+                waiter.set_exception(DroneConnectionLostError(f"{reason} for {key}."))
         waiters.clear()
 
-    async def handle_recording_file_begin(self, *, transfer_id: str, name: str, payload: dict[str, Any]) -> None:
+    async def handle_recording_file_begin(
+        self, *, transfer_id: str, name: str, payload: dict[str, Any]
+    ) -> None:
         """Initializes state and opens a temporary file handle for an incoming video transfer."""
         transfer = self._pull_transfers.setdefault(
             transfer_id,
@@ -280,7 +302,9 @@ class VideoHelper:
         metadata_path: Path | None = None
 
         if metadata is not None:
-            metadata_path = Path(self.config.recordings_meta_dir) / f"{raw_path.stem}.json"
+            metadata_path = (
+                Path(self.config.recordings_meta_dir) / f"{raw_path.stem}.json"
+            )
             try:
                 metadata_path.parent.mkdir(parents=True, exist_ok=True)
                 with metadata_path.open("w", encoding="utf-8") as file_obj:
@@ -304,12 +328,12 @@ class VideoHelper:
         completed.pop(safe_name, None)
 
     async def handle_recording_file_chunk(
-            self,
-            *,
-            transfer_id: str,
-            name: str,
-            seq: int,
-            chunk_b64: str,
+        self,
+        *,
+        transfer_id: str,
+        name: str,
+        seq: int,
+        chunk_b64: str,
     ) -> None:
         """Decodes and appends an incoming base64 chunk to the temporary file."""
         transfer = self._pull_transfers.get(transfer_id)
@@ -334,17 +358,19 @@ class VideoHelper:
 
             # Update transfer progress
             state["bytes_received"] = int(state.get("bytes_received", 0)) + len(chunk)
-            state["chunks_received"] = max(int(state.get("chunks_received", 0)), seq + 1)
+            state["chunks_received"] = max(
+                int(state.get("chunks_received", 0)), seq + 1
+            )
         except Exception as exc:
             transfer["receive_errors"][safe_name] = f"chunk_failed: {exc}"
             logger.warning(f"[WS] chunk receive failed for {safe_name}: {exc}")
 
     async def handle_recording_file_end(
-            self,
-            *,
-            transfer_id: str,
-            name: str,
-            payload: dict[str, Any],
+        self,
+        *,
+        transfer_id: str,
+        name: str,
+        payload: dict[str, Any],
     ) -> None:
         """Closes the file handle and renames the temporary file to its final raw path."""
         transfer = self._pull_transfers.get(transfer_id)
@@ -382,7 +408,9 @@ class VideoHelper:
         transfer["completed"][safe_name] = {
             "raw_path": str(raw_path) if isinstance(raw_path, Path) else None,
             "metadata": state.get("metadata"),
-            "metadata_path": str(state.get("metadata_path")) if isinstance(state.get("metadata_path"), Path) else None,
+            "metadata_path": str(state.get("metadata_path"))
+            if isinstance(state.get("metadata_path"), Path)
+            else None,
             "bytes_received": int(state.get("bytes_received", 0)),
             "chunks_received": int(state.get("chunks_received", 0)),
             "expected_chunks": int(payload.get("chunks", 0)),
@@ -407,7 +435,9 @@ class VideoHelper:
                         pass
         self._pull_transfers.clear()
 
-    async def _finalize_pull_transfer(self, *, transfer_id: str | None) -> list[dict[str, Any]]:
+    async def _finalize_pull_transfer(
+        self, *, transfer_id: str | None
+    ) -> list[dict[str, Any]]:
         """Processes all files from a completed transfer batch (e.g., runs format conversions)."""
         if not transfer_id:
             return []
@@ -419,8 +449,10 @@ class VideoHelper:
         completed = transfer.get("completed", {})
         receive_errors = transfer.get("receive_errors", {})
 
-        if not isinstance(completed, dict): completed = {}
-        if not isinstance(receive_errors, dict): receive_errors = {}
+        if not isinstance(completed, dict):
+            completed = {}
+        if not isinstance(receive_errors, dict):
+            receive_errors = {}
 
         results: list[dict[str, Any]] = []
         names = set(completed.keys()) | set(receive_errors.keys())
@@ -431,7 +463,9 @@ class VideoHelper:
 
         return results
 
-    async def _process_pulled_file(self, name: str, completed: dict, receive_errors: dict) -> dict[str, Any]:
+    async def _process_pulled_file(
+        self, name: str, completed: dict, receive_errors: dict
+    ) -> dict[str, Any]:
         """Validates a downloaded file and triggers ffmpeg conversion to MP4."""
         file_state = completed.get(name, {})
         if not isinstance(file_state, dict):
@@ -468,7 +502,9 @@ class VideoHelper:
 
         # Kick off the conversion process
         try:
-            conversion = await self._convert_raw_recording(raw_path=raw_path, metadata=metadata)
+            conversion = await self._convert_raw_recording(
+                raw_path=raw_path, metadata=metadata
+            )
             summary.update(conversion)
         except Exception as e:
             summary["convert_ok"] = False
@@ -476,20 +512,26 @@ class VideoHelper:
 
         return summary
 
-    async def _convert_raw_recording(self, *, raw_path: Path, metadata: dict[str, Any] | None) -> dict[str, Any]:
+    async def _convert_raw_recording(
+        self, *, raw_path: Path, metadata: dict[str, Any] | None
+    ) -> dict[str, Any]:
         """Spawns a ffmpeg process in a separate thread so it doesn't block the asyncio event loop."""
         mp4_path = Path(self.config.recordings_mp4_dir) / f"{raw_path.stem}.mp4"
         fps = self._resolve_recording_fps(metadata)
 
         # Run the synchronous subprocess call in a thread pool
-        result = await asyncio.to_thread(self._run_ffmpeg_conversion, raw_path, mp4_path, fps)
+        result = await asyncio.to_thread(
+            self._run_ffmpeg_conversion, raw_path, mp4_path, fps
+        )
 
         result["mp4_path"] = str(mp4_path)
         result["fps_used"] = fps
         return result
 
     @staticmethod
-    def _run_ffmpeg_conversion(raw_path: Path, mp4_path: Path, fps: int) -> dict[str, Any]:
+    def _run_ffmpeg_conversion(
+        raw_path: Path, mp4_path: Path, fps: int
+    ) -> dict[str, Any]:
         """
         Executes the actual ffmpeg shell commands.
         It first tries to fast-copy (remux) the video stream. If the raw format
@@ -501,14 +543,19 @@ class VideoHelper:
         remux_cmd = [
             "ffmpeg",
             "-y",  # Overwrite output
-            "-framerate", str(fps),
-            "-i", str(raw_path),
-            "-c", "copy",  # Copy the raw video stream directly
+            "-framerate",
+            str(fps),
+            "-i",
+            str(raw_path),
+            "-c",
+            "copy",  # Copy the raw video stream directly
             str(mp4_path),
         ]
 
         try:
-            remux = subprocess.run(remux_cmd, check=False, capture_output=True, text=True)
+            remux = subprocess.run(
+                remux_cmd, check=False, capture_output=True, text=True
+            )
         except FileNotFoundError:
             return {"convert_ok": False, "convert_error": "ffmpeg_not_found"}
         except Exception as exc:
@@ -522,14 +569,20 @@ class VideoHelper:
         reencode_cmd = [
             "ffmpeg",
             "-y",
-            "-framerate", str(fps),
-            "-i", str(raw_path),
-            "-c:v", "libx264",  # Re-encode to H.264
-            "-pix_fmt", "yuv420p",
+            "-framerate",
+            str(fps),
+            "-i",
+            str(raw_path),
+            "-c:v",
+            "libx264",  # Re-encode to H.264
+            "-pix_fmt",
+            "yuv420p",
             str(mp4_path),
         ]
 
-        reencode = subprocess.run(reencode_cmd, check=False, capture_output=True, text=True)
+        reencode = subprocess.run(
+            reencode_cmd, check=False, capture_output=True, text=True
+        )
 
         if reencode.returncode == 0:
             return {"convert_ok": True, "convert_mode": "reencode"}

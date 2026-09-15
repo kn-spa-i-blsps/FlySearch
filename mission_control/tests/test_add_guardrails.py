@@ -1,4 +1,3 @@
-import math
 import unittest
 
 from mission_control.utils.add_guardrails import compute_grid_points, meters_per_pixel
@@ -25,7 +24,9 @@ class TestMetersPerPixel(unittest.TestCase):
     def test_scales_inversely_with_width(self):
         mpp_500 = meters_per_pixel(500, camera_fov_degrees=90, drone_height=50)
         mpp_1000 = meters_per_pixel(1000, camera_fov_degrees=50, drone_height=50)
-        mpp_1000_same_fov = meters_per_pixel(1000, camera_fov_degrees=90, drone_height=50)
+        mpp_1000_same_fov = meters_per_pixel(
+            1000, camera_fov_degrees=90, drone_height=50
+        )
         self.assertAlmostEqual(mpp_1000_same_fov, mpp_500 / 2)
         # sanity: differing fov used above isn't silently ignored
         self.assertNotAlmostEqual(mpp_1000, mpp_1000_same_fov)
@@ -36,7 +37,9 @@ class TestMetersPerPixel(unittest.TestCase):
         self.assertGreater(wide, narrow)
 
     def test_zero_height_means_zero_ground_scale(self):
-        self.assertAlmostEqual(meters_per_pixel(500, camera_fov_degrees=90, drone_height=0), 0.0)
+        self.assertAlmostEqual(
+            meters_per_pixel(500, camera_fov_degrees=90, drone_height=0), 0.0
+        )
 
 
 class TestComputeGridPoints(unittest.TestCase):
@@ -52,7 +55,9 @@ class TestComputeGridPoints(unittest.TestCase):
         self.assertEqual(len(points), 4 * 4)
 
     def test_center_is_symmetric(self):
-        points = compute_grid_points(500, 500, w_dots=5, h_dots=5, camera_fov_degrees=90, drone_height=100)
+        points = compute_grid_points(
+            500, 500, w_dots=5, h_dots=5, camera_fov_degrees=90, drone_height=100
+        )
         offsets = {(p["x_diff_unit"], p["y_diff_unit"]) for p in points}
         for x, y in offsets:
             self.assertIn((-x, -y), offsets)
@@ -62,8 +67,14 @@ class TestComputeGridPoints(unittest.TestCase):
         drone_height = 100
         fov = 90
         w_dots = h_dots = 5
-        points = compute_grid_points(width, width, w_dots=w_dots, h_dots=h_dots,
-                                      camera_fov_degrees=fov, drone_height=drone_height)
+        points = compute_grid_points(
+            width,
+            width,
+            w_dots=w_dots,
+            h_dots=h_dots,
+            camera_fov_degrees=fov,
+            drone_height=drone_height,
+        )
 
         mpp = meters_per_pixel(width, fov, drone_height)
         pixels_per_cell = width / w_dots
@@ -77,8 +88,12 @@ class TestComputeGridPoints(unittest.TestCase):
             self.assertEqual(p["x_diff_unit"], expected_x_unit)
 
     def test_doubling_height_doubles_labeled_distances(self):
-        points_h10 = compute_grid_points(500, 500, camera_fov_degrees=90, drone_height=10)
-        points_h20 = compute_grid_points(500, 500, camera_fov_degrees=90, drone_height=20)
+        points_h10 = compute_grid_points(
+            500, 500, camera_fov_degrees=90, drone_height=10
+        )
+        points_h20 = compute_grid_points(
+            500, 500, camera_fov_degrees=90, drone_height=20
+        )
 
         for p10, p20 in zip(points_h10, points_h20):
             self.assertEqual(p10["x_px"], p20["x_px"])

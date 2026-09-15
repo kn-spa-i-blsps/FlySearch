@@ -3,8 +3,8 @@ import base64
 import io
 from time import sleep
 
+from openai import Client, RateLimitError
 from PIL import Image
-from openai import RateLimitError, Client
 
 from mission_control.ai.conversation.abstract_conversation import Conversation, Role
 from mission_control.utils.logger import get_configured_logger
@@ -13,8 +13,16 @@ logger = get_configured_logger(__name__)
 
 
 class OpenAIConversation(Conversation):
-    def __init__(self, client: Client, model_name: str, seed=42, max_tokens=300, temperature=0.8, top_p=1.0,
-                 extra_body=None):
+    def __init__(
+        self,
+        client: Client,
+        model_name: str,
+        seed=42,
+        max_tokens=300,
+        temperature=0.8,
+        top_p=1.0,
+        extra_body=None,
+    ):
         self.client = client
         self.conversation = []
         self.model_name = model_name
@@ -39,23 +47,17 @@ class OpenAIConversation(Conversation):
 
         role = "user" if role == Role.USER else "assistant"
 
-        self.transaction_conversation = {
-            "role": role,
-            "content": []
-        }
+        self.transaction_conversation = {"role": role, "content": []}
 
     def add_text_message(self, text: str):
         if not self.transaction_started:
             raise Exception("Transaction not started")
 
-        if self.transaction_conversation['role'] == 'assistant':
-            self.transaction_conversation['content'] = text
+        if self.transaction_conversation["role"] == "assistant":
+            self.transaction_conversation["content"] = text
         else:
             content = self.transaction_conversation["content"]
-            content.append({
-                "type": "text",
-                "text": text
-            })
+            content.append({"type": "text", "text": text})
 
     async def add_image_message(self, image: Image.Image):
         if not self.transaction_started:
@@ -63,8 +65,8 @@ class OpenAIConversation(Conversation):
 
         image = image.convert("RGB")
         buffer = io.BytesIO()
-        image.save(buffer, format='JPEG', quality=95)
-        base64_image = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        image.save(buffer, format="JPEG", quality=95)
+        base64_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
         content = self.transaction_conversation["content"]
 
@@ -73,12 +75,14 @@ class OpenAIConversation(Conversation):
                 "type": "image_url",
                 "image_url": {
                     "url": f"data:image/jpeg;base64,{base64_image}",
-                    "detail": "high"  # FIXME
-                }
+                    "detail": "high",  # FIXME
+                },
             }
         )
 
-    def get_answer_from_openai(self, model, messages, max_tokens, seed, temperature, top_p, extra_body=None):
+    def get_answer_from_openai(
+        self, model, messages, max_tokens, seed, temperature, top_p, extra_body=None
+    ):
         fail = True
         response = None
 
@@ -91,7 +95,7 @@ class OpenAIConversation(Conversation):
                     # seed=seed,
                     temperature=temperature,
                     top_p=top_p,
-                    extra_body=extra_body
+                    extra_body=extra_body,
                 )
                 fail = False
             except RateLimitError as e:
@@ -125,17 +129,14 @@ class OpenAIConversation(Conversation):
             self.seed,
             self.temperature,
             self.top_p,
-            self.extra_body
+            self.extra_body,
         )
 
         response_content = str(response.choices[0].message.content)
 
         logger.info("llm response:", response_content)
 
-        self.conversation.append({
-            "role": "assistant",
-            "content": response_content
-        })
+        self.conversation.append({"role": "assistant", "content": response_content})
 
     def rollback_transaction(self):
         self.transaction_conversation = {}

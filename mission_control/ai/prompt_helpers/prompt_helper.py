@@ -3,13 +3,12 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
 
 import aiofiles
 
+from mission_control.ai.prompt_helpers.prompts import PROMPT_FACTORIES, Prompts
 from mission_control.core.config import Config
 from mission_control.core.interfaces import PromptHelper
-from mission_control.ai.prompt_helpers.prompts import Prompts, PROMPT_FACTORIES
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +22,8 @@ class FlySearchPromptHelper(PromptHelper):
     def __init__(self, config: Config):
         self.config = config
 
-    async def generate_prompt(self, kind: str, args: Dict[str, str]) -> str:
-        """ Implements the main method of the PromptHelper interface. """
+    async def generate_prompt(self, kind: str, args: dict[str, str]) -> str:
+        """Implements the main method of the PromptHelper interface."""
 
         # 1. Prompt Generation
         try:
@@ -39,9 +38,16 @@ class FlySearchPromptHelper(PromptHelper):
             factory = PROMPT_FACTORIES[t]
 
             if t == Prompts.FS1:
-                text = factory(params["glimpses"], params["object"], params["area"], params["minimum_altitude"])
+                text = factory(
+                    params["glimpses"],
+                    params["object"],
+                    params["area"],
+                    params["minimum_altitude"],
+                )
             else:
-                text = factory(params["glimpses"], params["object"], params["minimum_altitude"])
+                text = factory(
+                    params["glimpses"], params["object"], params["minimum_altitude"]
+                )
 
             prompt_meta = {"kind": kind, "text": text, **params}
 
@@ -54,7 +60,7 @@ class FlySearchPromptHelper(PromptHelper):
 
         return text
 
-    async def _save_prompt_to_disk(self, prompt_meta: Dict[str, str]) -> None:
+    async def _save_prompt_to_disk(self, prompt_meta: dict[str, str]) -> None:
         """
         Internal, private method for saving the prompt to disk.
         Invisible to the Orchestrator.
@@ -80,7 +86,9 @@ class FlySearchPromptHelper(PromptHelper):
             async with aiofiles.open(json_path, "w", encoding="utf-8") as f:
                 await f.write(json.dumps(meta_to_save, ensure_ascii=False, indent=2))
 
-            logger.debug(f"[PROMPT] Successfully saved -> {txt_path} (+meta {json_path})")
+            logger.debug(
+                f"[PROMPT] Successfully saved -> {txt_path} (+meta {json_path})"
+            )
 
         except Exception as e:
             logger.warning(f"[PROMPT] Failed to save prompt to disk: {e}")

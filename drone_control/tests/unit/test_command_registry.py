@@ -1,13 +1,14 @@
 """Unit tests for CommandRegistry and CommandDescriptor."""
+
 import json
 from unittest.mock import MagicMock
-
-import pytest
 
 from drone_control.command_registry import CommandDescriptor, CommandRegistry
 
 
-def _make_descriptor(action="TEST_ACTION", send_immediate_ack=True, raise_on_call=False):
+def _make_descriptor(
+    action="TEST_ACTION", send_immediate_ack=True, raise_on_call=False
+):
     def handler():
         if raise_on_call:
             raise RuntimeError("sensor failure")
@@ -101,7 +102,11 @@ class TestDispatch:
             handler=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
             build_response=lambda data, seq: {"type": "FAILING"},
             send_immediate_ack=False,
-            build_error_response=lambda exc, seq: {"type": "ACK", "ok": False, "error": str(exc)},
+            build_error_response=lambda exc, seq: {
+                "type": "ACK",
+                "ok": False,
+                "error": str(exc),
+            },
         )
         registry.register(descriptor)
         ws = _ws()

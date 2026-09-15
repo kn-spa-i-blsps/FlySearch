@@ -2,8 +2,12 @@ import os
 
 from openai import OpenAI, _types
 
-from mission_control.ai.conversation.base_conversation_factory import BaseConversationFactory
-from mission_control.ai.conversation.openai.openai_conversation import OpenAIConversation
+from mission_control.ai.conversation.base_conversation_factory import (
+    BaseConversationFactory,
+)
+from mission_control.ai.conversation.openai.openai_conversation import (
+    OpenAIConversation,
+)
 
 
 class OpenAIFactory(BaseConversationFactory):
@@ -29,8 +33,14 @@ class OpenAIFactory(BaseConversationFactory):
         # an env var rather than always sending it) that controls whether the chat template
         # opens an empty <think></think> (answers directly) or a real one (extended reasoning
         # before answering). Both are legitimate configurations to benchmark, not just a fix.
-        disable_thinking = os.environ.get("OPENAI_DISABLE_THINKING", "").strip().lower() in ("1", "true", "yes")
-        extra_body = {"chat_template_kwargs": {"enable_thinking": False}} if disable_thinking else None
+        disable_thinking = os.environ.get(
+            "OPENAI_DISABLE_THINKING", ""
+        ).strip().lower() in ("1", "true", "yes")
+        extra_body = (
+            {"chat_template_kwargs": {"enable_thinking": False}}
+            if disable_thinking
+            else None
+        )
 
         return OpenAIConversation(
             self.client,
@@ -38,5 +48,5 @@ class OpenAIFactory(BaseConversationFactory):
             max_tokens=max_tokens,
             # We have to do this because otherwise GPT-5 would stop working. 4o works with default arguments for this class, but while making this compatible with GPT-5 I've decided to stop passing these arguments altogether as they don't break the 4o.
             temperature=_types.NotGiven(),
-            extra_body=extra_body
+            extra_body=extra_body,
         )

@@ -3,7 +3,9 @@ import pytest
 from PIL import Image
 
 from mission_control.ai.conversation.abstract_conversation import Role
-from mission_control.ai.conversation.openai.openai_conversation import OpenAIConversation
+from mission_control.ai.conversation.openai.openai_conversation import (
+    OpenAIConversation,
+)
 
 
 class SimpleObject:
@@ -61,7 +63,7 @@ class TestOpenAIConversation:
             openai_mock,  # type: ignore
             model_name="mock_model",
             seed=3,
-            max_tokens=15
+            max_tokens=15,
         )
 
         conversation.begin_transaction(Role.USER)
@@ -89,7 +91,7 @@ class TestOpenAIConversation:
             openai_mock,  # type: ignore
             model_name="mock_model",
             seed=3,
-            max_tokens=15
+            max_tokens=15,
         )
 
         with pytest.raises(Exception):
@@ -102,7 +104,7 @@ class TestOpenAIConversation:
             openai_mock,  # type: ignore
             model_name="mock_model",
             seed=3,
-            max_tokens=15
+            max_tokens=15,
         )
 
         img = Image.new("RGB", (100, 100))
@@ -127,7 +129,7 @@ class TestOpenAIConversation:
             openai_mock,  # type: ignore
             model_name="mock_model",
             seed=3,
-            max_tokens=15
+            max_tokens=15,
         )
 
         img = Image.new("RGB", (100, 100))
@@ -138,7 +140,6 @@ class TestOpenAIConversation:
         conversation.commit_transaction(send_to_vlm=True)
 
         args = openai_mock.get_mock_create_args()[0]
-        kwargs = openai_mock.get_mock_create_kwargs()[0]
 
         assert len(args) == 0
 
@@ -149,7 +150,7 @@ class TestOpenAIConversation:
             openai_mock,  # type: ignore
             model_name="mock_model",
             seed=3,
-            max_tokens=15
+            max_tokens=15,
         )
 
         conversation.begin_transaction(Role.ASSISTANT)
@@ -164,7 +165,7 @@ class TestOpenAIConversation:
             openai_mock,  # type: ignore
             model_name="mock_model",
             seed=3,
-            max_tokens=15
+            max_tokens=15,
         )
 
         img = Image.new("RGB", (100, 100))
@@ -200,7 +201,7 @@ class TestOpenAIConversation:
             openai_mock,  # type: ignore
             model_name="mock_model",
             seed=3,
-            max_tokens=15
+            max_tokens=15,
         )
 
         conversation.begin_transaction(Role.USER)
@@ -234,7 +235,7 @@ class TestOpenAIConversation:
             openai_mock,  # type: ignore
             model_name="mock_model",
             seed=3,
-            max_tokens=15
+            max_tokens=15,
         )
 
         img = Image.new("RGB", (100, 100))
@@ -257,7 +258,7 @@ class TestOpenAIConversation:
             openai_mock,  # type: ignore
             model_name="mock_model",
             seed=3,
-            max_tokens=15
+            max_tokens=15,
         )
 
         conversation.begin_transaction(Role.USER)
@@ -282,7 +283,7 @@ class TestOpenAIConversation:
             (Role.USER, "mock_message"),
             (Role.ASSISTANT, "mocked_response"),
             (Role.ASSISTANT, "hello there"),
-            (Role.USER, "mock_message2")
+            (Role.USER, "mock_message2"),
         ]
 
     def test_get_latest_message_returns_last_message(self):
@@ -292,7 +293,7 @@ class TestOpenAIConversation:
             openai_mock,  # type: ignore
             model_name="mock_model",
             seed=3,
-            max_tokens=15
+            max_tokens=15,
         )
 
         latest_messages = []
@@ -301,7 +302,9 @@ class TestOpenAIConversation:
         conversation.add_text_message("mock_message")
         conversation.commit_transaction(send_to_vlm=True)
 
-        latest_messages.append(conversation.get_latest_message())  # mocked_response from OpenAI
+        latest_messages.append(
+            conversation.get_latest_message()
+        )  # mocked_response from OpenAI
 
         conversation.begin_transaction(Role.ASSISTANT)
         conversation.add_text_message("hello there")
@@ -325,7 +328,7 @@ class TestOpenAIConversation:
             (Role.ASSISTANT, "mocked_response"),
             (Role.ASSISTANT, "hello there"),
             (Role.ASSISTANT, "hello there"),
-            (Role.USER, "mock_message2")
+            (Role.USER, "mock_message2"),
         ]
 
     def test_get_latest_message_throws_if_no_messages(self):
@@ -335,7 +338,7 @@ class TestOpenAIConversation:
             openai_mock,  # type: ignore
             model_name="mock_model",
             seed=3,
-            max_tokens=15
+            max_tokens=15,
         )
 
         with pytest.raises(Exception):
@@ -348,7 +351,7 @@ class TestOpenAIConversation:
             openai_mock,  # type: ignore
             model_name="mock_model",
             seed=3,
-            max_tokens=15
+            max_tokens=15,
         )
 
         conversation.begin_transaction(Role.USER)
@@ -365,7 +368,7 @@ class TestOpenAIConversation:
             openai_mock,  # type: ignore
             model_name="mock_model",
             seed=3,
-            max_tokens=15
+            max_tokens=15,
         )
 
         img = Image.new("RGB", (100, 100))
@@ -393,7 +396,10 @@ class TestOpenAIConversation:
         assert entire_conversation[-1]["role"] == "assistant"
         entire_conversation_without_assistant = entire_conversation[:-1]
 
-        assert entire_conversation_without_assistant == openai_mock.get_mock_create_messages()[-1]
+        assert (
+            entire_conversation_without_assistant
+            == openai_mock.get_mock_create_messages()[-1]
+        )
 
     def test_images_are_sent_as_base64_jpeg(self):
         openai_mock = MockOpenAI("mock_key")
@@ -402,7 +408,7 @@ class TestOpenAIConversation:
             openai_mock,  # type: ignore
             model_name="mock_model",
             seed=3,
-            max_tokens=15
+            max_tokens=15,
         )
 
         # Create a simple 20x20 test image with a deterministic pattern
@@ -415,7 +421,7 @@ class TestOpenAIConversation:
                 else:
                     pattern[i, j] = [0, 255, 0]  # Green squares
 
-        image_pil = Image.fromarray(pattern, mode='RGB')
+        image_pil = Image.fromarray(pattern, mode="RGB")
 
         conversation.begin_transaction(Role.USER)
         conversation.add_image_message(image_pil)
@@ -436,9 +442,10 @@ class TestOpenAIConversation:
 
         # Verify it's valid base64 by attempting to decode it
         import base64
+
         try:
             decoded_bytes = base64.b64decode(base64_part)
             # Check that it starts with JPEG magic bytes
-            assert decoded_bytes.startswith(b'\xff\xd8\xff')
+            assert decoded_bytes.startswith(b"\xff\xd8\xff")
         except Exception as e:
             pytest.fail(f"Invalid base64 or JPEG format: {e}")

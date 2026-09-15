@@ -13,6 +13,7 @@ from drone_control.sensors.recording_sensor import RecordingSensor
 
 class MessageRouter:
     """Dispatcher for incoming WS messages."""
+
     def __init__(
         self,
         *,
@@ -54,7 +55,9 @@ class MessageRouter:
                     move_ok = bool(result.get("ok", False)) if result else False
                 except Exception as exc:
                     print(f"[RPi] MOVE execution error: {exc}")
-                ws.send(json.dumps({"type": "MOVE_EXECUTED", "seq": seq, "ok": move_ok}))
+                ws.send(
+                    json.dumps({"type": "MOVE_EXECUTED", "seq": seq, "ok": move_ok})
+                )
                 print(f"[RPi] MOVE_EXECUTED sent (seq={seq}, ok={move_ok})")
                 return
 
@@ -70,9 +73,15 @@ class MessageRouter:
             return
 
         # Server ACKs — log and ignore.
-        if parsed.kind == "JSON" and parsed.json_obj is not None and parsed.json_obj.get("type") == "ACK":
+        if (
+            parsed.kind == "JSON"
+            and parsed.json_obj is not None
+            and parsed.json_obj.get("type") == "ACK"
+        ):
             obj = parsed.json_obj
-            print(f"[RPi] Server ACK received (of={obj.get('of')}, seq={obj.get('seq')}, ok={obj.get('ok')})")
+            print(
+                f"[RPi] Server ACK received (of={obj.get('of')}, seq={obj.get('seq')}, ok={obj.get('ok')})"
+            )
             return
 
         if isinstance(message, str):

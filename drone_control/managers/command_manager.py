@@ -7,7 +7,10 @@ from drone_control.protocols.outbound import build_command_ack
 
 class CommandManager:
     """Handles incoming control commands from mission side and triggers actuator execution."""
-    def __init__(self, *, logger: SessionLogManager, flight_controller: FlightController):
+
+    def __init__(
+        self, *, logger: SessionLogManager, flight_controller: FlightController
+    ):
         self.logger = logger
         self.flight_controller = flight_controller
 
@@ -38,7 +41,11 @@ class CommandManager:
                 f"(seq={log_seq}) -> {self.logger.runtime_context.session_file.name}; "
                 "latest_command.json updated"
             )
-            return build_command_ack(seq=server_seq, ok=True, action=action, executed=executed)
+            return build_command_ack(
+                seq=server_seq, ok=True, action=action, executed=executed
+            )
         except Exception as exc:
             print(f"[RPi] COMMAND store error: {exc}")
-            return build_command_ack(seq=server_seq, ok=False, action=action, error=str(exc))
+            return build_command_ack(
+                seq=server_seq, ok=False, action=action, error=str(exc)
+            )

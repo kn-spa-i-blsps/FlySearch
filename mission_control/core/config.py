@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 class Config:
-    """ Configuration variables - dirs, ports, hosts... """
+    """Configuration variables - dirs, ports, hosts..."""
 
     def __init__(self):
         # VLM model for the LLM backend factories.

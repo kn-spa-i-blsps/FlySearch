@@ -1,8 +1,8 @@
 import json
 import subprocess
 import time
-from threading import Lock
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from drone_control.utils.time import now_ts
@@ -19,14 +19,19 @@ def _validate_captured_image(path: Path) -> None:
     except ImportError:
         with path.open("rb") as f:
             if f.read(2) != b"\xff\xd8":
-                raise RuntimeError(f"[capture] Capture output is not a JPEG file: {path}")
+                raise RuntimeError(
+                    f"[capture] Capture output is not a JPEG file: {path}"
+                )
         return
 
     try:
         with Image.open(path) as img:
             img.load()
     except Exception as exc:
-        raise RuntimeError(f"[capture] Capture output is not a readable image: {path} ({exc})") from exc
+        raise RuntimeError(
+            f"[capture] Capture output is not a readable image: {path} ({exc})"
+        ) from exc
+
 
 def _make_square(path: Path, quality: int = 90) -> None:
     try:
@@ -53,6 +58,7 @@ def _make_square(path: Path, quality: int = 90) -> None:
         cropped.close()
         print(f"[square] Cropped to square: {side}x{side}")
 
+
 _CAMERA_LOCK = Lock()
 _CAMERA_STATE: dict[str, Any] = {
     "camera": None,
@@ -63,8 +69,10 @@ _CAMERA_STATE: dict[str, Any] = {
     "ref_count": 0,
 }
 
+
 def _metadata_path_for_video(video_path: Path) -> Path:
     return video_path.with_suffix(".json")
+
 
 def _load_metadata(metadata_path: Path) -> dict[str, object] | None:
     if not metadata_path.exists():
@@ -77,12 +85,14 @@ def _load_metadata(metadata_path: Path) -> dict[str, object] | None:
         print(f"[recording] Failed to read metadata {metadata_path}: {exc}")
         return None
 
+
 def _save_metadata(metadata_path: Path, payload: dict[str, object]) -> None:
     metadata_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = metadata_path.with_name(f".{metadata_path.name}.tmp")
     with tmp_path.open("w", encoding="utf-8") as file_obj:
         json.dump(payload, file_obj, indent=2, sort_keys=True)
     tmp_path.replace(metadata_path)
+
 
 def _upsert_recording_metadata(
     video_path: Path,
@@ -98,6 +108,7 @@ def _upsert_recording_metadata(
     except Exception as exc:
         print(f"[recording] Failed to write metadata {metadata_path}: {exc}")
     return str(metadata_path), payload
+
 
 def _build_recording_status(
     *,
@@ -131,6 +142,7 @@ def _build_recording_status(
         "metadata": metadata_payload,
     }
 
+
 def _release_camera(camera: Any) -> None:
     if camera is None:
         return
@@ -152,9 +164,11 @@ def _release_camera(camera: Any) -> None:
         except Exception:
             pass
 
+
 def recording_status() -> dict[str, object]:
     with _CAMERA_LOCK:
         return _build_recording_status()
+
 
 def start_video_recording(
     *,
@@ -251,6 +265,7 @@ def start_video_recording(
             _CAMERA_STATE["started_monotonic"] = None
             raise RuntimeError(f"[recording] Failed to start recording: {exc}") from exc
 
+
 def stop_video_recording() -> dict[str, object]:
     with _CAMERA_LOCK:
         camera = _CAMERA_STATE["camera"]
@@ -265,7 +280,9 @@ def stop_video_recording() -> dict[str, object]:
             duration_sec = None
             started_monotonic = _CAMERA_STATE.get("started_monotonic")
             if isinstance(started_monotonic, (int, float)):
-                duration_sec = max(0.0, round(time.monotonic() - float(started_monotonic), 3))
+                duration_sec = max(
+                    0.0, round(time.monotonic() - float(started_monotonic), 3)
+                )
             if path is not None:
                 metadata_path_override, _ = _upsert_recording_metadata(
                     path,
@@ -304,6 +321,7 @@ def stop_video_recording() -> dict[str, object]:
                 metadata_path_override=metadata_path_override,
             )
 
+
 def capture_photo(
     *,
     destination: Path,
@@ -318,11 +336,15 @@ def capture_photo(
     # If recording is active, reuse the same Picamera2 session.
     if _CAMERA_STATE["recording"]:
         with _CAMERA_LOCK:
-            active_camera = _CAMERA_STATE["camera"] if _CAMERA_STATE["recording"] else None
+            active_camera = (
+                _CAMERA_STATE["camera"] if _CAMERA_STATE["recording"] else None
+            )
             if active_camera is not None:
                 try:
                     if shutter_speed is not None:
-                        active_camera.set_controls({"AeEnable": False, "ExposureTime": shutter_speed})
+                        active_camera.set_controls(
+                            {"AeEnable": False, "ExposureTime": shutter_speed}
+                        )
                     active_camera.capture_file(str(destination), name="lores")
                     _validate_captured_image(destination)
                     _make_square(destination, quality)
@@ -401,14 +423,18 @@ def capture_photo(
                 raise RuntimeError(
                     f"[capture] fswebcam failed (exit code={result.returncode}): {output}"
                 )
-            raise RuntimeError(f"[capture] fswebcam failed (exit code={result.returncode})")
+            raise RuntimeError(
+                f"[capture] fswebcam failed (exit code={result.returncode})"
+            )
 
         _validate_captured_image(destination)
         _make_square(destination, quality)
         _validate_captured_image(destination)
         print(f"Image saved at: {destination} (fswebcam)")
     except FileNotFoundError as exc:
-        raise RuntimeError("[capture] ERROR: fswebcam not found. Install: sudo apt install fswebcam") from exc
+        raise RuntimeError(
+            "[capture] ERROR: fswebcam not found. Install: sudo apt install fswebcam"
+        ) from exc
 
 
 def capture_video(

@@ -10,11 +10,14 @@ from drone_control.sensors.photo_sensor import PhotoSensor
 from drone_control.sensors.recording_sensor import RecordingSensor
 from drone_control.sensors.telemetry_sensor import TelemetrySensor
 
+
 class DroneControl:
     def __init__(self, argv: list[str] | None = None):
         self.config = Config.from_cli(argv)
 
-        self.runtime_context = RuntimeContext.from_commands_dir(self.config.commands_dir)
+        self.runtime_context = RuntimeContext.from_commands_dir(
+            self.config.commands_dir
+        )
         self.session_logger = SessionLogManager(self.runtime_context)
 
         self.photo_sensor = PhotoSensor(
@@ -91,7 +94,9 @@ class DroneControl:
                 return
 
         if bool(status.get("recording")):
-            print("[RPi] Recording may still be active after shutdown cleanup attempts.")
+            print(
+                "[RPi] Recording may still be active after shutdown cleanup attempts."
+            )
         else:
             print("[RPi] Recording cleanup complete.")
 

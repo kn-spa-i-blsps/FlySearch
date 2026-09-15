@@ -11,6 +11,7 @@ from drone_control.sensors.camera_capture_backend import (
     stop_video_recording,
 )
 
+
 class RecordingSensor(Sensor):
     """Camera recording sensor backed by shared Picamera2 runtime."""
 
@@ -24,7 +25,7 @@ class RecordingSensor(Sensor):
         height: int = 480,
         record_fps: int = 30,
         quality: int = 90,
-        video_device: str = "/dev/video0"
+        video_device: str = "/dev/video0",
     ):
         self.video_dir = Path(video_dir)
         self.width = width
@@ -50,7 +51,9 @@ class RecordingSensor(Sensor):
         }
 
     def start_recording(self) -> dict[str, object]:
-        destination = self.video_dir / f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.h264"
+        destination = (
+            self.video_dir / f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.h264"
+        )
 
         try:
             started = start_video_recording(
@@ -130,7 +133,9 @@ class RecordingSensor(Sensor):
             row: dict[str, object] = {
                 "name": path.name,
                 "size_bytes": int(stat.st_size),
-                "mtime": datetime.fromtimestamp(stat.st_mtime).strftime("%Y%m%d_%H%M%S"),
+                "mtime": datetime.fromtimestamp(stat.st_mtime).strftime(
+                    "%Y%m%d_%H%M%S"
+                ),
                 "metadata_exists": metadata_path.exists(),
             }
 
@@ -181,7 +186,7 @@ class RecordingSensor(Sensor):
                 rejected.append({"name": name, "error": "not_h264"})
                 continue
 
-            video_path = (self.video_dir / candidate.name)
+            video_path = self.video_dir / candidate.name
             if not video_path.exists():
                 rejected.append({"name": name, "error": "not_found"})
                 continue

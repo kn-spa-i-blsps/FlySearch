@@ -1,7 +1,9 @@
 """Unit tests for outbound payload builders."""
-import pytest
 
-from drone_control.protocols.outbound import build_command_ack, build_photo_with_telemetry_payload
+from drone_control.protocols.outbound import (
+    build_command_ack,
+    build_photo_with_telemetry_payload,
+)
 
 
 class TestBuildCommandAck:
@@ -50,7 +52,9 @@ class TestBuildCommandAck:
 class TestBuildPhotoWithTelemetryPayload:
     def test_structure(self):
         telem = {"alt": 10.0}
-        payload = build_photo_with_telemetry_payload(photo_base64="abc123", telemetry=telem)
+        payload = build_photo_with_telemetry_payload(
+            photo_base64="abc123", telemetry=telem
+        )
         assert payload["type"] == "PHOTO_WITH_TELEMETRY"
         assert payload["photo"] == "abc123"
         assert payload["telemetry"] == telem

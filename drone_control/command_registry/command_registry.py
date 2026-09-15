@@ -1,8 +1,8 @@
 import json
-from typing import Any, Optional
+from typing import Any
 
-from drone_control.protocols.outbound import build_command_ack
 from drone_control.command_registry.command_descriptors import CommandDescriptor
+from drone_control.protocols.outbound import build_command_ack
 
 
 class CommandRegistry:
@@ -16,13 +16,13 @@ class CommandRegistry:
     def register(self, descriptor: CommandDescriptor) -> None:
         self._descriptors[descriptor.action] = descriptor
 
-    def get(self, action: str) -> Optional[CommandDescriptor]:
+    def get(self, action: str) -> CommandDescriptor | None:
         return self._descriptors.get(action)
 
     def actions(self) -> list[str]:
         return list(self._descriptors.keys())
 
-    def dispatch(self, ws: Any, action: str, seq: Optional[int]) -> bool:
+    def dispatch(self, ws: Any, action: str, seq: int | None) -> bool:
         """Try to handle the action. Returns True if handled, False if unknown.
 
         For registered actions:

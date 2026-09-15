@@ -4,21 +4,28 @@ import os
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, List, Set, Optional, Tuple
 
 import uvicorn
-from PIL import Image
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image
 from pydantic import BaseModel
 
 from mission_control.core.action_status import ActionStatus
 from mission_control.core.config import Config
 from mission_control.core.events import (
-    StartMissionCommand, CreateNewSessionCommand, PhotoWithTelemetryReceived,
-    VlmAnalysisCompleted, AskUserConfirmationCommand, SearchEnded, UserDecisionReceived,
-    GetRecordingsListCommand, PullRecordingsCommand, RecordingsListReceived, RecordingsPullCompleted,
+    AskUserConfirmationCommand,
+    CreateNewSessionCommand,
+    GetRecordingsListCommand,
+    PhotoWithTelemetryReceived,
+    PullRecordingsCommand,
+    RecordingsListReceived,
+    RecordingsPullCompleted,
+    SearchEnded,
+    StartMissionCommand,
+    UserDecisionReceived,
+    VlmAnalysisCompleted,
 )
 from mission_control.core.interfaces import EventBus
 from mission_control.utils.logger import get_configured_logger
@@ -28,14 +35,15 @@ logger = get_configured_logger(__name__)
 
 @dataclass
 class MissionUIState:
-    """ Stores the GUI state for one specific mission. """
+    """Stores the GUI state for one specific mission."""
+
     chat_history: list = field(default_factory=list)
     custom_status: str = "Waiting for mission to start..."
-    last_photo_name: Optional[str] = None
-    parsed_action: Optional[dict] = None
+    last_photo_name: str | None = None
+    parsed_action: dict | None = None
     waiting_for_decision: bool = False
-    pending_move: Optional[Tuple] = None
-    connected_websockets: Set[WebSocket] = field(default_factory=set)
+    pending_move: tuple | None = None
+    connected_websockets: set[WebSocket] = field(default_factory=set)
 
 
 # Model for the incoming POST request to start a new mission
@@ -51,7 +59,7 @@ class MissionCreateRequest(BaseModel):
 
 class PullRecordingsRequest(BaseModel):
     drone_id: str
-    names: List[str]
+    names: list[str]
 
 
 class WebServer:
@@ -59,24 +67,32 @@ class WebServer:
         self.config = config
         self.event_bus = event_bus
         self.app = FastAPI(title="Mission Control GUI")
-        self._recordings_waiters: Dict[str, asyncio.Future] = {}
-        self._pull_waiters: Dict[str, asyncio.Future] = {}
+        self._recordings_waiters: dict[str, asyncio.Future] = {}
+        self._pull_waiters: dict[str, asyncio.Future] = {}
 
         # --- MULTI-TENANT GUI STATE ---
         # Dictionary storing a separate browser window state for each mission_id
-        self.missions: Dict[str, MissionUIState] = {}
+        self.missions: dict[str, MissionUIState] = {}
         # Helper dictionary to track which mission a drone photo belongs to
-        self.drone_to_mission: Dict[str, str] = {}
+        self.drone_to_mission: dict[str, str] = {}
 
         # Mounting uploads for photo access.
         os.makedirs(self.config.upload_dir, exist_ok=True)
-        self.app.mount("/uploads", StaticFiles(directory=self.config.upload_dir), name="uploads")
+        self.app.mount(
+            "/uploads", StaticFiles(directory=self.config.upload_dir), name="uploads"
+        )
 
         # Endpoint registers.
         self.app.add_api_route("/", self.get_index, methods=["GET"])
-        self.app.add_api_route("/api/missions", self.api_start_mission, methods=["POST"])
-        self.app.add_api_route("/api/recordings", self.api_get_recordings, methods=["GET"])
-        self.app.add_api_route("/api/recordings/pull", self.api_pull_recordings, methods=["POST"])
+        self.app.add_api_route(
+            "/api/missions", self.api_start_mission, methods=["POST"]
+        )
+        self.app.add_api_route(
+            "/api/recordings", self.api_get_recordings, methods=["GET"]
+        )
+        self.app.add_api_route(
+            "/api/recordings/pull", self.api_pull_recordings, methods=["POST"]
+        )
         self.app.add_api_route("/{mission_id}", self.get_mission_gui, methods=["GET"])
         self.app.add_api_websocket_route("/ws/{mission_id}", self.websocket_endpoint)
 
@@ -88,10 +104,16 @@ class WebServer:
         self.event_bus.subscribe(CreateNewSessionCommand, self.handle_new_session)
         self.event_bus.subscribe(PhotoWithTelemetryReceived, self.handle_photo)
         self.event_bus.subscribe(VlmAnalysisCompleted, self.handle_vlm_analysis)
-        self.event_bus.subscribe(AskUserConfirmationCommand, self.handle_ask_confirmation)
+        self.event_bus.subscribe(
+            AskUserConfirmationCommand, self.handle_ask_confirmation
+        )
         self.event_bus.subscribe(SearchEnded, self.handle_search_ended)
-        self.event_bus.subscribe(RecordingsListReceived, self.handle_recordings_list_received)
-        self.event_bus.subscribe(RecordingsPullCompleted, self.handle_recordings_pull_completed)
+        self.event_bus.subscribe(
+            RecordingsListReceived, self.handle_recordings_list_received
+        )
+        self.event_bus.subscribe(
+            RecordingsPullCompleted, self.handle_recordings_pull_completed
+        )
 
     def _get_or_create_mission(self, mission_id: str) -> MissionUIState:
         if mission_id not in self.missions:
@@ -115,7 +137,9 @@ class WebServer:
     async def handle_new_session(self, event: CreateNewSessionCommand):
         m_state = self._get_or_create_mission(event.chat_id)
         m_state.chat_history = []
-        m_state.chat_history.append({"role": "USER", "type": "text", "content": event.prompt})
+        m_state.chat_history.append(
+            {"role": "USER", "type": "text", "content": event.prompt}
+        )
         await self.broadcast_state(event.chat_id)
 
     async def handle_photo(self, event: PhotoWithTelemetryReceived):
@@ -130,13 +154,17 @@ class WebServer:
         m_state.custom_status = "Analyzing new photo..."
 
         img_b64 = self._encode_image_to_base64(path_obj)
-        m_state.chat_history.append({"role": "USER", "type": "image", "content": img_b64})
+        m_state.chat_history.append(
+            {"role": "USER", "type": "image", "content": img_b64}
+        )
         await self.broadcast_state(mission_id)
 
     async def handle_vlm_analysis(self, event: VlmAnalysisCompleted):
         m_state = self._get_or_create_mission(event.chat_id)
         m_state.parsed_action = {"found": event.found, "move": event.move}
-        m_state.chat_history.append({"role": "VLM", "type": "text", "content": event.reasoning})
+        m_state.chat_history.append(
+            {"role": "VLM", "type": "text", "content": event.reasoning}
+        )
 
         if event.found:
             m_state.custom_status = "OBJECT FOUND!"
@@ -163,16 +191,16 @@ class WebServer:
     # ==========================================
 
     async def api_start_mission(self, req: MissionCreateRequest):
-        """ Endpoint: POST /api/missions """
+        """Endpoint: POST /api/missions"""
         if req.mission_id in self.missions:
             raise HTTPException(
                 status_code=400,
-                detail=f"Mission with ID '{req.mission_id}' already exists. Please choose a different name."
+                detail=f"Mission with ID '{req.mission_id}' already exists. Please choose a different name.",
             )
         kv = {
             "object": req.search_object,
             "glimpses": str(req.glimpses),
-            "minimum_altitude": str(req.min_altitude)
+            "minimum_altitude": str(req.min_altitude),
         }
         if req.prompt_type == "FS-1":
             kv["area"] = str(req.area)
@@ -181,7 +209,7 @@ class WebServer:
             mission_id=req.mission_id,
             drone_id=req.drone_id,
             prompt_type=req.prompt_type,
-            prompt_args=kv
+            prompt_args=kv,
         )
 
         # Publish the event to the Orchestrator
@@ -199,7 +227,9 @@ class WebServer:
         try:
             event = await asyncio.wait_for(waiter, timeout=10.0)
         except asyncio.TimeoutError:
-            raise HTTPException(status_code=504, detail="Drone did not respond in time.")
+            raise HTTPException(
+                status_code=504, detail="Drone did not respond in time."
+            )
         if event.error:
             raise HTTPException(status_code=502, detail=event.error)
         return {"status": "ok", "recordings": event.recordings}
@@ -209,7 +239,9 @@ class WebServer:
         loop = asyncio.get_running_loop()
         waiter = loop.create_future()
         self._pull_waiters[req.drone_id] = waiter
-        await self.event_bus.publish(PullRecordingsCommand(drone_id=req.drone_id, names=req.names))
+        await self.event_bus.publish(
+            PullRecordingsCommand(drone_id=req.drone_id, names=req.names)
+        )
         try:
             event = await asyncio.wait_for(waiter, timeout=300.0)
         except asyncio.TimeoutError:
@@ -229,22 +261,24 @@ class WebServer:
             waiter.set_result(event)
 
     async def get_index(self):
-        """ Endpoint: GET / (Mission Launcher & Active Missions GUI) """
+        """Endpoint: GET / (Mission Launcher & Active Missions GUI)"""
         if self.missions:
             active_missions_html = '<ul class="mission-list">'
             for m_id, m_state in self.missions.items():
                 status_color = "#27ae60" if m_state.waiting_for_decision else "#7f8c8d"
-                active_missions_html += f'''
+                active_missions_html += f"""
                     <li>
                         <a href="/{m_id}">
                             <div class="mission-title">Mission: {m_id}</div>
                             <div class="mission-status" style="color: {status_color}; font-size: 12px;">{m_state.custom_status}</div>
                         </a>
                     </li>
-                '''
-            active_missions_html += '</ul>'
+                """
+            active_missions_html += "</ul>"
         else:
-            active_missions_html = '<p class="empty-state">No active missions running at the moment.</p>'
+            active_missions_html = (
+                '<p class="empty-state">No active missions running at the moment.</p>'
+            )
         # TODO: move to additional file
         html = f"""
         <!DOCTYPE html>
@@ -514,7 +548,7 @@ class WebServer:
         return HTMLResponse(html)
 
     async def websocket_endpoint(self, websocket: WebSocket, mission_id: str):
-        """ Endpoint: WS /ws/{mission_id} """
+        """Endpoint: WS /ws/{mission_id}"""
         await websocket.accept()
         m_state = self._get_or_create_mission(mission_id)
         m_state.connected_websockets.add(websocket)
@@ -534,7 +568,7 @@ class WebServer:
                         decision_event = UserDecisionReceived(
                             mission_id=mission_id,
                             decision=status,
-                            move=m_state.pending_move
+                            move=m_state.pending_move,
                         )
 
                         m_state.waiting_for_decision = False
@@ -553,7 +587,7 @@ class WebServer:
                 m_state.connected_websockets.remove(websocket)
 
     async def broadcast_state(self, mission_id: str):
-        """ Sends the new status to all browsers observing this specific mission. """
+        """Sends the new status to all browsers observing this specific mission."""
         m_state = self.missions.get(mission_id)
         if not m_state or not m_state.connected_websockets:
             return
@@ -565,7 +599,7 @@ class WebServer:
             "photo_path": m_state.last_photo_name,
             "parsed_action": m_state.parsed_action,
             "chat_history": m_state.chat_history,
-            "pending_move": m_state.pending_move
+            "pending_move": m_state.pending_move,
         }
 
         for ws in list(m_state.connected_websockets):
@@ -594,10 +628,13 @@ class WebServer:
             return f"[Error loading image: {e}]"
 
     async def get_mission_gui(self, mission_id: str):
-        """ Endpoint: GET /{mission_id} """
+        """Endpoint: GET /{mission_id}"""
 
         if mission_id not in self.missions:
-            raise HTTPException(status_code=404, detail=f"Mission '{mission_id}' not found or not started yet.")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Mission '{mission_id}' not found or not started yet.",
+            )
 
         html_content = """
         <!DOCTYPE html>

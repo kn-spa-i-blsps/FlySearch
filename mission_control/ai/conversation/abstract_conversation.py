@@ -1,4 +1,3 @@
-import typing
 from enum import Enum
 
 from PIL import Image
@@ -10,7 +9,6 @@ class Role(str, Enum):
 
 
 class Conversation:
-
     # Upon calling the method, user signals that he wants to send a message (containing text and images)
     # Cannot be called before commit_transaction() or after rollback_transaction() after begin_transaction() is called
     def begin_transaction(self, role: Role):
@@ -33,8 +31,8 @@ class Conversation:
     def rollback_transaction(self):
         pass
 
-    def get_conversation(self, save_urls=True) -> typing.List[typing.Tuple[Role, str]]:
+    def get_conversation(self, save_urls=True) -> list[tuple[Role, str]]:
         pass
 
-    def get_latest_message(self) -> typing.Tuple[Role, str]:
+    def get_latest_message(self) -> tuple[Role, str]:
         pass

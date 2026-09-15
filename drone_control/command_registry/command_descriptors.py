@@ -1,5 +1,6 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any
 
 
 @dataclass
@@ -14,10 +15,11 @@ class CommandDescriptor:
         only logged. Provide this for commands where the client expects a response even on
         failure (e.g. recording commands).
     """
+
     action: str
     handler: Callable[[], Any]
-    build_response: Callable[[Any, Optional[int]], dict[str, Any]]
+    build_response: Callable[[Any, int | None], dict[str, Any]]
     send_immediate_ack: bool = True
-    build_error_response: Optional[Callable[[Exception, Optional[int]], dict[str, Any]]] = field(
-        default=None
+    build_error_response: Callable[[Exception, int | None], dict[str, Any]] | None = (
+        field(default=None)
     )

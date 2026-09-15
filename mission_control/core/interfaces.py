@@ -1,12 +1,13 @@
-from typing import Protocol, Callable, Type, Any, Awaitable, List, Dict
+from collections.abc import Awaitable, Callable
+from typing import Any, Protocol
 
 from mission_control.ai.conversation.abstract_conversation import Conversation
 from mission_control.core.events import (
     AnalyzePhotoCommand,
     CreateNewSessionCommand,
     DeleteSessionCommand,
+    LoadSessionCommand,
     SaveSessionCommand,
-    LoadSessionCommand
 )
 
 
@@ -17,11 +18,15 @@ class EventBus(Protocol):
     than a concrete implementation (e.g., MemoryEventBus).
     """
 
-    def subscribe(self, event_type: Type, handler: Callable[[Any], Awaitable[None]]) -> None:
+    def subscribe(
+        self, event_type: type, handler: Callable[[Any], Awaitable[None]]
+    ) -> None:
         """Registers an asynchronous handler for a given event type."""
         ...
 
-    def unsubscribe(self, event_type: Type, handler: Callable[[Any], Awaitable[None]]) -> None:
+    def unsubscribe(
+        self, event_type: type, handler: Callable[[Any], Awaitable[None]]
+    ) -> None:
         """Unregisters a handler for a given event type."""
         ...
 
@@ -42,7 +47,7 @@ class ChatStorageHelper(Protocol):
         """
         ...
 
-    async def load_chat(self, chat_id: str) -> List[Dict[str, Any]]:
+    async def load_chat(self, chat_id: str) -> list[dict[str, Any]]:
         """
         Reconstructs and returns a conversation object based on the saved chat identifier.
         """
@@ -55,7 +60,7 @@ class PromptHelper(Protocol):
     system prompts for the Vision Language Model (VLM).
     """
 
-    async def generate_prompt(self, kind: str, args: Dict[str, str]) -> str:
+    async def generate_prompt(self, kind: str, args: dict[str, str]) -> str:
         """
         Generates the system prompt text based on the mission kind and parameters.
 
@@ -109,6 +114,4 @@ class VLMBridge(Protocol):
 
 
 class DataStorageHelper(Protocol):
-
-    async def save_photo_and_telemetry(self, photo_base64: bytes, telemetry):
-        ...
+    async def save_photo_and_telemetry(self, photo_base64: bytes, telemetry): ...

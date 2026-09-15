@@ -1,13 +1,18 @@
 import asyncio
 import signal
-from typing import Dict, Callable, Awaitable, Any
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 
 from mission_control.core.action_status import ActionStatus
-from mission_control.core.events import AskUserConfirmationCommand, UserDecisionReceived, StartMissionCommand, \
-    SearchEnded
+from mission_control.core.events import (
+    AskUserConfirmationCommand,
+    SearchEnded,
+    StartMissionCommand,
+    UserDecisionReceived,
+)
 from mission_control.core.interfaces import EventBus
 from mission_control.utils.parsers import parse_search_arguments
 
@@ -23,15 +28,15 @@ class CLIHandler:
         self.event_bus.subscribe(AskUserConfirmationCommand, self.ask_move_confirmation)
         self.event_bus.subscribe(SearchEnded, self.handle_search_end)
 
-        self.commands: Dict[str, Callable[[str], Awaitable[Any]]] = {
+        self.commands: dict[str, Callable[[str], Awaitable[Any]]] = {
             "search": self._handle_search,
-            "quit": self._handle_quit
+            "quit": self._handle_quit,
         }
 
     async def serve(self):
-        """ Handling commands received from the user.
+        """Handling commands received from the user.
 
-            Parses input and forwards it to the proper method.
+        Parses input and forwards it to the proper method.
         """
         loop = asyncio.get_running_loop()
 
@@ -46,7 +51,9 @@ class CLIHandler:
 
         with patch_stdout():
             while not self.stop.is_set():
-                prompt_text = "[CONFIRM Y/W/N] > " if self.pending_confirmation else "> "
+                prompt_text = (
+                    "[CONFIRM Y/W/N] > " if self.pending_confirmation else "> "
+                )
 
                 try:
                     line = await self.cli.prompt_async(prompt_text)
@@ -114,7 +121,9 @@ class CLIHandler:
         elif ans in ("no", "n"):
             decision = ActionStatus.CANCELLED
         else:
-            print("Invalid input. Please press Enter (yes), 'w' (warn), or 'no' (cancel).")
+            print(
+                "Invalid input. Please press Enter (yes), 'w' (warn), or 'no' (cancel)."
+            )
             return
 
         decision_event = UserDecisionReceived(
@@ -137,13 +146,13 @@ class CLIHandler:
         await self.event_bus.publish(event)
 
     async def _handle_quit(self, args: str = ""):
-        """ Function for soft handling of SIGINT """
+        """Function for soft handling of SIGINT"""
         if not self.stop.is_set():
             print("[CLI] shutdown requested (signal). Closing clients…")
             self.stop.set()
 
     def _signal_handler(self):
-        """ Synchronous function for OS signals (SIGINT, SIGTERM) """
+        """Synchronous function for OS signals (SIGINT, SIGTERM)"""
         if not self.stop.is_set():
             print("\n[CLI] Shutdown requested (signal). Closing clients…")
             self.stop.set()
@@ -151,7 +160,9 @@ class CLIHandler:
     @staticmethod
     def print_help():
         print("Perform search:")
-        print("    SEARCH <name> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=..]")
+        print(
+            "    SEARCH <name> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=..]"
+        )
 
         # print("Chat management:")
         # print("    CHAT_INIT | CHAT_RESET | CHAT_SAVE <name> | CHAT_RETRIEVE <name>")

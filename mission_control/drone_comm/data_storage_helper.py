@@ -22,11 +22,7 @@ class FileDataStorageHelper(DataStorageHelper):
         file_name = f"{file_base}.json"
         path = self.config.telemetry_dir / file_name
 
-        payload = {
-            "received_at": ts,
-            "associated_photo": photo_name,
-            "data": data
-        }
+        payload = {"received_at": ts, "associated_photo": photo_name, "data": data}
 
         with open(path, "w", encoding="utf-8") as f:
             try:
@@ -42,14 +38,18 @@ class FileDataStorageHelper(DataStorageHelper):
 
         # Photo
         if not photo_base64:
-            logger.warning("[WS] Received 'PHOTO_WITH_TELEMETRY' but 'photo' field is missing; skipping frame.")
+            logger.warning(
+                "[WS] Received 'PHOTO_WITH_TELEMETRY' but 'photo' field is missing; skipping frame."
+            )
             telemetry_path = await self._save_telemetry(telemetry, None)
             return None, telemetry_path
 
         try:
             photo_data = base64.b64decode(photo_base64)
         except (TypeError, ValueError) as e:
-            raise DroneInvalidDataError(f"Failed to decode Base64 photo data: {e}") from e
+            raise DroneInvalidDataError(
+                f"Failed to decode Base64 photo data: {e}"
+            ) from e
 
         img_file_base = f"img_{ts}"
         img_file_name = f"{img_file_base}.jpg"

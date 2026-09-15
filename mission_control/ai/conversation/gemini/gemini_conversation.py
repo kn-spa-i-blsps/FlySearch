@@ -3,17 +3,25 @@ import io
 import logging
 from time import sleep
 
-from PIL import Image
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError, ServerError
+from PIL import Image
 
 from mission_control.ai.conversation.abstract_conversation import Conversation, Role
 
 
 class GeminiConversation(Conversation):
-    def __init__(self, client: genai.Client, model_name: str, seed=42, max_tokens=None, temperature=None, top_p=None,
-                 thinking_budget=None):
+    def __init__(
+        self,
+        client: genai.Client,
+        model_name: str,
+        seed=42,
+        max_tokens=None,
+        temperature=None,
+        top_p=None,
+        thinking_budget=None,
+    ):
         self.client = client
         self.model_name = model_name
         self.conversation = []  # This will be populated from chat history
@@ -37,23 +45,17 @@ class GeminiConversation(Conversation):
 
         role = "user" if role == Role.USER else "assistant"
 
-        self.transaction_conversation = {
-            "role": role,
-            "content": []
-        }
+        self.transaction_conversation = {"role": role, "content": []}
 
     def add_text_message(self, text: str):
         if not self.transaction_started:
             raise Exception("Transaction not started")
 
-        if self.transaction_conversation['role'] == 'assistant':
-            self.transaction_conversation['content'] = text
+        if self.transaction_conversation["role"] == "assistant":
+            self.transaction_conversation["content"] = text
         else:
             content = self.transaction_conversation["content"]
-            content.append({
-                "type": "text",
-                "text": text
-            })
+            content.append({"type": "text", "text": text})
 
     async def add_image_message(self, image: Image.Image):
         if not self.transaction_started:
@@ -62,20 +64,14 @@ class GeminiConversation(Conversation):
         def process_image():
             img = image.convert("RGB")
             buffer = io.BytesIO()
-            img.save(buffer, format='JPEG', quality=95)
+            img.save(buffer, format="JPEG", quality=95)
             return buffer.getvalue()
 
         image_bytes = await asyncio.to_thread(process_image)
 
         content = self.transaction_conversation["content"]
 
-        content.append(
-            {
-                "type": "image",
-                "image": image,
-                "image_bytes": image_bytes
-            }
-        )
+        content.append({"type": "image", "image": image, "image_bytes": image_bytes})
 
     def _to_gemini_parts(self, message_content):
         parts = []
@@ -86,10 +82,11 @@ class GeminiConversation(Conversation):
                 if sub["type"] == "text":
                     parts.append(types.Part.from_text(text=sub["text"]))
                 elif sub["type"] == "image":
-                    parts.append(types.Part.from_bytes(
-                        data=sub["image_bytes"],
-                        mime_type='image/jpeg'
-                    ))
+                    parts.append(
+                        types.Part.from_bytes(
+                            data=sub["image_bytes"], mime_type="image/jpeg"
+                        )
+                    )
                 else:
                     parts.append(types.Part.from_text("[unsupported content]"))
             return parts
@@ -105,7 +102,9 @@ class GeminiConversation(Conversation):
         if self.top_p is not None:
             config_dict["top_p"] = self.top_p
         if self.thinking_budget is not None:
-            config_dict["thinking_config"] = types.ThinkingConfig(thinking_budget=self.thinking_budget)
+            config_dict["thinking_config"] = types.ThinkingConfig(
+                thinking_budget=self.thinking_budget
+            )
         return types.GenerateContentConfig(**config_dict) if config_dict else None
 
     async def _send_message_with_retry(self, contents):
@@ -116,13 +115,15 @@ class GeminiConversation(Conversation):
                 response = await self.client.aio.models.generate_content(
                     model=self.model_name,
                     contents=contents,
-                    config=self._get_generation_config()
+                    config=self._get_generation_config(),
                 )
                 return response
             except (APIError, ServerError) as e:
                 # Using 429 and 499 for rate limiting, but being broad for other transient issues
                 if e.code in [429, 499, 500, 503, 504]:
-                    self.logger.warning(f"APIError received: {e}. Retrying in {delay} seconds...")
+                    self.logger.warning(
+                        f"APIError received: {e}. Retrying in {delay} seconds..."
+                    )
                     sleep(delay)
                     delay *= 2  # Exponential backoff
                 else:
@@ -157,8 +158,7 @@ class GeminiConversation(Conversation):
             msg_role = "user" if msg["role"] == "user" else "model"
             contents.append(
                 types.Content(
-                    role=msg_role,
-                    parts=self._to_gemini_parts(msg["content"])
+                    role=msg_role, parts=self._to_gemini_parts(msg["content"])
                 )
             )
 
@@ -169,10 +169,7 @@ class GeminiConversation(Conversation):
         self.logger.info(f"LLM response: {response_content}")
 
         # Add the model's response to the history
-        response_message = {
-            "role": "assistant",
-            "content": response_content
-        }
+        response_message = {"role": "assistant", "content": response_content}
         self.conversation.append(response_message)
 
     def rollback_transaction(self):

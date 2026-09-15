@@ -1,14 +1,16 @@
 import json
+from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from drone_control.sensors.mavlink_telemetry_backend import get_telemetry_json
 from drone_control.sensors.base import Sensor
+from drone_control.sensors.mavlink_telemetry_backend import get_telemetry_json
 
 
 class TelemetrySensor(Sensor):
     """Fetch live MAVLink telemetry data."""
+
     name = "telemetry"
 
     def __init__(
@@ -23,9 +25,15 @@ class TelemetrySensor(Sensor):
         self.mav_baud = mav_baud
         self.timeout = timeout
         project_root = Path(__file__).resolve().parents[2]
-        raw_template_path = Path(telemetry_template_path) if telemetry_template_path else Path("telemetry.json")
+        raw_template_path = (
+            Path(telemetry_template_path)
+            if telemetry_template_path
+            else Path("telemetry.json")
+        )
         self.telemetry_template_path = (
-            raw_template_path if raw_template_path.is_absolute() else project_root / raw_template_path
+            raw_template_path
+            if raw_template_path.is_absolute()
+            else project_root / raw_template_path
         )
         self._fallback_template = self._load_fallback_template()
 
@@ -60,7 +68,9 @@ class TelemetrySensor(Sensor):
             return {}
 
     def _fallback_template_with_reason(self, reason: str) -> dict[str, Any]:
-        print(f"[RPi] TELEMETRY fallback: {reason}; sending template from {self.telemetry_template_path}.")
+        print(
+            f"[RPi] TELEMETRY fallback: {reason}; sending template from {self.telemetry_template_path}."
+        )
         return deepcopy(self._fallback_template)
 
     def health(self) -> dict[str, object]:
@@ -74,7 +84,9 @@ class TelemetrySensor(Sensor):
 
     def snapshot(self) -> dict[str, Any]:
         if self._reader is None:
-            reason = self._reader_unavailable_reason or "telemetry backend is unavailable"
+            reason = (
+                self._reader_unavailable_reason or "telemetry backend is unavailable"
+            )
             return self._fallback_template_with_reason(f"unavailable ({reason})")
 
         try:
