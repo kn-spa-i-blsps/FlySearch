@@ -26,6 +26,7 @@ from mission_control.core.events import (
     StartMissionCommand,
     UserDecisionReceived,
     VlmAnalysisCompleted,
+    VlmPromptSent,
 )
 from mission_control.core.interfaces import EventBus
 from mission_control.utils.logger import get_configured_logger
@@ -103,6 +104,7 @@ class WebServer:
         self.event_bus.subscribe(StartMissionCommand, self.handle_mission_start)
         self.event_bus.subscribe(CreateNewSessionCommand, self.handle_new_session)
         self.event_bus.subscribe(PhotoWithTelemetryReceived, self.handle_photo)
+        self.event_bus.subscribe(VlmPromptSent, self.handle_vlm_prompt_sent)
         self.event_bus.subscribe(VlmAnalysisCompleted, self.handle_vlm_analysis)
         self.event_bus.subscribe(
             AskUserConfirmationCommand, self.handle_ask_confirmation
@@ -153,11 +155,22 @@ class WebServer:
         m_state.last_photo_name = path_obj.name
         m_state.custom_status = "Analyzing new photo..."
 
-        img_b64 = self._encode_image_to_base64(path_obj)
-        m_state.chat_history.append(
-            {"role": "USER", "type": "image", "content": img_b64}
-        )
         await self.broadcast_state(mission_id)
+
+    async def handle_vlm_prompt_sent(self, event: VlmPromptSent):
+        m_state = self._get_or_create_mission(event.chat_id)
+        
+        # Add image first
+        m_state.chat_history.append(
+            {"role": "USER", "type": "image", "content": event.image_b64}
+        )
+        # Add text messages
+        for text in event.texts:
+            m_state.chat_history.append(
+                {"role": "USER", "type": "text", "content": text}
+            )
+            
+        await self.broadcast_state(event.chat_id)
 
     async def handle_vlm_analysis(self, event: VlmAnalysisCompleted):
         m_state = self._get_or_create_mission(event.chat_id)
@@ -612,21 +625,6 @@ class WebServer:
     # HELPERS & SERVER
     # ==========================================
 
-    def _encode_image_to_base64(self, path: Path) -> str:
-        try:
-            if not path.exists():
-                return "[Error: Image file not found]"
-            img = Image.open(path)
-            if img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-            img.thumbnail((400, 400))
-            buffered = BytesIO()
-            img.save(buffered, format="JPEG", quality=70)
-            img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-            return f"data:image/jpeg;base64,{img_str}"
-        except Exception as e:
-            return f"[Error loading image: {e}]"
-
     async def get_mission_gui(self, mission_id: str):
         """Endpoint: GET /{mission_id}"""
 
@@ -698,7 +696,7 @@ class WebServer:
             </div>
 
             <script>
-                const missionId = window.location.pathname.replace(/^\\/|\\/$/g, '');
+                const missionId = window.location.pathname.replace(/^\/|\/$/g, '');
                 document.getElementById('mission-title').innerText = "[ Mission: " + missionId + " ]";
 
                 const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';

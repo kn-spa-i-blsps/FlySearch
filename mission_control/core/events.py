@@ -169,6 +169,19 @@ class DroneErrorOccurred(Event):
 
 
 @dataclass(kw_only=True)
+class VlmPromptSent(Event):
+    """
+    Published by: VLMBridge.
+    Subscribed by: Web Server UI.
+    Contains the final prompt texts and image sent to the VLM backend.
+    """
+
+    chat_id: str
+    texts: list[str]
+    image_b64: str
+
+
+@dataclass(kw_only=True)
 class VlmAnalysisCompleted(Event):
     """
     Published by: VLMBridge.

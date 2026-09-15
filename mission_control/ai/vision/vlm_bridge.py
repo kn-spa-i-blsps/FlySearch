@@ -1,5 +1,7 @@
 import asyncio
+import base64
 import traceback
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,7 @@ from mission_control.core.events import (
     SessionSaved,
     VlmAnalysisCompleted,
     VlmErrorOccurred,
+    VlmPromptSent,
 )
 from mission_control.core.exceptions import VLMConnectionError
 from mission_control.core.interfaces import ChatStorageHelper, VLMBridge
@@ -86,6 +89,21 @@ class FlySearchVLMBridge(VLMBridge):
                     photo_path, telemetry_path
                 )
                 logger.info("[VLM] Sending photo and telemetry to the model.")
+
+                # ----- PUBLISH EVENT FOR GUI -----
+                texts = []
+                if is_warning:
+                    texts.append(self.collision_warning_str)
+                texts.append(message)
+
+                prompt_event = VlmPromptSent(
+                    chat_id=chat_id,
+                    texts=texts,
+                    image_b64=self._pil_to_base64(img)
+                )
+                await self.event_bus.publish(prompt_event)
+                # ---------------------------------
+
                 raw_response = await self._execute_transaction(
                     conversation, img, message, is_warning
                 )
@@ -250,6 +268,16 @@ class FlySearchVLMBridge(VLMBridge):
             await conversation.commit_transaction(send_to_vlm=False)
 
         return conversation
+        
+    def _pil_to_base64(self, img: Image.Image) -> str:
+        buffered = BytesIO()
+        img_copy = img.copy()
+        if img_copy.mode in ("RGBA", "P"):
+            img_copy = img_copy.convert("RGB")
+        img_copy.thumbnail((400, 400))
+        img_copy.save(buffered, format="JPEG", quality=70)
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        return f"data:image/jpeg;base64,{img_str}"
 
     @staticmethod
     async def _prepare_input_async(
