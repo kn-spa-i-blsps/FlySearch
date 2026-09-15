@@ -100,11 +100,11 @@ services:
     devices:
       - /dev/ttyAMA0:/dev/ttyAMA0
       - /dev/video0:/dev/video0
-      - /dev/video1:/dev/video1
       - /dev/media0:/dev/media0
       - /dev/media1:/dev/media1
       - /dev/media2:/dev/media2
       - /dev/media3:/dev/media3
+      - /dev/dma_heap:/dev/dma_heap
       - /dev/v4l-subdev0:/dev/v4l-subdev0
       - /dev/v4l-subdev1:/dev/v4l-subdev1
       - /dev/v4l-subdev2:/dev/v4l-subdev2
