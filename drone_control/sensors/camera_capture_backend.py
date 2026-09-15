@@ -149,20 +149,20 @@ def _release_camera(camera: Any) -> None:
 
     try:
         camera.stop_recording()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[camera] error: {e}")
 
     try:
         camera.stop()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[camera] error: {e}")
 
     close_fn = getattr(camera, "close", None)
     if callable(close_fn):
         try:
             close_fn()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[camera] error: {e}")
 
 
 def recording_status() -> dict[str, object]:
@@ -390,8 +390,8 @@ def capture_photo(
 
     try:
         destination.unlink(missing_ok=True)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[camera] error: {e}")
 
     # 2) fswebcam (USB V4L2 camera)
     cmd = [
