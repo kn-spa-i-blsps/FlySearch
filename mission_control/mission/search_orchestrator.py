@@ -43,10 +43,13 @@ class MissionState(Enum):
 
 
 class SearchOrchestrator:
-    def __init__(self, event_bus: EventBus, prompts: PromptHelper):
+    def __init__(
+        self, event_bus: EventBus, prompts: PromptHelper, *, video_enabled: bool = False
+    ):
         self.pending_command = None
         self.moves_performed = 0
         self.event_bus = event_bus
+        self.video_enabled = video_enabled
         self.mission_id: str = ""
         self.initial_prompt: str = ""
         self.drone_id: str = ""
@@ -98,9 +101,11 @@ class SearchOrchestrator:
             if self.state == MissionState.ENDED:
                 return
             self.state = MissionState.WAITING_FOR_DRONE
-            await self.event_bus.publish(
-                StartRecordingCommand(drone_id=self.drone_id), wait_for_completion=True
-            )
+            if self.video_enabled:
+                await self.event_bus.publish(
+                    StartRecordingCommand(drone_id=self.drone_id),
+                    wait_for_completion=True,
+                )
             await self.event_bus.publish(
                 GetPhotoAndTelemetryCommand(drone_id=self.drone_id)
             )
@@ -276,7 +281,8 @@ class SearchOrchestrator:
 
         self.state = MissionState.ENDED
         self._cleanup()
-        await self.event_bus.publish(StopRecordingCommand(drone_id=self.drone_id))
+        if self.video_enabled:
+            await self.event_bus.publish(StopRecordingCommand(drone_id=self.drone_id))
 
         await self.event_bus.publish(
             SearchEnded(

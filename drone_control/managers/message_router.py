@@ -19,7 +19,7 @@ class MessageRouter:
         *,
         command_manager: CommandManager,
         command_registry: CommandRegistry,
-        recording_sensor: RecordingSensor,
+        recording_sensor: RecordingSensor | None,
     ):
         self.command_manager = command_manager
         self.command_registry = command_registry
@@ -41,7 +41,7 @@ class MessageRouter:
             if self.command_registry.dispatch(ws, action, seq):
                 return
 
-            if action == "PULL_RECORDINGS":
+            if action == "PULL_RECORDINGS" and self.recording_sensor is not None:
                 pull_recordings(ws, obj, self.recording_sensor)
                 return
 

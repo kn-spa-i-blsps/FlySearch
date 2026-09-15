@@ -30,7 +30,7 @@ async def main():
     drone_bridge = WebSocketDroneBridge(config, event_bus, video_helper, storage_drone)
     logger.debug("[MAIN] DroneBridge created.")
     prompts = FlySearchPromptHelper(config)
-    _ = MissionManager(event_bus, prompts)
+    _ = MissionManager(event_bus, prompts, video_enabled=config.video_enabled)
     logger.debug("[MAIN] Mission Manager created.")
     logger.debug("[MAIN] Search Orchestrator created.")
 

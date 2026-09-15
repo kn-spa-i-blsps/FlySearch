@@ -16,6 +16,7 @@ class Config:
     video_device: str
     video_dir: str
     record_fps: int
+    video_enabled: bool
     commands_dir: Path
     telemetry_template: Path
     mav_device: str
@@ -51,6 +52,10 @@ class Config:
         )
         parser.add_argument(
             "--record_fps", default=int(os.environ.get("RECORD_FPS", "30")), type=int
+        )
+        parser.add_argument(
+            "--enable_video",
+            default=os.environ.get("ENABLE_VIDEO", "0"),
         )
         parser.add_argument(
             "--commands", default=os.environ.get("COMMANDS_DIR", "/commands")
@@ -94,6 +99,8 @@ class Config:
             video_device=args.video_device,
             video_dir=args.video_dir,
             record_fps=args.record_fps,
+            video_enabled=str(args.enable_video).strip().lower()
+            in ("1", "true", "yes", "on"),
             commands_dir=Path(args.commands),
             telemetry_template=Path(args.telemetry_template),
             mav_device=args.mav_device,

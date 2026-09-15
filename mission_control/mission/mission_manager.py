@@ -10,9 +10,12 @@ logger = logging.getLogger(__name__)
 class MissionManager:
     """Manages new orchestrators' creation."""
 
-    def __init__(self, event_bus: EventBus, prompts: PromptHelper):
+    def __init__(
+        self, event_bus: EventBus, prompts: PromptHelper, *, video_enabled: bool = False
+    ):
         self.event_bus = event_bus
         self.prompts = prompts
+        self.video_enabled = video_enabled
         self.active_missions: dict[str, SearchOrchestrator] = {}
         self.event_bus.subscribe(StartMissionCommand, self.handle_start_mission)
         self.event_bus.subscribe(SearchEnded, self.handle_mission_ended)
@@ -30,7 +33,9 @@ class MissionManager:
             f"[MISSION MANAGER] Spawning new Orchestrator for mission: {mission_id}"
         )
 
-        orchestrator = SearchOrchestrator(self.event_bus, self.prompts)
+        orchestrator = SearchOrchestrator(
+            self.event_bus, self.prompts, video_enabled=self.video_enabled
+        )
         self.active_missions[mission_id] = orchestrator
         try:
             await orchestrator.start(event)

@@ -40,6 +40,12 @@ class Config:
         self.pull_batch_size = int(os.environ.get("PULL_BATCH_SIZE", "2"))
         self.pull_chunk_bytes = int(os.environ.get("PULL_CHUNK_BYTES", str(512 * 1024)))
         self.record_fps_default = int(os.environ.get("RECORD_FPS", "30"))
+        self.video_enabled = os.environ.get("ENABLE_VIDEO", "0").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
 
         # here just to remember to add it to environ.
         self.gemini_api_key = os.environ.get("GEMINI_AI_KEY", None)

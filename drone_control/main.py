@@ -32,14 +32,18 @@ class DroneControl:
             mav_baud=self.config.mav_baud,
             timeout=self.config.telemetry_timeout,
         )
-        self.recording_sensor = RecordingSensor(
-            video_dir=self.config.video_dir,
-            width=self.config.width,
-            height=self.config.height,
-            record_fps=self.config.record_fps,
-            quality=self.config.quality,
-            video_device=self.config.video_device,
-        )
+        self.recording_sensor = None
+        if self.config.video_enabled:
+            self.recording_sensor = RecordingSensor(
+                video_dir=self.config.video_dir,
+                width=self.config.width,
+                height=self.config.height,
+                record_fps=self.config.record_fps,
+                quality=self.config.quality,
+                video_device=self.config.video_device,
+            )
+        else:
+            print("[RPi] Video recording disabled (set ENABLE_VIDEO=1 to enable it).")
 
         self.flight_controller = FlightController(
             exec_moves=self.config.exec_moves,
@@ -77,6 +81,9 @@ class DroneControl:
         Ref-counted recording may have multiple active "owners"
         (e.g., manual start + SEARCH), so drain until fully stopped.
         """
+        if self.recording_sensor is None:
+            return
+
         try:
             status = self.recording_sensor.status()
         except Exception as exc:
