@@ -9,9 +9,6 @@ class Config:
         # VLM model for the LLM backend factories.
         self.model_backend = os.environ.get("MODEL_BACKEND", "gemini")
         self.model_name = os.environ.get("MODEL_NAME", "gemini-2.5-flash")
-        self.vlm_ping_timeout_seconds = self._positive_float_env(
-            "VLM_PING_TIMEOUT_SECONDS", 120.0
-        )
 
         # Host and port on which to listen for the data from the drone.
         self.host = os.environ.get("WS_HOST", "0.0.0.0")
@@ -68,10 +65,3 @@ class Config:
         if text in ("", "none", "null", "off"):
             return None
         return float(text)
-
-    @staticmethod
-    def _positive_float_env(name: str, default: float) -> float:
-        value = float(os.environ.get(name, str(default)))
-        if value <= 0:
-            raise ValueError(f"{name} must be greater than zero")
-        return value

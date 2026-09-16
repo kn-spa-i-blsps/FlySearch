@@ -77,27 +77,13 @@ ENABLE_VIDEO=0 # Set to 1 only when video recording is working
 ```
 
 ### 2. Build Docker Images
-
-#### Laptop
-Run this command on the laptop to build the Mission Control image:
+Run this command on **both** machines to build the respective containers:
 
 ```bash
 docker build -t flysearch:latest .
 ```
 
-#### Raspberry Pi
-Run this command on the Raspberry Pi to build the drone producer image:
-
-```bash
-cd docker
-docker compose --profile producer build producer
-```
-
-For hardware-free testing, build `producer_test` instead:
-
-```bash
-docker compose --profile producer_test build producer_test
-```
+---
 
 ## 4. Running the System
 
@@ -187,7 +173,6 @@ You can also run individual commands in the `mission_control` CLI to manually co
 | `CHAT_INIT` | Initializes the VLM chat context (requires `PROMPT` first). |
 | `PHOTO_WITH_TELEMETRY` | Captures and caches current image + MAVLink telemetry. |
 | `SEND_TO_VLM` | Sends cached photo + telemetry to the VLM for analysis. |
-| `PING_VLM [prompt]` | Sends an isolated VLM probe. Without a prompt, it uses the default greeting; otherwise it sends the supplied prompt. |
 | `MOVE` | Executes the previously generated relative movement vector. |
 | `START_RECORDING` | Starts saving `.h264` video on the RPi. |
 | `GET_RECORDINGS` | Lists available `.h264` files on the RPi. |

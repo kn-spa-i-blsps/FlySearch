@@ -22,22 +22,6 @@ from PIL import ImageDraw, ImageFont
 DEFAULT_CAMERA_FOV_DEGREES = 10.8
 
 
-# Arducam M12 / Sony IMX477 (1/2.3"), 4056x3040 px, 1.55um pixels, 25mm M12 lens:
-# horizontal FOV 14.4 deg, vertical FOV 10.8 deg, diagonal FOV 17.9 deg.
-#
-# The grid overlay is always drawn on a square-cropped photo (see
-# mission_control.utils.image_processing.crop_img_square and the square
-# capture size drone_control requests from the camera). Going from the 4:3
-# sensor to a square frame crops down to the sensor's full height, so the
-# square frame's angular extent on both axes matches the sensor's VERTICAL
-# FOV, independent of whatever pixel resolution it's finally scaled to.
-# Hence we use 10.8 here, not the horizontal or diagonal figure.
-#
-# Verify this against your actual capture pipeline with
-# scripts/calibrate_grid_scale.py before trusting it for real missions.
-DEFAULT_CAMERA_FOV_DEGREES = 10.8
-
-
 def get_system_font(size: int) -> ImageFont.FreeTypeFont:
     """
     Load font with priority: FONT_LOCATION env var, then NotoSerif-Bold.
