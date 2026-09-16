@@ -1,7 +1,6 @@
 import asyncio
 import io
 import logging
-from time import sleep
 
 from google import genai
 from google.genai import types
@@ -107,15 +106,19 @@ class GeminiConversation(Conversation):
             )
         return types.GenerateContentConfig(**config_dict) if config_dict else None
 
-    async def _send_message_with_retry(self, contents):
+    async def _send_message_with_retry(self, message, history):
+        """Send a turn through AsyncChat so Gemini can manage AFC and chat state."""
         retries = 3
         delay = 5  # seconds
         for i in range(retries):
             try:
-                response = await self.client.aio.models.generate_content(
+                chat = self.client.aio.chats.create(
                     model=self.model_name,
-                    contents=contents,
                     config=self._get_generation_config(),
+                    history=history,
+                )
+                response = await chat.send_message(
+                    message=self._to_gemini_parts(message)
                 )
                 return response
             except (APIError, ServerError) as e:
@@ -124,7 +127,7 @@ class GeminiConversation(Conversation):
                     self.logger.warning(
                         f"APIError received: {e}. Retrying in {delay} seconds..."
                     )
-                    sleep(delay)
+                    await asyncio.sleep(delay)
                     delay *= 2  # Exponential backoff
                 else:
                     self.logger.error(f"Unhandled APIError: {e}")
@@ -153,18 +156,22 @@ class GeminiConversation(Conversation):
         if role == Role.ASSISTANT and send_to_vlm:
             raise Exception("Assistant cannot send messages to VLM")
 
-        contents = []
-        for msg in self.conversation:
+        history = []
+        for msg in self.conversation[:-1]:
             msg_role = "user" if msg["role"] == "user" else "model"
-            contents.append(
+            history.append(
                 types.Content(
                     role=msg_role, parts=self._to_gemini_parts(msg["content"])
                 )
             )
 
-        response = await self._send_message_with_retry(contents)
+        response = await self._send_message_with_retry(
+            message_to_commit["content"], history
+        )
 
-        response_content = str(response.text)
+        response_content = response.text
+        if response_content is None:
+            raise RuntimeError("Gemini returned a response without text")
 
         self.logger.info(f"LLM response: {response_content}")
 

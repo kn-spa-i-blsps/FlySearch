@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from PIL import Image
 
@@ -16,7 +18,7 @@ class MockGemini:
         response_mock = SimpleObject()
         response_mock.__dict__["text"] = to_return
 
-        def mocked_fun(*args, **kwargs):
+        async def mocked_fun(*args, **kwargs):
             self.mock_send_message_args.append(args)
             self.mock_send_message_kwargs.append(kwargs)
 
@@ -28,8 +30,10 @@ class MockGemini:
 
     def __init__(self, api_key, response: str = "mocked_response"):
         self.response_text = response
-        self.chats = SimpleObject()
-        self.chats.__dict__["create"] = self.mock_create_function()
+        self.mock_create_kwargs = []
+        self.aio = SimpleObject()
+        self.aio.chats = SimpleObject()
+        self.aio.chats.__dict__["create"] = self.mock_create_function()
 
         self.mock_send_message_args = []
         self.mock_send_message_kwargs = []
@@ -42,6 +46,7 @@ class MockGemini:
         )
 
         def mocked_fun(*args, **kwargs):
+            self.mock_create_kwargs.append(kwargs)
             return chat_mock
 
         return mocked_fun
@@ -54,6 +59,9 @@ class MockGemini:
 
     def get_mock_send_message_messages(self):
         return self.mock_send_message_messages
+
+    def get_mock_create_kwargs(self):
+        return self.mock_create_kwargs
 
 
 class TestGeminiConversation:
@@ -80,8 +88,8 @@ class TestGeminiConversation:
 
         conversation.begin_transaction(Role.USER)
         conversation.add_text_message("mock_message")
-        conversation.add_image_message(img)
-        conversation.commit_transaction(send_to_vlm=True)
+        asyncio.run(conversation.add_image_message(img))
+        asyncio.run(conversation.commit_transaction(send_to_vlm=True))
 
         assert len(gemini_mock.get_mock_send_message_args()) == 1
         assert len(gemini_mock.get_mock_send_message_kwargs()) == 1
@@ -102,14 +110,14 @@ class TestGeminiConversation:
 
         conversation.begin_transaction(Role.USER)
         conversation.add_text_message("mock_message")
-        conversation.add_image_message(img)
+        asyncio.run(conversation.add_image_message(img))
         conversation.rollback_transaction()
 
         assert len(gemini_mock.get_mock_send_message_args()) == 0
         assert len(gemini_mock.get_mock_send_message_kwargs()) == 0
 
         with pytest.raises(Exception):
-            conversation.commit_transaction(send_to_vlm=True)
+            asyncio.run(conversation.commit_transaction(send_to_vlm=True))
 
     def test_get_latest_message_returns_last_message(self):
         gemini_mock = MockGemini("mock_key")
@@ -120,10 +128,30 @@ class TestGeminiConversation:
 
         conversation.begin_transaction(Role.USER)
         conversation.add_text_message("mock_message")
-        conversation.commit_transaction(send_to_vlm=True)
+        asyncio.run(conversation.commit_transaction(send_to_vlm=True))
 
         latest_message = conversation.get_latest_message()
         assert latest_message == (Role.ASSISTANT, "mocked_response")
+
+    def test_second_message_uses_async_chat_with_prior_history(self):
+        gemini_mock = MockGemini("mock_key")
+        conversation = GeminiConversation(gemini_mock, model_name="mock_model")
+
+        conversation.begin_transaction(Role.USER)
+        conversation.add_text_message("first message")
+        asyncio.run(conversation.commit_transaction(send_to_vlm=True))
+
+        conversation.begin_transaction(Role.USER)
+        conversation.add_text_message("second message")
+        asyncio.run(conversation.commit_transaction(send_to_vlm=True))
+
+        create_calls = gemini_mock.get_mock_create_kwargs()
+        assert len(create_calls) == 2
+        second_history = create_calls[1]["history"]
+        assert [content.role for content in second_history] == ["user", "model"]
+        assert (
+            gemini_mock.get_mock_send_message_messages()[1][0].text == "second message"
+        )
 
     def test_get_latest_message_throws_if_no_messages(self):
         gemini_mock = MockGemini("mock_key")
