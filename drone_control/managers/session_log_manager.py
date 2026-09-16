@@ -5,6 +5,7 @@ from drone_control.utils.time import now_ts
 
 class SessionLogManager:
     """Handles persistent command logging."""
+
     def __init__(self, runtime_context: RuntimeContext):
         self.runtime_context = runtime_context
 
@@ -16,7 +17,9 @@ class SessionLogManager:
         self._store(normalized)
         return normalized
 
-    def store_move(self, seq: int, move: tuple[float, float, float]) -> dict[str, object]:
+    def store_move(
+        self, seq: int, move: tuple[float, float, float]
+    ) -> dict[str, object]:
         normalized: dict[str, object] = {
             "ts": now_ts(),
             "seq": seq,

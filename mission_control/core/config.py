@@ -24,9 +24,9 @@ class Config:
 
         # Directories to save the output.
         self.chats_dir = Path(os.environ.get("CHATS_DIR", "saved_chats"))
-        self.upload_dir = os.environ.get("UPLOAD_DIR", "uploads")
-        self.prompts_dir = os.environ.get("PROMPTS_DIR", "prompts")
-        self.telemetry_dir = os.environ.get("TELEMETRY_DIR", "telemetry")
+        self.upload_dir = Path(os.environ.get("UPLOAD_DIR", "uploads"))
+        self.prompts_dir = Path(os.environ.get("PROMPTS_DIR", "prompts"))
+        self.telemetry_dir = Path(os.environ.get("TELEMETRY_DIR", "telemetry"))
         self.recordings_dir = Path(os.environ.get("RECORDINGS_DIR", "recordings"))
         self.recordings_raw_dir = self.recordings_dir / "raw"
         self.recordings_mp4_dir = self.recordings_dir / "mp4"
@@ -43,6 +43,12 @@ class Config:
         self.pull_batch_size = int(os.environ.get("PULL_BATCH_SIZE", "2"))
         self.pull_chunk_bytes = int(os.environ.get("PULL_CHUNK_BYTES", str(512 * 1024)))
         self.record_fps_default = int(os.environ.get("RECORD_FPS", "30"))
+        self.video_enabled = os.environ.get("ENABLE_VIDEO", "0").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
 
         # here just to remember to add it to environ.
         self.gemini_api_key = os.environ.get("GEMINI_AI_KEY", None)

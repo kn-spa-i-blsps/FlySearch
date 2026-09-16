@@ -2,12 +2,13 @@ import pathlib
 import tempfile
 
 from drone_control.core.exceptions import SensorError
-from drone_control.sensors.camera_capture_backend import capture_photo
 from drone_control.sensors.base import Sensor
+from drone_control.sensors.camera_capture_backend import capture_photo
 
 
 class PhotoSensor(Sensor):
     """Capture one camera frame and return it as raw JPEG bytes."""
+
     name = "photo"
 
     def __init__(
@@ -32,7 +33,9 @@ class PhotoSensor(Sensor):
         }
 
     def capture_bytes(self) -> bytes:
-        with tempfile.NamedTemporaryFile(prefix="flysearch_photo_", suffix=".jpg", delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(
+            prefix="flysearch_photo_", suffix=".jpg", delete=False
+        ) as tmp:
             tmp_path = pathlib.Path(tmp.name)
 
         try:

@@ -1,15 +1,17 @@
-from drone_control.actuators.base import Actuator
 from drone_control.actuators.pixhawk_vector_backend import send_vector_command
 from drone_control.utils.coords import grid_xyz_to_ned
 
 
-class FlightController(Actuator):
+class FlightController:
     """Actuator-facing adapter between MOVE commands and Pixhawk MAVLink execution.
-        Receives move vectors from CommandManager and decides whether to execute or log them.
-        Written for the specific flight stack (Pixhawk/MAVLink)."""
+    Receives move vectors from CommandManager and decides whether to execute or log them.
+    Written for the specific flight stack (Pixhawk/MAVLink)."""
+
     name = "flight_controller"
 
-    def __init__(self, *, exec_moves: bool, move_method: int, mav_device: str, mav_baud: int):
+    def __init__(
+        self, *, exec_moves: bool, move_method: int, mav_device: str, mav_baud: int
+    ):
         self.exec_moves = exec_moves
         self.move_method = move_method
         self.mav_device = mav_device

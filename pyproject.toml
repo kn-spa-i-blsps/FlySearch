@@ -1,0 +1,5 @@
+[tool.ruff.lint]
+# Keep the pre-commit baseline focused on correctness and consistently ordered
+# imports. Ruff 0.16 enables every rule when a project has no configuration,
+# including rules that require broader API and error-handling decisions.
+select = ["E4", "E7", "E9", "F", "I"]

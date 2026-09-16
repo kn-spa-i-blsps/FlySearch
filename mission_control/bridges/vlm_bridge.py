@@ -2,13 +2,14 @@ import asyncio
 import time
 
 from conversation.abstract_conversation import Role
+from mission_control.core.mission_context import MissionContext
+
 from mission_control.core.config import Config
 from mission_control.core.exceptions import (
     VLMConnectionError,
     VLMParseError,
     VLMPreconditionsNotMetError,
 )
-from mission_control.core.mission_context import MissionContext
 from mission_control.utils.image_processing import add_grid
 from mission_control.utils.parsers import (
     ParsingError,

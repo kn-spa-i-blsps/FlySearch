@@ -73,6 +73,7 @@ SERVER_URL=ws://<LAPTOP_IP>:8080 # Might need to use wss:// if using Cloudflare 
 MAV_DEVICE=/dev/ttyAMA0
 VIDEO_DEVICE=/dev/video0
 RECORD_FPS=30
+ENABLE_VIDEO=0 # Set to 1 only when video recording is working
 ```
 
 ### 2. Build Docker Images
@@ -81,8 +82,7 @@ RECORD_FPS=30
 Run this command on the laptop to build the Mission Control image:
 
 ```bash
-cd docker
-docker compose --profile server build server
+docker build -t flysearch:latest .
 ```
 
 #### Raspberry Pi

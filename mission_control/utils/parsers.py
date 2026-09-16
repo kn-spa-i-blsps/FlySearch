@@ -1,42 +1,52 @@
 import json
 import re
 from dataclasses import dataclass
-from typing import Dict, Tuple
+
+import aiofiles
 
 from mission_control.core.exceptions import ParsingError
+from mission_control.utils.logger import get_configured_logger
+
+logger = get_configured_logger(__name__)
 
 
-def parse_telemetry(path):
-    """ Parses telemetry data from JSON file.
+async def get_height_async(path):
+    """Parses telemetry data from JSON file asynchronously.
 
-        Returns message for the VLM about current height.
+    Returns height in meters.
     """
 
-    with open(path, "r", encoding="utf-8") as f:
-        telemetry = json.load(f)
+    async with aiofiles.open(path, "r", encoding="utf-8") as f:
+        content = await f.read()
+        telemetry = json.loads(content)
 
     telemetry_data = telemetry.get("data", {})
     height = telemetry_data.get("position", {}).get("alt")
+
     if height is None:
         height = 10
-    return [f"Your current altitude is {height} meters above ground level.", height]
+
+    return height
+
 
 def parse_prompt_arguments(cmd):
     """Divides arguments for the prompt command.
 
-        Returns kind of prompt and dictionary of arguments.
+    Returns kind of prompt and dictionary of arguments.
     """
 
     parts = cmd.split()
     if len(parts) < 1:
-        print("Usage: PROMPT FS-1|FS-2 [object=.. glimpses=.. area=.. minimum_altitude=..]")
+        logger.info(
+            "Usage: PROMPT FS-1|FS-2 [object=.. glimpses=.. area=.. minimum_altitude=..]"
+        )
         raise ValueError
     kind = parts[0].upper()
     if kind not in ("FS-1", "FS-2"):
-        print("Kind must be FS-1 or FS-2")
+        logger.info("Kind must be FS-1 or FS-2")
         raise ValueError
 
-    kv: Dict[str, int | str] = {}
+    kv: dict[str, int | str] = {}
     for token in parts[1:]:
         if "=" in token:
             k, v = token.split("=", 1)
@@ -46,38 +56,42 @@ def parse_prompt_arguments(cmd):
     _coerce_positive_int(kv, "minimum_altitude")
     return kind, kv
 
+
 def parse_search_arguments(cmd):
     """Divides arguments for the search command.
 
-        Returns name, kind of prompt and dictionary of arguments.
+    Returns name, kind of prompt and dictionary of arguments.
     """
 
     parts = cmd.split()
-    if len(parts) not in [5, 6]:
-        print("Usage: SEARCH <NAME> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=..]")
+    if len(parts) not in [6, 7]:
+        logger.info(
+            "Usage: SEARCH <mission_id> <drone_id> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=..]"
+        )
         raise ValueError
-    name = parts[0].upper()
-    kind = parts[1].upper()
+    mission_id = parts[0]
+    drone_id = parts[1]
+    kind = parts[2].upper()
     if kind not in ("FS-1", "FS-2"):
-        print("Kind must be FS-1 or FS-2")
+        logger.info("Kind must be FS-1 or FS-2")
         raise ValueError
 
-    kv: Dict[str, int | str] = {}
-    for token in parts[2:]:
+    kv: dict[str, int | str] = {}
+    for token in parts[3:]:
         if "=" in token:
             k, v = token.split("=", 1)
             kv[k.strip().lower()] = v.strip()
     if "glimpses" not in kv:
-        print("SEARCH requires glimpses=<max_moves>")
+        logger.info("SEARCH requires glimpses=<max_moves>")
         raise ValueError
 
     _coerce_positive_int(kv, "glimpses")
     _coerce_positive_int(kv, "area")
     _coerce_positive_int(kv, "minimum_altitude")
-    return name, kind, kv
+    return mission_id, drone_id, kind, kv
 
 
-def _coerce_positive_int(kv: Dict[str, int | str], key: str) -> None:
+def _coerce_positive_int(kv: dict[str, int | str], key: str) -> None:
     """Convert numeric CLI options to positive integers in place."""
     if key not in kv:
         return
@@ -85,11 +99,11 @@ def _coerce_positive_int(kv: Dict[str, int | str], key: str) -> None:
     try:
         value = int(str(kv[key]).strip())
     except (TypeError, ValueError):
-        print(f"{key} must be an integer.")
+        logger.warning(f"{key} must be an integer.")
         raise ValueError
 
     if value <= 0:
-        print(f"{key} must be greater than 0.")
+        logger.warning(f"{key} must be greater than 0.")
         raise ValueError
 
     kv[key] = value
@@ -98,31 +112,44 @@ def _coerce_positive_int(kv: Dict[str, int | str], key: str) -> None:
 @dataclass
 class ModelResponse:
     found: bool = False
-    move: Tuple[float, float, float] = None
+    move: tuple[float, float, float] = (0, 0, 0)
+    reasoning: str = ""
+
+
+ACTION_PATTERN = re.compile(r"<action>(.*?)</action>", flags=re.DOTALL | re.IGNORECASE)
+REASONING_PATTERN = re.compile(
+    r"<reasoning>(.*?)</reasoning>", flags=re.DOTALL | re.IGNORECASE
+)
+
 
 def parse_xml_response(model_response: str) -> ModelResponse:
-    xml_response_pattern = re.compile(r"^.*?<action>(.*?)</action>.*$", flags=re.DOTALL)
-    model_response = model_response.lower().strip()
-    match = xml_response_pattern.match(model_response)
+    model_response_clean = model_response.strip()
+    model_response_lower = model_response_clean.lower()
 
-    if not match:
-        if "found" in model_response:
-            # If the response contains 'found' but doesn't match the XML pattern, assume it's a found action
-            return ModelResponse(found=True)
+    reasoning = ""
+    reasoning_match = REASONING_PATTERN.search(model_response_clean)
+    if reasoning_match:
+        reasoning = reasoning_match.group(1).strip()
 
-        raise ParsingError(f"Invalid XML response: {model_response}")
+    action_match = ACTION_PATTERN.search(model_response_clean)
 
-    action = match.group(1).strip()
+    if not action_match:
+        if "found" in model_response_lower:
+            return ModelResponse(found=True, reasoning=reasoning)
+
+        raise ParsingError(f"Invalid XML response: {model_response_clean}")
+
+    action = action_match.group(1).lower().strip()
 
     if "found" in action:
-        return ModelResponse(found=True)
+        return ModelResponse(found=True, reasoning=reasoning)
 
     try:
-        action = action.replace("(", "").replace(")", "")
-        action = action.split(",")
+        action_clean = action.replace("(", "").replace(")", "")
+        action_parts = action_clean.split(",")
         # east_diff, north_diff, up_diff
-        action = float(action[0]), float(action[1]), float(action[2])
+        move = (float(action_parts[0]), float(action_parts[1]), float(action_parts[2]))
     except (ValueError, IndexError):
         raise ParsingError(f"Invalid action format: {action}")
 
-    return ModelResponse(move=action)
+    return ModelResponse(move=move, reasoning=reasoning)

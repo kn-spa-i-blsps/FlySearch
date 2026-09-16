@@ -1,13 +1,16 @@
-
 import asyncio
 import io
 import sys
 import unittest
 from types import ModuleType
-from unittest.mock import Mock, patch, MagicMock, call
+from unittest.mock import MagicMock, Mock, call, patch
 
 from mission_control.bridges.vlm_bridge import VLMBridge
-from mission_control.core.exceptions import VLMPreconditionsNotMetError, VLMParseError, VLMConnectionError
+from mission_control.core.exceptions import (
+    VLMConnectionError,
+    VLMParseError,
+    VLMPreconditionsNotMetError,
+)
 from mission_control.utils.parsers import ParsingError
 
 
@@ -18,94 +21,119 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         self.mission_context.parsed_response = None
         self.bridge = VLMBridge(self.config, self.mission_context)
 
-    @patch('mission_control.bridges.vlm_bridge.parse_xml_response')
-    @patch('mission_control.bridges.vlm_bridge.add_grid')
-    @patch('mission_control.bridges.vlm_bridge.parse_telemetry')
-    async def test_send_to_vlm_success(self, mock_parse_telemetry, mock_add_grid, mock_parse_xml_response):
+    @patch("mission_control.bridges.vlm_bridge.parse_xml_response")
+    @patch("mission_control.bridges.vlm_bridge.add_grid")
+    @patch("mission_control.bridges.vlm_bridge.parse_telemetry")
+    async def test_send_to_vlm_success(
+        self, mock_parse_telemetry, mock_add_grid, mock_parse_xml_response
+    ):
         # Arrange
         self.mission_context.conversation = MagicMock()
-        self.mission_context.last_photo_path_cache = 'dummy_photo.jpg'
-        self.mission_context.last_telemetry_path_cache = 'dummy_telemetry.json'
+        self.mission_context.last_photo_path_cache = "dummy_photo.jpg"
+        self.mission_context.last_telemetry_path_cache = "dummy_telemetry.json"
 
-        mock_parse_telemetry.return_value = ('telemetry_text', 100)
-        mock_add_grid.return_value = 'gridded_image'
-        
+        mock_parse_telemetry.return_value = ("telemetry_text", 100)
+        mock_add_grid.return_value = "gridded_image"
+
         self.mission_context.conversation.get_latest_message.return_value = (
-            "assistant", "<response><move>forward</move></response>"
+            "assistant",
+            "<response><move>forward</move></response>",
         )
-        
-        mock_parse_xml_response.return_value = {'move': 'forward'}
+
+        mock_parse_xml_response.return_value = {"move": "forward"}
 
         # Act
         await self.bridge.send_to_vlm()
 
         # Assert
-        self.mission_context.conversation.add_image_message.assert_called_with('gridded_image')
-        self.mission_context.conversation.add_text_message.assert_called_with('telemetry_text')
+        self.mission_context.conversation.add_image_message.assert_called_with(
+            "gridded_image"
+        )
+        self.mission_context.conversation.add_text_message.assert_called_with(
+            "telemetry_text"
+        )
         self.mission_context.conversation.begin_transaction.assert_called_once()
-        self.mission_context.conversation.commit_transaction.assert_called_with(send_to_vlm=True)
-        mock_parse_xml_response.assert_called_with('<response><move>forward</move></response>')
-        self.assertEqual(self.mission_context.parsed_response, {'move': 'forward'})
+        self.mission_context.conversation.commit_transaction.assert_called_with(
+            send_to_vlm=True
+        )
+        mock_parse_xml_response.assert_called_with(
+            "<response><move>forward</move></response>"
+        )
+        self.assertEqual(self.mission_context.parsed_response, {"move": "forward"})
 
-    @patch('mission_control.bridges.vlm_bridge.parse_xml_response')
-    @patch('mission_control.bridges.vlm_bridge.add_grid')
-    @patch('mission_control.bridges.vlm_bridge.parse_telemetry')
-    async def test_send_to_vlm_with_warning_flag(self, mock_parse_telemetry, mock_add_grid, mock_parse_xml_response):
+    @patch("mission_control.bridges.vlm_bridge.parse_xml_response")
+    @patch("mission_control.bridges.vlm_bridge.add_grid")
+    @patch("mission_control.bridges.vlm_bridge.parse_telemetry")
+    async def test_send_to_vlm_with_warning_flag(
+        self, mock_parse_telemetry, mock_add_grid, mock_parse_xml_response
+    ):
         # Arrange
         self.mission_context.conversation = MagicMock()
-        self.mission_context.last_photo_path_cache = 'dummy_photo.jpg'
-        self.mission_context.last_telemetry_path_cache = 'dummy_telemetry.json'
+        self.mission_context.last_photo_path_cache = "dummy_photo.jpg"
+        self.mission_context.last_telemetry_path_cache = "dummy_telemetry.json"
 
-        mock_parse_telemetry.return_value = ('telemetry_text', 100)
-        mock_add_grid.return_value = 'gridded_image'
-        
+        mock_parse_telemetry.return_value = ("telemetry_text", 100)
+        mock_add_grid.return_value = "gridded_image"
+
         self.mission_context.conversation.get_latest_message.return_value = (
-            "assistant", "<response><move>left</move></response>"
+            "assistant",
+            "<response><move>left</move></response>",
         )
-        
-        mock_parse_xml_response.return_value = {'move': 'left'}
-        
+
+        mock_parse_xml_response.return_value = {"move": "left"}
+
         # Act
         await self.bridge.send_to_vlm(is_warning=True)
 
         # Assert
         expected_calls = [
             call(self.bridge.collision_warning_str),
-            call('telemetry_text')
+            call("telemetry_text"),
         ]
-        self.mission_context.conversation.add_text_message.assert_has_calls(expected_calls)
-        self.mission_context.conversation.add_image_message.assert_called_with('gridded_image')
-        self.assertEqual(self.mission_context.parsed_response, {'move': 'left'})
+        self.mission_context.conversation.add_text_message.assert_has_calls(
+            expected_calls
+        )
+        self.mission_context.conversation.add_image_message.assert_called_with(
+            "gridded_image"
+        )
+        self.assertEqual(self.mission_context.parsed_response, {"move": "left"})
 
-    @patch('mission_control.bridges.vlm_bridge.parse_xml_response')
-    @patch('mission_control.bridges.vlm_bridge.add_grid')
-    @patch('mission_control.bridges.vlm_bridge.parse_telemetry')
-    async def test_send_to_vlm_works_if_transaction_already_started(self, mock_parse_telemetry, mock_add_grid, mock_parse_xml_response):
+    @patch("mission_control.bridges.vlm_bridge.parse_xml_response")
+    @patch("mission_control.bridges.vlm_bridge.add_grid")
+    @patch("mission_control.bridges.vlm_bridge.parse_telemetry")
+    async def test_send_to_vlm_works_if_transaction_already_started(
+        self, mock_parse_telemetry, mock_add_grid, mock_parse_xml_response
+    ):
         # Arrange
         self.mission_context.conversation = MagicMock()
-        self.mission_context.last_photo_path_cache = 'dummy_photo.jpg'
-        self.mission_context.last_telemetry_path_cache = 'dummy_telemetry.json'
+        self.mission_context.last_photo_path_cache = "dummy_photo.jpg"
+        self.mission_context.last_telemetry_path_cache = "dummy_telemetry.json"
 
-        mock_parse_telemetry.return_value = ('telemetry_text', 100)
-        mock_add_grid.return_value = 'gridded_image'
-        mock_parse_xml_response.return_value = {'move': 'forward'}
-        self.mission_context.conversation.begin_transaction.side_effect = Exception("Transaction already started")
+        mock_parse_telemetry.return_value = ("telemetry_text", 100)
+        mock_add_grid.return_value = "gridded_image"
+        mock_parse_xml_response.return_value = {"move": "forward"}
+        self.mission_context.conversation.begin_transaction.side_effect = Exception(
+            "Transaction already started"
+        )
         self.mission_context.conversation.get_latest_message.return_value = (
-            "assistant", "<response><move>forward</move></response>"
+            "assistant",
+            "<response><move>forward</move></response>",
         )
 
         # Act
         await self.bridge.send_to_vlm()
 
         # Assert
-        self.mission_context.conversation.commit_transaction.assert_called_once_with(send_to_vlm=True)
-        self.assertEqual(self.mission_context.parsed_response, {'move': 'forward'})
+        self.mission_context.conversation.commit_transaction.assert_called_once_with(
+            send_to_vlm=True
+        )
+        self.assertEqual(self.mission_context.parsed_response, {"move": "forward"})
 
     async def test_send_to_vlm_no_conversation_raises_error(self):
         # Arrange
         self.mission_context.conversation = None
-        self.mission_context.last_photo_path_cache = 'dummy_photo.jpg'
-        self.mission_context.last_telemetry_path_cache = 'dummy_telemetry.json'
+        self.mission_context.last_photo_path_cache = "dummy_photo.jpg"
+        self.mission_context.last_telemetry_path_cache = "dummy_telemetry.json"
 
         # Act & Assert
         with self.assertRaises(VLMPreconditionsNotMetError):
@@ -121,66 +149,77 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(VLMPreconditionsNotMetError):
             await self.bridge.send_to_vlm()
 
-    @patch('mission_control.bridges.vlm_bridge.parse_xml_response')
-    @patch('mission_control.bridges.vlm_bridge.add_grid')
-    @patch('mission_control.bridges.vlm_bridge.parse_telemetry')
-    async def test_send_to_vlm_parsing_error_raises_error(self, mock_parse_telemetry, mock_add_grid, mock_parse_xml_response):
+    @patch("mission_control.bridges.vlm_bridge.parse_xml_response")
+    @patch("mission_control.bridges.vlm_bridge.add_grid")
+    @patch("mission_control.bridges.vlm_bridge.parse_telemetry")
+    async def test_send_to_vlm_parsing_error_raises_error(
+        self, mock_parse_telemetry, mock_add_grid, mock_parse_xml_response
+    ):
         # Arrange
         self.mission_context.conversation = MagicMock()
-        self.mission_context.last_photo_path_cache = 'dummy_photo.jpg'
-        self.mission_context.last_telemetry_path_cache = 'dummy_telemetry.json'
-        
-        mock_parse_telemetry.return_value = ('telemetry_text', 100)
-        mock_add_grid.return_value = 'gridded_image'
-        
+        self.mission_context.last_photo_path_cache = "dummy_photo.jpg"
+        self.mission_context.last_telemetry_path_cache = "dummy_telemetry.json"
+
+        mock_parse_telemetry.return_value = ("telemetry_text", 100)
+        mock_add_grid.return_value = "gridded_image"
+
         self.mission_context.conversation.get_latest_message.return_value = (
-            "assistant", "invalid_xml"
+            "assistant",
+            "invalid_xml",
         )
-        
+
         mock_parse_xml_response.side_effect = ParsingError("Invalid XML")
 
         # Act & Assert
         with self.assertRaises(VLMParseError):
             await self.bridge.send_to_vlm()
 
-    @patch('mission_control.bridges.vlm_bridge.parse_telemetry')
-    async def test_send_to_vlm_telemetry_file_not_found_raises_error(self, mock_parse_telemetry):
+    @patch("mission_control.bridges.vlm_bridge.parse_telemetry")
+    async def test_send_to_vlm_telemetry_file_not_found_raises_error(
+        self, mock_parse_telemetry
+    ):
         # Arrange
         self.mission_context.conversation = MagicMock()
-        self.mission_context.last_photo_path_cache = 'dummy_photo.jpg'
-        self.mission_context.last_telemetry_path_cache = 'dummy_telemetry.json'
+        self.mission_context.last_photo_path_cache = "dummy_photo.jpg"
+        self.mission_context.last_telemetry_path_cache = "dummy_telemetry.json"
         mock_parse_telemetry.side_effect = FileNotFoundError
 
         # Act & Assert
         with self.assertRaises(FileNotFoundError):
             await self.bridge.send_to_vlm()
 
-    @patch('mission_control.bridges.vlm_bridge.add_grid')
-    @patch('mission_control.bridges.vlm_bridge.parse_telemetry')
-    async def test_send_to_vlm_photo_file_not_found_raises_error(self, mock_parse_telemetry, mock_add_grid):
+    @patch("mission_control.bridges.vlm_bridge.add_grid")
+    @patch("mission_control.bridges.vlm_bridge.parse_telemetry")
+    async def test_send_to_vlm_photo_file_not_found_raises_error(
+        self, mock_parse_telemetry, mock_add_grid
+    ):
         # Arrange
         self.mission_context.conversation = MagicMock()
-        self.mission_context.last_photo_path_cache = 'dummy_photo.jpg'
-        self.mission_context.last_telemetry_path_cache = 'dummy_telemetry.json'
-        mock_parse_telemetry.return_value = ('telemetry_text', 100)
+        self.mission_context.last_photo_path_cache = "dummy_photo.jpg"
+        self.mission_context.last_telemetry_path_cache = "dummy_telemetry.json"
+        mock_parse_telemetry.return_value = ("telemetry_text", 100)
         mock_add_grid.side_effect = FileNotFoundError
 
         # Act & Assert
         with self.assertRaises(FileNotFoundError):
             await self.bridge.send_to_vlm()
 
-    @patch('mission_control.bridges.vlm_bridge.add_grid')
-    @patch('mission_control.bridges.vlm_bridge.parse_telemetry')
-    async def test_send_to_vlm_connection_error_raises_error(self, mock_parse_telemetry, mock_add_grid):
+    @patch("mission_control.bridges.vlm_bridge.add_grid")
+    @patch("mission_control.bridges.vlm_bridge.parse_telemetry")
+    async def test_send_to_vlm_connection_error_raises_error(
+        self, mock_parse_telemetry, mock_add_grid
+    ):
         # Arrange
         self.mission_context.conversation = MagicMock()
-        self.mission_context.last_photo_path_cache = 'dummy_photo.jpg'
-        self.mission_context.last_telemetry_path_cache = 'dummy_telemetry.json'
-        
-        mock_parse_telemetry.return_value = ('telemetry_text', 100)
-        mock_add_grid.return_value = 'gridded_image'
-        
-        self.mission_context.conversation.commit_transaction.side_effect = Exception("Connection failed")
+        self.mission_context.last_photo_path_cache = "dummy_photo.jpg"
+        self.mission_context.last_telemetry_path_cache = "dummy_telemetry.json"
+
+        mock_parse_telemetry.return_value = ("telemetry_text", 100)
+        mock_add_grid.return_value = "gridded_image"
+
+        self.mission_context.conversation.commit_transaction.side_effect = Exception(
+            "Connection failed"
+        )
 
         # Act & Assert
         with self.assertRaises(VLMConnectionError):
@@ -191,13 +230,17 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         self.config.model_name = "test-model"
         self.config.vlm_ping_timeout_seconds = 1.0
 
-        with patch.object(self.bridge, '_send_ping_request', return_value='hello FlySearch') as send_ping, \
-                patch('sys.stdout', new_callable=io.StringIO) as stdout:
+        with (
+            patch.object(
+                self.bridge, "_send_ping_request", return_value="hello FlySearch"
+            ) as send_ping,
+            patch("sys.stdout", new_callable=io.StringIO) as stdout,
+        ):
             result = await self.bridge.ping_vlm()
 
         self.assertTrue(result)
         send_ping.assert_called_once_with(self.bridge.PING_PROMPT)
-        self.assertIn('[VLM PING] OK: response received in', stdout.getvalue())
+        self.assertIn("[VLM PING] OK: response received in", stdout.getvalue())
         self.assertIn("'hello FlySearch'", stdout.getvalue())
 
     async def test_ping_vlm_uses_an_alternative_prompt(self):
@@ -206,13 +249,17 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         self.config.vlm_ping_timeout_seconds = 1.0
         prompt = "Reply with the current model name."
 
-        with patch.object(self.bridge, '_send_ping_request', return_value='test-model') as send_ping, \
-                patch('sys.stdout', new_callable=io.StringIO) as stdout:
+        with (
+            patch.object(
+                self.bridge, "_send_ping_request", return_value="test-model"
+            ) as send_ping,
+            patch("sys.stdout", new_callable=io.StringIO) as stdout,
+        ):
             result = await self.bridge.ping_vlm(prompt)
 
         self.assertTrue(result)
         send_ping.assert_called_once_with(prompt)
-        self.assertNotIn('expected greeting', stdout.getvalue())
+        self.assertNotIn("expected greeting", stdout.getvalue())
 
     def test_send_ping_request_suppresses_backend_response_echo(self):
         self.config.model_backend = "test-backend"
@@ -221,10 +268,10 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         conversation.get_latest_message.return_value = ("assistant", "pong")
         factory = MagicMock()
         factory.return_value.get_conversation.return_value = conversation
-        conversations = ModuleType('conversation.conversations')
+        conversations = ModuleType("conversation.conversations")
         conversations.LLM_BACKEND_FACTORIES = {"test-backend": factory}
 
-        with patch.dict(sys.modules, {'conversation.conversations': conversations}):
+        with patch.dict(sys.modules, {"conversation.conversations": conversations}):
             response = self.bridge._send_ping_request("Reply with pong.")
 
         self.assertEqual(response, "pong")
@@ -239,14 +286,19 @@ class TestVLMBridge(unittest.IsolatedAsyncioTestCase):
         async def never_returns(*_args, **_kwargs):
             await asyncio.Future()
 
-        with patch('mission_control.bridges.vlm_bridge.asyncio.to_thread', side_effect=never_returns), \
-                patch('sys.stdout', new_callable=io.StringIO) as stdout:
+        with (
+            patch(
+                "mission_control.bridges.vlm_bridge.asyncio.to_thread",
+                side_effect=never_returns,
+            ),
+            patch("sys.stdout", new_callable=io.StringIO) as stdout,
+        ):
             result = await self.bridge.ping_vlm()
 
         self.assertFalse(result)
-        self.assertIn('COMMUNICATION ERROR', stdout.getvalue())
-        self.assertIn('no response within', stdout.getvalue())
+        self.assertIn("COMMUNICATION ERROR", stdout.getvalue())
+        self.assertIn("no response within", stdout.getvalue())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
