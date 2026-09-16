@@ -58,6 +58,7 @@ class SearchOrchestrator:
         self.max_moves: int = 0
         self.prompt_helper = prompts
         self.current_move = None
+        self.move_failures = 0
 
         self.event_bus.subscribe(
             PhotoWithTelemetryReceived, self.handle_photo_and_telemetry
@@ -179,6 +180,7 @@ class SearchOrchestrator:
 
         if event.decision == ActionStatus.CONFIRMED:
             self.current_move = event.move
+            self.move_failures = 0
             command = ExecuteMoveCommand(drone_id=self.drone_id, move=event.move)
             self.state = MissionState.WAITING_FOR_ACK
             await self.event_bus.publish(command)
@@ -200,6 +202,18 @@ class SearchOrchestrator:
             logger.warning("[SEARCH] Move executed, but we are not in FLYING state.")
             return
 
+        if not getattr(event, "ok", True):
+            self.move_failures += 1
+            if self.move_failures >= 3:
+                await self._abort_mission("Move failed 3 times consecutively.")
+            else:
+                logger.warning(f"[SEARCH] Move failed (attempt {self.move_failures}). Retrying...")
+                self.state = MissionState.WAITING_FOR_ACK
+                command = ExecuteMoveCommand(drone_id=self.drone_id, move=self.current_move)
+                await self.event_bus.publish(command)
+            return
+
+        self.move_failures = 0
         self.moves_performed += 1
 
         self.state = MissionState.WAITING_FOR_DRONE

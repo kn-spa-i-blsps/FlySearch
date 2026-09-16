@@ -44,6 +44,7 @@ class AskUserConfirmationCommand(Command):
 @dataclass(kw_only=True)
 class MoveExecuted(Event):
     drone_id: str
+    ok: bool = True
 
 
 @dataclass(kw_only=True)

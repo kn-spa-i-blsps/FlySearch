@@ -436,8 +436,7 @@ class WebSocketDroneBridge:
 
             case {"type": "MOVE_EXECUTED", "seq": seq, "ok": ok}:
                 logger.debug(f"[ACK ← {drone_id}] MOVE_EXECUTED seq={seq} ok={ok}")
-                if ok:
-                    await self.event_bus.publish(MoveExecuted(drone_id=drone_id))
+                await self.event_bus.publish(MoveExecuted(drone_id=drone_id, ok=ok))
 
                 await self._send_ack(ws, of="MOVE_EXECUTED", ok=True, seq=seq)
 
