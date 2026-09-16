@@ -221,6 +221,28 @@ class TestMoveCommand:
         assert executed_msg["seq"] == 10
         assert executed_msg["ok"] is True
 
+    def test_move_executed_returns_false_when_move_fails(self, tmp_path):
+        router, fc, _ = _make_router(tmp_path, fc_returns=False)
+        ws = _ws()
+
+        router.on_message(
+            ws,
+            json.dumps(
+                {"type": "COMMAND", "action": "MOVE", "move": [1, 0, 0], "seq": 10}
+            ),
+        )
+
+        assert len(ws.sent) == 2
+        ack = _sent_json(ws, 0)
+        assert ack["type"] == "ACK"
+        assert ack["action"] == "MOVE"
+        assert ack["seq"] == 10
+
+        executed_msg = _sent_json(ws, 1)
+        assert executed_msg["type"] == "MOVE_EXECUTED"
+        assert executed_msg["seq"] == 10
+        assert executed_msg["ok"] is False
+
     def test_move_executed_sent_even_when_fc_raises(self, tmp_path):
         router, fc, _ = _make_router(tmp_path)
         fc.maybe_execute_move.side_effect = RuntimeError("FC crash")

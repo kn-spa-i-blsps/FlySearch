@@ -52,7 +52,7 @@ class MessageRouter:
                 move_ok = False
                 try:
                     result = self.command_manager.handle_command(obj)
-                    move_ok = bool(result.get("ok", False)) if result else False
+                    move_ok = bool(result.get("ok", False) and result.get("executed", False)) if result else False
                 except Exception as exc:
                     print(f"[RPi] MOVE execution error: {exc}")
                 ws.send(
