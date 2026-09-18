@@ -1,4 +1,5 @@
 import json
+import threading
 from typing import Any
 
 import websocket
@@ -49,16 +50,23 @@ class MessageRouter:
             if action == "MOVE":
                 ws.send(json.dumps(build_command_ack(seq=seq, ok=True, action="MOVE")))
                 print(f"[RPi] MOVE immediate ACK sent (seq={seq})")
-                move_ok = False
-                try:
-                    result = self.command_manager.handle_command(obj)
-                    move_ok = bool(result.get("ok", False) and result.get("executed", False)) if result else False
-                except Exception as exc:
-                    print(f"[RPi] MOVE execution error: {exc}")
-                ws.send(
-                    json.dumps({"type": "MOVE_EXECUTED", "seq": seq, "ok": move_ok})
-                )
-                print(f"[RPi] MOVE_EXECUTED sent (seq={seq}, ok={move_ok})")
+                
+                # Execute move in a background thread to prevent blocking the WebSocket event loop
+                def _execute_move_bg():
+                    move_ok = False
+                    try:
+                        result = self.command_manager.handle_command(obj)
+                        move_ok = bool(result.get("ok", False) and result.get("executed", False)) if result else False
+                    except Exception as exc:
+                        print(f"[RPi] MOVE execution error: {exc}")
+                    
+                    try:
+                        ws.send(json.dumps({"type": "MOVE_EXECUTED", "seq": seq, "ok": move_ok}))
+                        print(f"[RPi] MOVE_EXECUTED sent (seq={seq}, ok={move_ok})")
+                    except Exception as ws_exc:
+                        print(f"[RPi] Failed to send MOVE_EXECUTED over WS: {ws_exc}")
+
+                threading.Thread(target=_execute_move_bg, daemon=True).start()
                 return
 
             # All other commands (e.g. FOUND) via command_manager.

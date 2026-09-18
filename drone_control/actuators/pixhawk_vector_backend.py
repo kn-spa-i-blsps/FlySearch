@@ -2,6 +2,8 @@ import math
 import time
 from typing import Any
 
+from drone_control.sensors.mavlink_telemetry_backend import get_shared_master, is_currently_guided
+
 """Low-level movement backend implementation.
     It connects via MAVLink and send vector-based motion commands (dx, dy, dx)
     using one of several control strategies."""
@@ -19,34 +21,11 @@ DEFAULT_ACCEL_MAG = 0.5
 DEFAULT_ACCEL_SEND_RATE_HZ = 5.0
 
 
-def _connect(device: str, baud: int, heartbeat_timeout: float = 5.0) -> Any:
-    """Open connection to MAVLink device."""
-    if mavutil is None:
-        raise RuntimeError(f"pymavlink unavailable: {_MAV_IMPORT_ERROR}")
-    master = mavutil.mavlink_connection(device, baud=baud)
-    master.wait_heartbeat(timeout=heartbeat_timeout)
-    return master
-
-
-def _get_mode(master: Any) -> str:
-    """Get current mode from MAVLink device."""
-    hb = master.recv_match(type="HEARTBEAT", blocking=True, timeout=1.0)
-    if hb is None:
-        hb = master.messages.get("HEARTBEAT")
-        if hb is None:
-            return "UNKNOWN"
-
-    try:
-        return mavutil.mode_string_v10(hb)
-    except Exception:
-        return "UNKNOWN"
-
-
 def _is_guided(master: Any) -> bool:
     """Check if guided mode is enabled."""
-    mode = _get_mode(master)
-    print(f"[vector_move] Current mode: {mode}")
-    return mode == "GUIDED"
+    guided = is_currently_guided()
+    print(f"[vector_move] Current guided state: {guided}")
+    return guided
 
 
 def _method_position_offset(master: Any, dx: float, dy: float, dz: float) -> bool:
@@ -276,7 +255,7 @@ def send_vector_command(
 ) -> bool:
     """Connects to Pixhawk and dispatches to one of methods 0..3 based on method_id."""
     try:
-        master = _connect(device, baud)
+        master = get_shared_master(device, baud)
     except Exception as exc:
         print("[dispatcher] Connection error:", exc)
         return False

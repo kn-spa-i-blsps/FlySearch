@@ -209,3 +209,21 @@ def get_telemetry_json(
             return None
 
         time.sleep(0.05)
+
+def get_shared_master(device: str, baud: int) -> Any:
+    """Returns the shared MAVLink connection used by telemetry."""
+    _ensure_connection(device, baud)
+    return _master
+
+def is_currently_guided() -> bool:
+    """Check if guided mode is enabled using shared telemetry state."""
+    with _state_lock:
+        hb = _state.get("HEARTBEAT")
+    
+    if hb is None:
+        return False
+        
+    try:
+        return mavutil.mode_string_v10(hb) == "GUIDED"
+    except Exception:
+        return False
