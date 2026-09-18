@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 import pytest
@@ -32,7 +33,7 @@ class TestGeminiConversationIntegration:
         conversation_instance.add_text_message(
             "Hello, who are you? Respond in one short sentence."
         )
-        conversation_instance.commit_transaction(send_to_vlm=True)
+        asyncio.run(conversation_instance.commit_transaction(send_to_vlm=True))
 
         # Get the latest message (which should be the assistant's response)
         role, response = conversation_instance.get_latest_message()
