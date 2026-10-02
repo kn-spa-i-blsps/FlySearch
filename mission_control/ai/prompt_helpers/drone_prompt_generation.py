@@ -41,8 +41,8 @@ def fs1_prompt(
 
         For example:
 
-        <Reasoning>This yellow point might be the object in question. I need to go lower to check for that. If it's not the object in question, I will continue the search. I will also slightly go to the north.</Reasoning>
-        <Action>(5, 0, -30)</Action>
+        <Reasoning>This yellow point might be the object in question. I need to go lower to check for that. If it's not the object in question, I will continue the search. I will also slightly go to the north (forward in the image).</Reasoning>
+        <Action>(0, 5, -30)</Action>
 
     </Formatting>
 
@@ -88,8 +88,8 @@ def fs2_prompt(glimpses: int, object_name: str, minimum_altitude: int, maximum_a
 
         For example:
 
-        <Reasoning>This yellow point might be the object in question. I need to go lower to check for that. If it's not the object in question, I will continue the search. I will also slightly go to the north.</Reasoning>
-        <Action>(5, 0, -30)</Action>
+        <Reasoning>This yellow point might be the object in question. I need to go lower to check for that. If it's not the object in question, I will continue the search. I will also slightly go to the north (forward in the image).</Reasoning>
+        <Action>(0, 5, -30)</Action>
 
     </Formatting>
 

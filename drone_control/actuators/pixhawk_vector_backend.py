@@ -36,7 +36,7 @@ def _method_position_offset(master: Any, dx: float, dy: float, dz: float) -> boo
             0,
             master.target_system,
             master.target_component,
-            mavutil.mavlink.MAV_FRAME_LOCAL_OFFSET_NED,
+            mavutil.mavlink.MAV_FRAME_BODY_OFFSET_NED,
             type_mask,
             dx,
             dy,
