@@ -86,7 +86,7 @@ class FlySearchVLMBridge(VLMBridge):
             async with self.chat_locks[chat_id]:
                 conversation = self.conversations[chat_id]
                 img, message = await self._prepare_input_async(
-                    photo_path, telemetry_path
+                    photo_path, telemetry_path, self.config.fov_degrees
                 )
                 logger.info("[VLM] Sending photo and telemetry to the model.")
 
@@ -242,7 +242,6 @@ class FlySearchVLMBridge(VLMBridge):
             await self.event_bus.publish(err_event)
             logger.error(f"[VLM] Loading chat failed: {e}")
 
-    \"\"\" ------------------------------------------------------------------------- \"\"\"
 
     def _create_empty_conversation(self):
         factory = LLM_BACKEND_FACTORIES[self.config.model_backend](
@@ -268,7 +267,7 @@ class FlySearchVLMBridge(VLMBridge):
             await conversation.commit_transaction(send_to_vlm=False)
 
         return conversation
-        
+
     def _pil_to_base64(self, img: Image.Image) -> str:
         buffered = BytesIO()
         img_copy = img.copy()
@@ -281,11 +280,11 @@ class FlySearchVLMBridge(VLMBridge):
 
     @staticmethod
     async def _prepare_input_async(
-        photo_path: Path, telemetry_path: Path
+        photo_path: Path, telemetry_path: Path, fov_degrees: float = 10.8
     ) -> tuple[Image.Image, str]:
         drone_height = await get_height_async(telemetry_path)
         message = f"Your current altitude is {drone_height} meters above ground level."
-        img = await add_grid_async(photo_path, drone_height)
+        img = await add_grid_async(photo_path, drone_height, fov_degrees)
         return img, message
 
     async def _execute_transaction(

@@ -20,10 +20,10 @@ def crop_img_square(photo_data):
     return img.crop((left, top, right, bottom)), side
 
 
-def _add_grid_sync_copy(photo_path, drone_height):
+def _add_grid_sync_copy(photo_path, drone_height, fov_degrees=10.8):
     with Image.open(photo_path) as img:
         img_grid = gd.dot_matrix_two_dimensional_drone(
-            img=img, drone_height=drone_height
+            img=img, drone_height=drone_height, camera_fov_degrees=fov_degrees
         )
 
         clean_img = img_grid.copy()
@@ -31,5 +31,5 @@ def _add_grid_sync_copy(photo_path, drone_height):
     return clean_img
 
 
-async def add_grid_async(photo_path, drone_height):
-    return await asyncio.to_thread(_add_grid_sync_copy, photo_path, drone_height)
+async def add_grid_async(photo_path, drone_height, fov_degrees=10.8):
+    return await asyncio.to_thread(_add_grid_sync_copy, photo_path, drone_height, fov_degrees)
