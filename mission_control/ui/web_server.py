@@ -56,6 +56,7 @@ class MissionCreateRequest(BaseModel):
     glimpses: int
     area: int
     min_altitude: int
+    max_altitude: int
 
 
 class PullRecordingsRequest(BaseModel):
@@ -214,6 +215,7 @@ class WebServer:
             "object": req.search_object,
             "glimpses": str(req.glimpses),
             "minimum_altitude": str(req.min_altitude),
+            "maximum_altitude": str(req.max_altitude),
         }
         if req.prompt_type == "FS-1":
             kv["area"] = str(req.area)
@@ -381,6 +383,10 @@ class WebServer:
                             <label>Min Altitude (m)</label>
                             <input type="number" id="min_altitude" value="10" required>
                         </div>
+                        <div class="form-group">
+                            <label>Max Altitude (m)</label>
+                            <input type="number" id="max_altitude" value="120" required>
+                        </div>
                         <button type="submit">Launch Mission</button>
                     </form>
                 </div>
@@ -434,7 +440,8 @@ class WebServer:
                         search_object: document.getElementById('search_object').value.trim(),
                         glimpses: parseInt(document.getElementById('glimpses').value),
                         area: parseInt(document.getElementById('area').value || 0),
-                        min_altitude: parseInt(document.getElementById('min_altitude').value)
+                        min_altitude: parseInt(document.getElementById('min_altitude').value),
+                        max_altitude: parseInt(document.getElementById('max_altitude').value)
                     }};
 
                     const response = await fetch('/api/missions', {{

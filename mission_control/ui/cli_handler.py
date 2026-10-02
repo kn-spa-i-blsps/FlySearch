@@ -161,14 +161,14 @@ class CLIHandler:
     def print_help():
         print("Perform search:")
         print(
-            "    SEARCH <name> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=..]"
+            "    SEARCH <name> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=.. maximum_altitude=..]"
         )
 
         # print("Chat management:")
         # print("    CHAT_INIT | CHAT_RESET | CHAT_SAVE <name> | CHAT_RETRIEVE <name>")
         #
         # print("Prompt manager:")
-        # print("    PROMPT FS-1|FS-2 [object=... glimpses=... area=... minimum_altitude=...]")
+        # print("    PROMPT FS-1|FS-2 [object=... glimpses=... area=... minimum_altitude=... maximum_altitude=...]")
         #
         # print("Drone communication:")
         # print(

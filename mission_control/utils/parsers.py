@@ -38,7 +38,7 @@ def parse_prompt_arguments(cmd):
     parts = cmd.split()
     if len(parts) < 1:
         logger.info(
-            "Usage: PROMPT FS-1|FS-2 [object=.. glimpses=.. area=.. minimum_altitude=..]"
+            "Usage: PROMPT FS-1|FS-2 [object=.. glimpses=.. area=.. minimum_altitude=.. maximum_altitude=..]"
         )
         raise ValueError
     kind = parts[0].upper()
@@ -54,6 +54,7 @@ def parse_prompt_arguments(cmd):
     _coerce_positive_int(kv, "glimpses")
     _coerce_positive_int(kv, "area")
     _coerce_positive_int(kv, "minimum_altitude")
+    _coerce_positive_int(kv, "maximum_altitude")
     return kind, kv
 
 
@@ -64,9 +65,9 @@ def parse_search_arguments(cmd):
     """
 
     parts = cmd.split()
-    if len(parts) not in [6, 7]:
+    if len(parts) < 4:  # Adjusting for minimum number of args
         logger.info(
-            "Usage: SEARCH <mission_id> <drone_id> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=..]"
+            "Usage: SEARCH <mission_id> <drone_id> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=.. maximum_altitude=..]"
         )
         raise ValueError
     mission_id = parts[0]
@@ -88,6 +89,7 @@ def parse_search_arguments(cmd):
     _coerce_positive_int(kv, "glimpses")
     _coerce_positive_int(kv, "area")
     _coerce_positive_int(kv, "minimum_altitude")
+    _coerce_positive_int(kv, "maximum_altitude")
     return mission_id, drone_id, kind, kv
 
 

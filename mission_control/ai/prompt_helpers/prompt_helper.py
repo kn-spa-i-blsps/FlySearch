@@ -32,6 +32,7 @@ class FlySearchPromptHelper(PromptHelper):
                 "glimpses": int(args.get("glimpses", "6")),
                 "area": int(args.get("area", "80")),
                 "minimum_altitude": int(args.get("minimum_altitude", "10")),
+                "maximum_altitude": int(args.get("maximum_altitude", "120")),
             }
 
             t = Prompts(kind)
@@ -43,10 +44,11 @@ class FlySearchPromptHelper(PromptHelper):
                     params["object"],
                     params["area"],
                     params["minimum_altitude"],
+                    params["maximum_altitude"],
                 )
             else:
                 text = factory(
-                    params["glimpses"], params["object"], params["minimum_altitude"]
+                    params["glimpses"], params["object"], params["minimum_altitude"], params["maximum_altitude"]
                 )
 
             prompt_meta = {"kind": kind, "text": text, **params}

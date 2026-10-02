@@ -46,7 +46,7 @@ class FlySearchVLMBridge(VLMBridge):
         self.config = config
         self.event_bus = event_bus
         self.collision_warning_str = (
-            "Your move would cause a collision. Make another move."
+            "We do not agree to this move. Make another move."
         )
         self.conversations = {}
         self.chat_locks = {}
@@ -242,7 +242,7 @@ class FlySearchVLMBridge(VLMBridge):
             await self.event_bus.publish(err_event)
             logger.error(f"[VLM] Loading chat failed: {e}")
 
-    """ ------------------------------------------------------------------------- """
+    \"\"\" ------------------------------------------------------------------------- \"\"\"
 
     def _create_empty_conversation(self):
         factory = LLM_BACKEND_FACTORIES[self.config.model_backend](
