@@ -51,6 +51,10 @@ def _method_position_offset(master: Any, dx: float, dy: float, dz: float) -> boo
             0,
         )
         print(f"[M0] Sent offset (dx={dx}, dy={dy}, dz={dz}) [m, NED]")
+        dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+        speed = max(DEFAULT_SPEED, 0.01)
+        duration = dist / speed
+        time.sleep(duration + 1.0)
         return True
     except Exception as exc:
         print("[M0] Error:", exc)
@@ -104,6 +108,7 @@ def _method_velocity_ned(master: Any, dx: float, dy: float, dz: float) -> bool:
             return False
         time.sleep(dt)
 
+    time.sleep(1.0)
     return True
 
 
@@ -159,6 +164,7 @@ def _method_velocity_body(master: Any, dx: float, dy: float, dz: float) -> bool:
 
         time.sleep(dt)
 
+    time.sleep(1.0)
     return True
 
 
@@ -219,6 +225,7 @@ def _method_accel_ned(master: Any, dx: float, dy: float, dz: float) -> bool:
 
         time.sleep(dt)
 
+    time.sleep(1.0)
     return True
 
 

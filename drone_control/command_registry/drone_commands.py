@@ -5,6 +5,12 @@ from typing import Any
 
 from drone_control.command_registry.command_descriptors import CommandDescriptor
 from drone_control.command_registry.command_registry import CommandRegistry
+from drone_control.sensors.mavlink_telemetry_backend import get_shared_master
+try:
+    from pymavlink import mavutil
+except Exception:
+    mavutil = None
+import time
 from drone_control.sensors.photo_sensor import PhotoSensor
 from drone_control.sensors.recording_sensor import RecordingSensor
 from drone_control.sensors.telemetry_sensor import TelemetrySensor
@@ -32,6 +38,33 @@ def _capture_photo(photo_sensor: PhotoSensor) -> str | None:
         return None
 
 
+def _capture_photo_with_yaw(photo_sensor, telemetry_sensor):
+    if telemetry_sensor is not None and mavutil is not None:
+        try:
+            master = get_shared_master(telemetry_sensor.mav_device, telemetry_sensor.mav_baud)
+            if master is not None:
+                print("[RPi] Rotating drone to North (Yaw=0) before taking photo...")
+                master.mav.command_long_send(
+                    master.target_system,
+                    master.target_component,
+                    mavutil.mavlink.MAV_CMD_CONDITION_YAW,
+                    0,
+                    0,   # target angle (0 = North)
+                    0,   # yaw speed
+                    0,   # direction
+                    0,   # 0 = absolute angle
+                    0, 0, 0
+                )
+                time.sleep(4.0)  # Wait for rotation to finish
+        except Exception as exc:
+            print(f"[RPi] Yaw rotation error: {exc}")
+
+    return {
+        "photo": _capture_photo(photo_sensor),
+        "telemetry": telemetry_sensor.snapshot() if telemetry_sensor is not None else {},
+    }
+
+
 def build_registry(
     *,
     photo_sensor: PhotoSensor | None = None,
@@ -44,12 +77,7 @@ def build_registry(
         registry.register(
             CommandDescriptor(
                 action="GET_PHOTO_TELEMETRY",
-                handler=lambda: {
-                    "photo": _capture_photo(photo_sensor),
-                    "telemetry": telemetry_sensor.snapshot()
-                    if telemetry_sensor is not None
-                    else {},
-                },
+                handler=lambda: _capture_photo_with_yaw(photo_sensor, telemetry_sensor),
                 build_response=lambda data, seq: {
                     "type": "PHOTO_WITH_TELEMETRY",
                     "photo": data.get("photo"),
