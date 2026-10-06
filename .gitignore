@@ -1,4 +1,5 @@
 docker/.env
+docker/docker-compose.yml
 comments/
 prompts/
 recordings/
@@ -8,11 +9,7 @@ uploads/
 commands/
 img/
 video/
-__pycache__/
-mission_control/prompt_generation/__pycache__/
+**/__pycache__/
 vlm_raw/
-response_parsers/__pycache__/
 .venv/
-tmp.png
 .idea
-
