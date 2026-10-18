@@ -92,6 +92,17 @@ def parse_search_arguments(cmd):
     _coerce_positive_int(kv, "maximum_altitude")
     return mission_id, drone_id, kind, kv
 
+def parse_vlm_change_model_arguments(cmd):
+    parts = cmd.split()
+    if len(parts) < 2:
+        logger.info(
+            "Usage: vlm change model <model_backend> <model_name>"
+        )
+        raise ValueError
+    model_backend = parts[0].strip()
+    model_name = " ".join(parts[1:]).strip()  # Join remaining parts for model name
+    return model_backend, model_name
+
 
 def _coerce_positive_int(kv: dict[str, int | str], key: str) -> None:
     """Convert numeric CLI options to positive integers in place."""

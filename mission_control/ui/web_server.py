@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
+import uuid
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -16,6 +17,7 @@ from mission_control.core.action_status import ActionStatus
 from mission_control.core.config import Config
 from mission_control.core.events import (
     AskUserConfirmationCommand,
+    ChangeVlmModelCommand,
     CreateNewSessionCommand,
     GetRecordingsListCommand,
     PhotoWithTelemetryReceived,
@@ -26,6 +28,8 @@ from mission_control.core.events import (
     StartMissionCommand,
     UserDecisionReceived,
     VlmAnalysisCompleted,
+    VlmModelChangeFailed,
+    VlmModelChanged,
     VlmPromptSent,
 )
 from mission_control.core.interfaces import EventBus
@@ -62,6 +66,10 @@ class MissionCreateRequest(BaseModel):
 class PullRecordingsRequest(BaseModel):
     drone_id: str
     names: list[str]
+    
+class ChangeVlmModelRequest(BaseModel):
+    model_backend: str
+    model_name: str
 
 
 class WebServer:
@@ -71,6 +79,7 @@ class WebServer:
         self.app = FastAPI(title="Mission Control GUI")
         self._recordings_waiters: dict[str, asyncio.Future] = {}
         self._pull_waiters: dict[str, asyncio.Future] = {}
+        self._vlm_change_waiters: dict[str, asyncio.Future] = {}
 
         # --- MULTI-TENANT GUI STATE ---
         # Dictionary storing a separate browser window state for each mission_id
@@ -90,6 +99,9 @@ class WebServer:
             "/api/missions", self.api_start_mission, methods=["POST"]
         )
         self.app.add_api_route(
+            "/api/vlm/model", self.api_change_vlm_model, methods=["POST"]
+        )
+        self.app.add_api_route(
             "/api/recordings", self.api_get_recordings, methods=["GET"]
         )
         self.app.add_api_route(
@@ -107,6 +119,8 @@ class WebServer:
         self.event_bus.subscribe(PhotoWithTelemetryReceived, self.handle_photo)
         self.event_bus.subscribe(VlmPromptSent, self.handle_vlm_prompt_sent)
         self.event_bus.subscribe(VlmAnalysisCompleted, self.handle_vlm_analysis)
+        self.event_bus.subscribe(VlmModelChanged, self.handle_vlm_model_change_result)
+        self.event_bus.subscribe(VlmModelChangeFailed, self.handle_vlm_model_change_result)
         self.event_bus.subscribe(
             AskUserConfirmationCommand, self.handle_ask_confirmation
         )
@@ -232,7 +246,45 @@ class WebServer:
 
         # Respond with the URL to the new mission's dashboard
         return {"status": "ok", "url": f"/{req.mission_id}"}
-
+    
+    async def api_change_vlm_model(self, req: ChangeVlmModelRequest):
+        """Endpoint: POST /api/vlm/model"""
+        correlation_id = str(uuid.uuid4())
+        loop = asyncio.get_running_loop()
+        waiter = loop.create_future()
+        self._vlm_change_waiters[correlation_id] = waiter
+        
+        await self.event_bus.publish(
+            ChangeVlmModelCommand(
+                model_backend=req.model_backend,
+                model_name=req.model_name,
+                correlation_id=correlation_id,
+            ),
+        )
+        try:
+            event = await asyncio.wait_for(waiter, timeout=10)
+            if isinstance(event, VlmModelChangeFailed):
+                raise HTTPException(
+                status_code=400,
+                detail=event.error_message,
+            )
+            return {
+                "status": "ok", 
+                "message": f"VLM model changed to {req.model_backend} / {req.model_name}."
+            }
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status_code=504,
+                detail="Timed out waiting for the VLM model change result.",
+            )
+        finally:
+            self._vlm_change_waiters.pop(correlation_id, None)
+            
+    async def handle_vlm_model_change_result(self, event: VlmModelChanged | VlmModelChangeFailed):
+        waiter = self._vlm_change_waiters.get(event.correlation_id)
+        if waiter is not None and not waiter.done():
+            waiter.set_result(event)
+        
     async def api_get_recordings(self, drone_id: str = Query(...)):
         """Endpoint: GET /api/recordings?drone_id=..."""
         loop = asyncio.get_running_loop()
@@ -315,6 +367,7 @@ class WebServer:
                 button {{ width: 100%; padding: 12px; background: #0078D7; color: white; font-weight: bold; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 10px; transition: background 0.2s; }}
                 button:hover:not(:disabled) {{ opacity: 0.88; }}
                 button:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+                .vlm-message {{ min-height: 3em; margin: 8px 0;}}
 
                 /* Mission List Styles */
                 .mission-list {{ list-style: none; padding: 0; margin: 0; }}
@@ -395,6 +448,25 @@ class WebServer:
                     <h2>Active Missions</h2>
                     {active_missions_html}
                 </div>
+                
+                <div class="card">
+                    <h2>Change VLM Model</h2>
+                    <form id="vlm-form">
+                        <div class="form-group">
+                            <label>Model backend</label>
+                            <select id="model_backend">
+                                <option value="openai">OpenAI</option>
+                                <option value="gemini">Gemini</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Model name</label>
+                            <input type="text" id="model_name" required placeholder="e.g., oai-gpt-4o">
+                        </div>
+                        <button type="submit">Change Model</button>
+                    </form>
+                    <p id="vlm-message" class="vlm-message" role="status" aria-live="polite"></p>
+                </div>
 
                 <div class="card card-wide">
                     <h2>Drone Recordings</h2>
@@ -456,6 +528,32 @@ class WebServer:
                     }} else {{
                         const errorData = await response.json();
                         alert(`Error: ${{errorData.detail || 'Failed to launch mission.'}}`);
+                    }}
+                }});
+                
+                document.getElementById("vlm-form").addEventListener("submit", async (e) => {{
+                    e.preventDefault();
+
+                    const model_backend = document.getElementById("model_backend").value;
+                    const model_name = document.getElementById("model_name").value.trim();
+                    const message = document.getElementById("vlm-message");
+
+                    message.textContent = "Changing VLM model...";
+
+                    try {{
+                        const response = await fetch("/api/vlm/model", {{
+                            method: "POST",
+                            headers: {{ "Content-Type": "application/json"}},
+                            body: JSON.stringify({{ model_backend, model_name }})
+                        }});
+                        const data = await response.json();
+
+                        if (!response.ok) {{
+                            throw new Error(data.detail || "Failed to change VLM model.");
+                        }}
+                        message.textContent = data.message;
+                    }} catch (error) {{
+                        message.textContent = `Error: ${{error.message}}`;
                     }}
                 }});
 

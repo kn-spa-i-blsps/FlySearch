@@ -12,9 +12,15 @@ from mission_control.core.events import (
     SearchEnded,
     StartMissionCommand,
     UserDecisionReceived,
+    ChangeVlmModelCommand,
+    VlmModelChanged,
+    VlmModelChangeFailed,
 )
 from mission_control.core.interfaces import EventBus
-from mission_control.utils.parsers import parse_search_arguments
+from mission_control.utils.parsers import (
+    parse_search_arguments, 
+    parse_vlm_change_model_arguments
+)
 
 
 class CLIHandler:
@@ -27,10 +33,13 @@ class CLIHandler:
 
         self.event_bus.subscribe(AskUserConfirmationCommand, self.ask_move_confirmation)
         self.event_bus.subscribe(SearchEnded, self.handle_search_end)
+        self.event_bus.subscribe(VlmModelChanged, self.handle_vlm_model_changed)
+        self.event_bus.subscribe(VlmModelChangeFailed, self.handle_vlm_model_change_failed)
 
         self.commands: dict[str, Callable[[str], Awaitable[Any]]] = {
             "search": self._handle_search,
             "quit": self._handle_quit,
+            "vlm_change_model": self._handle_vlm_change_model,
         }
 
     async def serve(self):
@@ -144,6 +153,30 @@ class CLIHandler:
             prompt_args=kv,
         )
         await self.event_bus.publish(event)
+        
+    async def _handle_vlm_change_model(self, args: str):
+        """Handles the 'vlm_change_model' command from the CLI.
+
+        Parses the command arguments and publishes a ChangeVlmModelCommand event.
+        """
+        model_backend, model_name = parse_vlm_change_model_arguments(args)
+
+        event = ChangeVlmModelCommand(
+            model_backend=model_backend,
+            model_name=model_name
+        )
+        await self.event_bus.publish(event, wait_for_completion=True)
+        
+    async def handle_vlm_model_changed(self, event: VlmModelChanged):
+        print(
+            f"[VLM] Model changed to "
+            f"{event.model_backend} / {event.model_name}."
+        )
+        print("[VLM] The change applies to new sessions only.")
+
+
+    async def handle_vlm_model_change_failed(self, event: VlmModelChangeFailed):
+        print(f"{event.error_message}")
 
     async def _handle_quit(self, args: str = ""):
         """Function for soft handling of SIGINT"""
