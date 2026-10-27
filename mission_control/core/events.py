@@ -323,7 +323,37 @@ class StartMissionCommand(Command):
     drone_id: str
     prompt_type: str
     prompt_args: dict[str, Any]
+    
+@dataclass(kw_only=True)
+class ChangeVlmModelCommand(Command):
+    """
+    Published by: CLI Handler / Web Server.
+    Subscribed by: VlmBridge.
+    Contains the new VLM model configuration.
+    """
+    model_backend: str
+    model_name: str
 
+
+@dataclass(kw_only=True)
+class VlmModelChanged(Event):
+    """
+    Published by: VlmBridge.
+    Subscribed by: CLI Handler / Web Server.
+    Informs about the successful change of the VLM model.
+    """
+    model_backend: str
+    model_name: str
+
+@dataclass(kw_only=True)
+class VlmModelChangeFailed(Event):
+    """
+    Published by: VlmBridge.
+    Subscribed by: CLI Handler / Web Server.
+    Informs about the unsuccessful change of the VLM model.
+    """
+    error_message: str
+    traceback: str | None = None
 
 # --- 5. State / System Events ---
 

@@ -25,6 +25,9 @@ from mission_control.core.events import (
     VlmAnalysisCompleted,
     VlmErrorOccurred,
     VlmPromptSent,
+    ChangeVlmModelCommand,
+    VlmModelChanged,
+    VlmModelChangeFailed,
 )
 from mission_control.core.exceptions import VLMConnectionError
 from mission_control.core.interfaces import ChatStorageHelper, VLMBridge
@@ -59,6 +62,7 @@ class FlySearchVLMBridge(VLMBridge):
         self.event_bus.subscribe(DeleteSessionCommand, self.handle_delete_session)
         self.event_bus.subscribe(SaveSessionCommand, self.handle_save_session)
         self.event_bus.subscribe(LoadSessionCommand, self.handle_load_session)
+        self.event_bus.subscribe(ChangeVlmModelCommand, self.handle_change_vlm_model)
 
     async def handle_analyze_photo(self, event: AnalyzePhotoCommand) -> None:
         """
@@ -241,6 +245,49 @@ class FlySearchVLMBridge(VLMBridge):
             )
             await self.event_bus.publish(err_event)
             logger.error(f"[VLM] Loading chat failed: {e}")
+            
+    async def handle_change_vlm_model(self, event: ChangeVlmModelCommand):
+        '''
+        Handles VLM model changes for new sessions. 
+        Handler for ChangeVlmModelCommand.
+
+        :publishes:
+            VlmModelChanged on success.
+            VlmModelChangeFailed on error.
+        '''
+        backend = event.model_backend
+        model_name = event.model_name.strip()
+        
+        try:
+            if backend not in {key.value for key in LLM_BACKEND_FACTORIES}:
+                raise ValueError(f"Unsupported model backend: {backend}")
+            if not model_name:
+                raise ValueError("Model name cannot be empty.")
+            
+            self.config.model_backend = backend
+            self.config.model_name = model_name
+            
+        except Exception as e:
+            err_event = VlmModelChangeFailed(
+                error_message=f"[VLM] Failed to change VLM model: {e!s}",
+                traceback=traceback.format_exc(),
+                correlation_id=event.correlation_id
+            )
+            await self.event_bus.publish(err_event)
+            logger.error(f"[VLM] Failed to change VLM model: {e}")
+            
+            return
+        
+        logger.info(
+            "[VLM] Model changed to backend=%s, model=%s (new sessions only).",
+            backend,
+            model_name,
+        )
+        await self.event_bus.publish(VlmModelChanged(
+            model_backend=backend,
+            model_name=model_name,
+            correlation_id=event.correlation_id
+        ))
 
 
     def _create_empty_conversation(self):
