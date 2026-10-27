@@ -25,7 +25,7 @@ async def main():
     storage = FileChatStorageHelper(config.chats_dir)
     _ = FlySearchVLMBridge(config, event_bus, storage)
     logger.debug("[MAIN] VLMBridge created.")
-    storage_drone = FileDataStorageHelper(config)
+    storage_drone = FileDataStorageHelper(config, event_bus)
     video_helper = VideoHelper(config, event_bus)
     drone_bridge = WebSocketDroneBridge(config, event_bus, video_helper, storage_drone)
     logger.debug("[MAIN] DroneBridge created.")

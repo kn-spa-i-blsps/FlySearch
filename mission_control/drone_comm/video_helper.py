@@ -34,7 +34,13 @@ class VideoHelper:
         self.recordings_ack_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
 
         # State tracker for incoming file transfers (chunks being pieced together)
+        
         self._pull_transfers: dict[str, dict[str, Any]] = {}
+        self.drone_missions: dict[str, str] = {}
+        from mission_control.core.events import StartMissionCommand, SearchEnded
+        self.event_bus.subscribe(StartMissionCommand, self.handle_start_mission)
+        self.event_bus.subscribe(SearchEnded, self.handle_search_ended)
+
 
     async def send_recording_command(
         self, ws, cmd: str, timeout_sec: float = 5.0
@@ -116,6 +122,14 @@ class VideoHelper:
                 f"GET_RECORDINGS failed on drone: {ack.get('error', 'unknown error')}"
             )
         return ack
+
+
+    async def handle_start_mission(self, event):
+        self.drone_missions[event.drone_id] = event.mission_id
+
+    async def handle_search_ended(self, event):
+        # We can optionally clean up, but keeping it is fine in case files arrive late
+        pass
 
     async def send_pull_recordings(
         self,
@@ -271,7 +285,7 @@ class VideoHelper:
         waiters.clear()
 
     async def handle_recording_file_begin(
-        self, *, transfer_id: str, name: str, payload: dict[str, Any]
+        self, *, drone_id: str, transfer_id: str, name: str, payload: dict[str, Any]
     ) -> None:
         """Initializes state and opens a temporary file handle for an incoming video transfer."""
         transfer = self._pull_transfers.setdefault(
@@ -282,7 +296,8 @@ class VideoHelper:
         completed = transfer["completed"]
 
         safe_name = Path(name).name
-        raw_path = Path(self.config.recordings_raw_dir) / safe_name
+        mission_id = self.drone_missions.get(drone_id, "unassigned")
+        raw_path = Path(self.config.recordings_raw_dir) / mission_id / safe_name
         tmp_path = raw_path.with_suffix(raw_path.suffix + ".part")
 
         # Prep the destination file
@@ -303,7 +318,7 @@ class VideoHelper:
 
         if metadata is not None:
             metadata_path = (
-                Path(self.config.recordings_meta_dir) / f"{raw_path.stem}.json"
+                Path(self.config.recordings_meta_dir) / raw_path.parent.name / f"{raw_path.stem}.json"
             )
             try:
                 metadata_path.parent.mkdir(parents=True, exist_ok=True)
@@ -516,7 +531,7 @@ class VideoHelper:
         self, *, raw_path: Path, metadata: dict[str, Any] | None
     ) -> dict[str, Any]:
         """Spawns a ffmpeg process in a separate thread so it doesn't block the asyncio event loop."""
-        mp4_path = Path(self.config.recordings_mp4_dir) / f"{raw_path.stem}.mp4"
+        mp4_path = Path(self.config.recordings_mp4_dir) / raw_path.parent.name / f"{raw_path.stem}.mp4"
         fps = self._resolve_recording_fps(metadata)
 
         # Run the synchronous subprocess call in a thread pool

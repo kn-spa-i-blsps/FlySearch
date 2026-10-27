@@ -88,6 +88,7 @@ class SearchOrchestrator:
             if self.max_moves == -1:
                 raise ValueError("[SEARCH] No glimpses attribute or glimpses set to 0.")
 
+            kv["mission_id"] = self.mission_id
             self.initial_prompt = await self.prompt_helper.generate_prompt(kind, kv)
 
             await self.event_bus.publish(

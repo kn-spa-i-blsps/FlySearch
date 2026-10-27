@@ -51,7 +51,7 @@ class FlySearchPromptHelper(PromptHelper):
                     params["glimpses"], params["object"], params["minimum_altitude"], params["maximum_altitude"]
                 )
 
-            prompt_meta = {"kind": kind, "text": text, **params}
+            prompt_meta = {"kind": kind, "text": text, "mission_id": args.get("mission_id", "unassigned"), **params}
 
         except Exception as e:
             logger.error(f"[PROMPT] Failed to generate prompt: {e}")
@@ -70,7 +70,9 @@ class FlySearchPromptHelper(PromptHelper):
         try:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             base = f"{prompt_meta['kind'].lower()}_{ts}"
-            prompts_dir = Path(self.config.prompts_dir)
+            mission_id = prompt_meta.get("mission_id", "unassigned")
+            prompts_dir = Path(self.config.prompts_dir) / mission_id
+            prompts_dir.mkdir(parents=True, exist_ok=True)
             txt_path = prompts_dir / f"{base}.txt"
             json_path = prompts_dir / f"{base}.json"
 

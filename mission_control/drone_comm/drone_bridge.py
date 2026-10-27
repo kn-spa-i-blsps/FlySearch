@@ -453,7 +453,7 @@ class WebSocketDroneBridge:
                     (
                         photo_path,
                         telemetry_path,
-                    ) = await self.storage.save_photo_and_telemetry(photo, telemetry)
+                    ) = await self.storage.save_photo_and_telemetry(photo, telemetry, drone_id)
                     await self.event_bus.publish(
                         PhotoWithTelemetryReceived(
                             drone_id=drone_id,
@@ -498,6 +498,7 @@ class WebSocketDroneBridge:
                 **file_rest,
             }:
                 await self.video_helper.handle_recording_file_begin(
+                    drone_id=drone_id,
                     transfer_id=str(transfer_id),
                     name=str(name),
                     payload=file_rest,
@@ -511,6 +512,7 @@ class WebSocketDroneBridge:
                 "data": data,
             }:
                 await self.video_helper.handle_recording_file_chunk(
+                    drone_id=drone_id,
                     transfer_id=str(transfer_id),
                     name=str(name),
                     seq=int(seq),
@@ -524,6 +526,7 @@ class WebSocketDroneBridge:
                 **end_rest,
             }:
                 await self.video_helper.handle_recording_file_end(
+                    drone_id=drone_id,
                     transfer_id=str(transfer_id),
                     name=str(name),
                     payload=end_rest,

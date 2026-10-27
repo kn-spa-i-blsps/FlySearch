@@ -1,4 +1,4 @@
-docker/.env
+**/.env
 docker/docker-compose.yml
 comments/
 prompts/
@@ -13,3 +13,4 @@ video/
 vlm_raw/
 .venv/
 .idea
+skills/
