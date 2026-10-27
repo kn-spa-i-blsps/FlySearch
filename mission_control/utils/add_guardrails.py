@@ -120,8 +120,8 @@ def compute_grid_points(
         x_diff_px = x_diff * pixels_per_cell_w
         y_diff_px = y_diff * pixels_per_cell_h
 
-        x_diff_unit = int(round(x_diff_px * pixel_per_unit))
-        y_diff_unit = int(round(y_diff_px * pixel_per_unit))
+        x_diff_unit = round(x_diff_px * pixel_per_unit, 2)
+        y_diff_unit = round(y_diff_px * pixel_per_unit, 2)
 
         points.append(
             {
