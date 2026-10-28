@@ -59,6 +59,7 @@ class SearchOrchestrator:
         self.prompt_helper = prompts
         self.current_move = None
         self.move_failures = 0
+        self.minimum_altitude = 0.0
 
         self.event_bus.subscribe(
             PhotoWithTelemetryReceived, self.handle_photo_and_telemetry
@@ -83,6 +84,8 @@ class SearchOrchestrator:
             kind = event.prompt_type
             kv = event.prompt_args
             glimpses = int(kv.get("glimpses", 0))
+            
+            self.minimum_altitude = float(kv.get("minimum_altitude", 0.0))
 
             self.max_moves = glimpses - 1
             if self.max_moves == -1:
@@ -182,7 +185,11 @@ class SearchOrchestrator:
         if event.decision == ActionStatus.CONFIRMED:
             self.current_move = event.move
             self.move_failures = 0
-            command = ExecuteMoveCommand(drone_id=self.drone_id, move=event.move)
+            command = ExecuteMoveCommand(
+                drone_id=self.drone_id, 
+                move=event.move,
+                minimum_altitude=self.minimum_altitude
+            )
             self.state = MissionState.WAITING_FOR_ACK
             await self.event_bus.publish(command)
 
@@ -210,7 +217,11 @@ class SearchOrchestrator:
             else:
                 logger.warning(f"[SEARCH] Move failed (attempt {self.move_failures}). Retrying...")
                 self.state = MissionState.WAITING_FOR_ACK
-                command = ExecuteMoveCommand(drone_id=self.drone_id, move=self.current_move)
+                command = ExecuteMoveCommand(
+                    drone_id=self.drone_id, 
+                    move=self.current_move,
+                    minimum_altitude=self.minimum_altitude,
+                )
                 await self.event_bus.publish(command)
             return
 
@@ -234,7 +245,9 @@ class SearchOrchestrator:
             self.state = MissionState.PAUSED
         elif self.state == MissionState.WAITING_FOR_ACK:
             self.pending_command = ExecuteMoveCommand(
-                drone_id=self.drone_id, move=self.current_move
+                drone_id=self.drone_id, 
+                move=self.current_move, 
+                minimum_altitude=self.minimum_altitude
             )
             self.state = MissionState.PAUSED
 

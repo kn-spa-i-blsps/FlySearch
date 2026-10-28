@@ -206,7 +206,7 @@ class TestMoveCommand:
         router.on_message(
             ws,
             json.dumps(
-                {"type": "COMMAND", "action": "MOVE", "move": [1, 0, 0], "seq": 10}
+                {"type": "COMMAND", "action": "MOVE", "move": [1, 0, 0], "min_altitude": 10.0, "seq": 10}
             ),
         )
 
@@ -228,7 +228,7 @@ class TestMoveCommand:
         router.on_message(
             ws,
             json.dumps(
-                {"type": "COMMAND", "action": "MOVE", "move": [1, 0, 0], "seq": 10}
+                {"type": "COMMAND", "action": "MOVE", "move": [1, 0, 0], "min_altitude": 10.0, "seq": 10}
             ),
         )
 
@@ -251,7 +251,7 @@ class TestMoveCommand:
         router.on_message(
             ws,
             json.dumps(
-                {"type": "COMMAND", "action": "MOVE", "move": [0, 1, 0], "seq": 3}
+                {"type": "COMMAND", "action": "MOVE", "move": [0, 1, 0], "min_altitude": 10.0, "seq": 3}
             ),
         )
 
@@ -266,11 +266,11 @@ class TestMoveCommand:
         router.on_message(
             ws,
             json.dumps(
-                {"type": "COMMAND", "action": "MOVE", "move": [2.0, 3.0, 4.0], "seq": 1}
+                {"type": "COMMAND", "action": "MOVE", "move": [2.0, 3.0, 4.0], "min_altitude": 10.0, "seq": 1}
             ),
         )
 
-        fc.maybe_execute_move.assert_called_once_with((2.0, 3.0, 4.0))
+        fc.maybe_execute_move.assert_called_once_with((2.0, 3.0, 4.0), 10.0)
 
 
 # ---------------------------------------------------------------------------
