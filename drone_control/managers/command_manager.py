@@ -28,9 +28,10 @@ class CommandManager:
                 print("[RPi] COMMAND received: FOUND")
             elif "move" in payload:
                 x, y, z = payload["move"]
+                min_altitude = payload.get("min_altitude", 10.0)
                 move = (float(x), float(y), float(z))
                 print(f"[RPi] COMMAND received: MOVE (x={x}, y={y}, z={z})")
-                executed = self.flight_controller.maybe_execute_move(move)
+                executed = self.flight_controller.maybe_execute_move(move, min_altitude)
                 self.logger.store_move(log_seq, move)
             else:
                 print(f"[RPi] Unknown COMMAND payload: {payload}")

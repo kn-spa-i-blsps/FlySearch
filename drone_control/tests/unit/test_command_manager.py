@@ -25,9 +25,9 @@ class TestMoveCommand:
     def test_move_calls_flight_controller(self, tmpdir_manager):
         mgr, fc = tmpdir_manager
         mgr.handle_command(
-            {"type": "COMMAND", "action": "MOVE", "move": [1.0, 2.0, 3.0], "seq": 10}
+            {"type": "COMMAND", "action": "MOVE", "move": [1.0, 2.0, 3.0], "min_altitude": 10.0, "seq": 10}
         )
-        fc.maybe_execute_move.assert_called_once_with((1.0, 2.0, 3.0))
+        fc.maybe_execute_move.assert_called_once_with((1.0, 2.0, 3.0), 10.0)
 
     def test_move_ack_echoes_seq(self, tmpdir_manager):
         mgr, fc = tmpdir_manager

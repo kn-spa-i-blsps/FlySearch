@@ -233,6 +233,7 @@ class ExecuteMoveCommand(Command):
 
     drone_id: str
     move: tuple
+    minimum_altitude: float
 
 
 @dataclass(kw_only=True)

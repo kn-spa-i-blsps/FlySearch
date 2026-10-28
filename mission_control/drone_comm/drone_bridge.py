@@ -235,12 +235,14 @@ class WebSocketDroneBridge:
         """Sends a movement command vector to the drone."""
         drone_id = event.drone_id
         move = event.move
+        min_altitude = event.minimum_altitude
 
         try:
             payload: Dict[str, Any] = {
                 "type": "COMMAND",
                 "action": "MOVE",
                 "seq": self._get_seq(drone_id),
+                "min_altitude": min_altitude
             }
 
             if move is not None:
