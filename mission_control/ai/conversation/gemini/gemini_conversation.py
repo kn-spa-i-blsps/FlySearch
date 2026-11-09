@@ -3,7 +3,6 @@ import io
 import logging
 from typing import Any
 
-import httpx
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
@@ -26,6 +25,12 @@ FUNCTION_DECLARATIONS = [
     )
     for t in TOOLS
 ]
+
+
+def _is_timeout(error: Exception) -> bool:
+    # The HTTP transport under google-genai differs between versions (httpx, aiohttp),
+    # so timeouts are recognized by type name instead of importing a specific library.
+    return isinstance(error, TimeoutError) or "timeout" in type(error).__name__.lower()
 
 
 def _image_part(image) -> types.Part:
@@ -93,9 +98,12 @@ class GeminiConversation(ToolConversation):
                 return await self.client.aio.models.generate_content(
                     model=self.model_name, contents=self.native, config=self._config()
                 )
-            except (APIError, httpx.TimeoutException) as e:
+            except Exception as e:
                 code = getattr(e, "code", None)
-                if isinstance(e, APIError) and code not in RETRYABLE_CODES:
+                if isinstance(e, APIError):
+                    if code not in RETRYABLE_CODES:
+                        raise
+                elif not _is_timeout(e):
                     raise
                 if attempt == self.retries:
                     raise RuntimeError(f"Gemini failed after {self.retries} attempts: {e}") from e
