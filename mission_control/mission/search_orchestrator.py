@@ -25,8 +25,17 @@ from mission_control.core.events import (
     VlmAnalysisCompleted,
     VlmErrorOccurred,
 )
+from mission_control.ai.prompt_helpers.training_prompt import (
+    altitude_limit_reason,
+    format_bounds,
+    format_initial_observation,
+    format_move_feedback,
+    format_position,
+    format_step_observation,
+)
 from mission_control.core.interfaces import EventBus, PromptHelper
 from mission_control.utils.logger import get_configured_logger
+from mission_control.utils.parsers import get_height_async
 
 logger = get_configured_logger(__name__)
 
@@ -54,11 +63,24 @@ class SearchOrchestrator:
         self.initial_prompt: str = ""
         self.drone_id: str = ""
         self.state: MissionState = MissionState.IDLE
-        self.is_warning: bool = False
         self.max_moves: int = 0
         self.prompt_helper = prompts
         self.current_move = None
         self.move_failures = 0
+
+        # Mission parameters shown to the model in each observation (training format).
+        self.task_hint: str = ""
+        self.half_area: float = 40.0
+        self.min_altitude: float = 10.0
+        self.max_altitude: float = 120.0
+        # Horizontal position relative to the start point, in the camera frame
+        # (x right, y toward the top of the image), summed from executed moves.
+        self.position_xy: tuple[float, float] = (0.0, 0.0)
+        self.last_altitude: float | None = None
+        self.observation_sent: bool = False
+        # Feedback line for the next observation, in the training env wording.
+        self.feedback: str = format_move_feedback(True, "", True)
+        self.pending_feedback: str = self.feedback
 
         self.event_bus.subscribe(
             PhotoWithTelemetryReceived, self.handle_photo_and_telemetry
@@ -83,6 +105,10 @@ class SearchOrchestrator:
             kind = event.prompt_type
             kv = event.prompt_args
             glimpses = int(kv.get("glimpses", 0))
+            self.task_hint = f"Find {kv.get('object', 'helipad')}"
+            self.half_area = float(kv.get("area", 80)) / 2
+            self.min_altitude = float(kv.get("minimum_altitude", 10))
+            self.max_altitude = float(kv.get("maximum_altitude", 120))
 
             self.max_moves = glimpses - 1
             if self.max_moves == -1:
@@ -124,15 +150,27 @@ class SearchOrchestrator:
             )
             return
 
+        self.last_altitude = float(await get_height_async(event.telemetry_path))
         command = AnalyzePhotoCommand(
             chat_id=self.mission_id,
-            is_warning=self.is_warning,
             photo_path=event.photo_path,
             telemetry_path=event.telemetry_path,
+            observation_text=self._observation_text(),
+            initial=not self.observation_sent,
         )
-        self.is_warning = False
+        self.observation_sent = True
         self.state = MissionState.WAITING_FOR_VLM
         await self.event_bus.publish(command)
+
+    def _observation_text(self) -> str:
+        # In training, "Max steps" counts tool calls: the model may call found() after
+        # max_steps - 1 moves, which matches glimpses = max_moves + 1 here.
+        max_steps = self.max_moves + 1
+        position = format_position(*self.position_xy, self.last_altitude)
+        bounds = format_bounds(self.half_area, self.min_altitude, self.max_altitude)
+        if not self.observation_sent:
+            return format_initial_observation(self.task_hint, position, bounds, max_steps)
+        return format_step_observation(self.feedback, position, self.moves_performed, max_steps, bounds)
 
     async def handle_vlm_analysis(self, event: VlmAnalysisCompleted):
         if self.mission_id != event.chat_id:
@@ -153,8 +191,9 @@ class SearchOrchestrator:
             await self._terminate_mission(found=False)
             return
 
+        move = self._clamp_to_altitude_limits(event.move)
         command = AskUserConfirmationCommand(
-            mission_id=self.mission_id, reasoning=event.reasoning, move=event.move
+            mission_id=self.mission_id, reasoning=event.reasoning, move=move
         )
         self.state = MissionState.WAITING_FOR_USER
         await self.event_bus.publish(command)
@@ -173,7 +212,8 @@ class SearchOrchestrator:
             return
 
         if event.decision == ActionStatus.WARNING:
-            self.is_warning = True
+            # The operator rejected the move as unsafe; reported like a blocked move in training.
+            self.feedback = format_move_feedback(False, "Obstacle collision", False)
             self.state = MissionState.WAITING_FOR_DRONE
             await self.event_bus.publish(
                 GetPhotoAndTelemetryCommand(drone_id=self.drone_id)
@@ -185,6 +225,33 @@ class SearchOrchestrator:
             command = ExecuteMoveCommand(drone_id=self.drone_id, move=event.move)
             self.state = MissionState.WAITING_FOR_ACK
             await self.event_bus.publish(command)
+
+    def _clamp_to_altitude_limits(self, move):
+        """The VLM sometimes ignores the altitude limits, so a vertical move that would
+        end outside them is shortened to stop exactly at the limit. The model is told
+        about it in the next observation, the same way the training env reports it."""
+        self.pending_feedback = format_move_feedback(True, "", True)
+        if move is None or self.last_altitude is None:
+            return move
+
+        x, y, z = move
+        altitude = self.last_altitude
+        target = altitude + z
+        if self.min_altitude <= target <= self.max_altitude:
+            return move
+
+        if target < self.min_altitude:
+            clamped_z = min(0.0, self.min_altitude - altitude)
+        else:
+            clamped_z = max(0.0, self.max_altitude - altitude)
+        logger.warning(
+            f"[SEARCH] Move {move} would end at {target:.1f}m, outside the altitude limits "
+            f"[{self.min_altitude:.1f}m, {self.max_altitude:.1f}m]. Clamping z to {clamped_z:.1f}."
+        )
+        clamped = (x, y, clamped_z)
+        reason = altitude_limit_reason(self.min_altitude, self.max_altitude)
+        self.pending_feedback = format_move_feedback(False, reason, any(clamped))
+        return clamped
 
     # We need to know, in case of connection loss, if command was delivered, and the move performed.
     async def handle_move_started(self, event: MoveStarted):
@@ -216,6 +283,9 @@ class SearchOrchestrator:
 
         self.move_failures = 0
         self.moves_performed += 1
+        x, y = self.position_xy
+        self.position_xy = (x + self.current_move[0], y + self.current_move[1])
+        self.feedback = self.pending_feedback
 
         self.state = MissionState.WAITING_FOR_DRONE
         await self.event_bus.publish(

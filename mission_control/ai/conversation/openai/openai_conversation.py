@@ -1,192 +1,130 @@
 import asyncio
 import base64
 import io
-from time import sleep
+import json
+from typing import Any
 
-from openai import Client, RateLimitError
+from openai import Client
 from PIL import Image
 
-from mission_control.ai.conversation.abstract_conversation import Conversation, Role
+from mission_control.ai.conversation.tool_conversation import (
+    SKIPPED_CALL_RESULT,
+    AssistantReply,
+    ToolCall,
+    ToolConversation,
+)
+from mission_control.ai.prompt_helpers.training_prompt import TOOLS
 from mission_control.utils.logger import get_configured_logger
 
 logger = get_configured_logger(__name__)
 
 
-class OpenAIConversation(Conversation):
+def image_to_data_url(image: Image.Image) -> str:
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=95)
+    return "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+
+def _parse_arguments(arguments: str | None) -> dict[str, Any]:
+    if not arguments:
+        return {}
+    try:
+        return json.loads(arguments)
+    except json.JSONDecodeError:
+        logger.warning(f"Tool call arguments are not valid JSON: {arguments}")
+        return {}
+
+
+class OpenAIChatConversation(ToolConversation):
+    """
+    Chat Completions API with tools - used for self-hosted vLLM models (FlyLoRA, base Qwen).
+
+    The tool schemas are also passed through ``chat_template_kwargs`` because vLLM
+    strips the ``return`` entries from ``tools`` before rendering, while TRL rendered
+    them into the training prompt. ``tools`` itself is still needed for vLLM's tool
+    call parser.
+    """
+
     def __init__(
         self,
         client: Client,
         model_name: str,
-        seed=42,
-        max_tokens=300,
-        temperature=0.8,
-        top_p=1.0,
-        extra_body=None,
+        max_tokens: int | None = None,
+        chat_template_kwargs: dict[str, Any] | None = None,
     ):
+        super().__init__()
         self.client = client
-        self.conversation = []
         self.model_name = model_name
-        self.seed = seed
         self.max_tokens = max_tokens
-        self.temperature = temperature
-        self.top_p = top_p
-        # vLLM-specific passthrough (e.g. {"chat_template_kwargs": {"enable_thinking": False}}).
-        # Real OpenAI cloud models ignore/reject unknown fields, so this stays None there.
-        self.extra_body = extra_body
+        self.chat_template_kwargs = {"tools": TOOLS, **(chat_template_kwargs or {})}
 
-        self.transaction_started = False
-        self.transaction_role = None
-        self.transaction_conversation = {}
+    @staticmethod
+    def _content(parts: list[Any]) -> list[dict[str, Any]]:
+        return [
+            {"type": "text", "text": part}
+            if isinstance(part, str)
+            else {"type": "image_url", "image_url": {"url": image_to_data_url(part)}}
+            for part in parts
+        ]
 
-    def begin_transaction(self, role: Role):
-        if self.transaction_started:
-            raise Exception("Transaction already started")
+    def _append_user(self, parts):
+        self.native.append({"role": "user", "content": self._content(parts)})
 
-        self.transaction_started = True
-        self.transaction_role = role
-
-        role = "user" if role == Role.USER else "assistant"
-
-        self.transaction_conversation = {"role": role, "content": []}
-
-    def add_text_message(self, text: str):
-        if not self.transaction_started:
-            raise Exception("Transaction not started")
-
-        if self.transaction_conversation["role"] == "assistant":
-            self.transaction_conversation["content"] = text
-        else:
-            content = self.transaction_conversation["content"]
-            content.append({"type": "text", "text": text})
-
-    async def add_image_message(self, image: Image.Image):
-        if not self.transaction_started:
-            raise Exception("Transaction not started")
-
-        image = image.convert("RGB")
-        buffer = io.BytesIO()
-        image.save(buffer, format="JPEG", quality=95)
-        base64_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
-
-        content = self.transaction_conversation["content"]
-
-        content.append(
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{base64_image}",
-                    "detail": "high",  # FIXME
-                },
-            }
+    def _append_tool_results(self, calls, parts):
+        first, *rest = calls
+        self.native.append(
+            {"role": "tool", "tool_call_id": first.call_id, "name": first.name, "content": self._content(parts)}
         )
+        for call in rest:
+            self.native.append(
+                {"role": "tool", "tool_call_id": call.call_id, "name": call.name, "content": SKIPPED_CALL_RESULT}
+            )
 
-    def get_answer_from_openai(
-        self, model, messages, max_tokens, seed, temperature, top_p, extra_body=None
-    ):
-        fail = True
-        response = None
+    def _append_assistant_text(self, text):
+        self.native.append({"role": "assistant", "content": text})
 
-        while fail:
-            try:
-                response = self.client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    # seed=seed,
-                    temperature=temperature,
-                    top_p=top_p,
-                    extra_body=extra_body,
-                )
-                fail = False
-            except RateLimitError as e:
-                logger.warning("Rate limit error")
-                logger.warning(e)
-                sleep(120)
-                fail = True
-        return response
+    def _messages(self) -> list[dict[str, Any]]:
+        system = [{"role": "system", "content": self.system_prompt}] if self.system_prompt else []
+        return system + self.native
 
-    async def commit_transaction(self, send_to_vlm=False):
-        if not self.transaction_started:
-            raise Exception("Transaction not started")
-
-        self.conversation.append(self.transaction_conversation)
-        self.transaction_conversation = {}
-
-        if self.transaction_role == Role.ASSISTANT and send_to_vlm:
-            raise Exception("Assistant cannot send messages to VLM")
-
-        self.transaction_started = False
-        self.transaction_role = None
-
-        if not send_to_vlm:
-            return
+    async def _generate(self) -> AssistantReply:
+        kwargs = {}
+        if self.max_tokens is not None:
+            kwargs["max_tokens"] = self.max_tokens
 
         response = await asyncio.to_thread(
-            self.get_answer_from_openai,
-            self.model_name,
-            self.conversation,
-            self.max_tokens,
-            self.seed,
-            self.temperature,
-            self.top_p,
-            self.extra_body,
+            self.client.chat.completions.create,
+            model=self.model_name,
+            messages=self._messages(),
+            tools=[{"type": t["type"], "function": {k: v for k, v in t["function"].items() if k != "return"}} for t in TOOLS],
+            extra_body={"chat_template_kwargs": self.chat_template_kwargs},
+            **kwargs,
         )
+        choice = response.choices[0]
+        message = choice.message
+        # vLLM returns the thinking block separately when started with --reasoning-parser.
+        reasoning = getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None) or ""
+        logger.info(f"llm response (finish_reason={choice.finish_reason}): {message.content!r}")
 
-        response_content = str(response.choices[0].message.content)
+        calls = [
+            ToolCall(name=tc.function.name, arguments=_parse_arguments(tc.function.arguments), call_id=tc.id)
+            for tc in (message.tool_calls or [])
+        ]
 
-        logger.info("llm response:", response_content)
+        assistant: dict[str, Any] = {"role": "assistant", "content": message.content or ""}
+        if reasoning:
+            # The Qwen chat template re-renders it inside <think>, as it was during training.
+            # vLLM (0.23) reads it back from "reasoning" and silently drops "reasoning_content".
+            assistant["reasoning"] = reasoning
+        if message.tool_calls:
+            assistant["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in message.tool_calls
+            ]
+        self.native.append(assistant)
 
-        self.conversation.append({"role": "assistant", "content": response_content})
-
-    def rollback_transaction(self):
-        self.transaction_conversation = {}
-
-        self.transaction_started = False
-        self.transaction_role = None
-
-    def get_conversation(self, save_urls=True):
-        def conversation_iterator():
-            for message in self.conversation:
-                role = Role.USER if message["role"] == "user" else Role.ASSISTANT
-                content = message["content"]
-
-                if isinstance(content, str):
-                    yield role, content
-                elif isinstance(content, list):
-                    for submessage in content:
-                        if submessage["type"] == "text":
-                            yield role, submessage["text"]
-
-                        elif submessage["type"] == "image_url":
-                            try:
-                                url_string = submessage["image_url"]["url"]
-
-                                if "base64," in url_string:
-                                    base64_data = url_string.split("base64,")[1]
-
-                                    image_bytes = base64.b64decode(base64_data)
-
-                                    image = Image.open(io.BytesIO(image_bytes))
-
-                                    image.load()
-
-                                    yield role, image
-                                else:
-                                    yield role, url_string
-
-                            except Exception as e:
-                                logger.error(f"Error decoding image from history: {e}")
-                                yield role, "image_error"
-                else:
-                    raise Exception("Invalid content type")
-
-        return list(conversation_iterator())
-
-    def get_latest_message(self):
-        if len(self.conversation) == 0:
-            raise Exception("No messages in conversation")
-
-        return self.get_conversation()[-1]
-
-    def get_entire_conversation(self):
-        return self.conversation
+        return AssistantReply(text=message.content or "", reasoning=reasoning, tool_calls=calls)

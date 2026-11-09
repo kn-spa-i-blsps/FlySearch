@@ -1,214 +1,136 @@
 import asyncio
 import io
 import logging
+from typing import Any
 
+import httpx
 from google import genai
 from google.genai import types
-from google.genai.errors import APIError, ServerError
-from PIL import Image
+from google.genai.errors import APIError
 
-from mission_control.ai.conversation.abstract_conversation import Conversation, Role
+from mission_control.ai.conversation.tool_conversation import (
+    SKIPPED_CALL_RESULT,
+    AssistantReply,
+    ToolCall,
+    ToolConversation,
+)
+from mission_control.ai.prompt_helpers.training_prompt import TOOLS
+
+RETRYABLE_CODES = {429, 499, 500, 503, 504}
+
+FUNCTION_DECLARATIONS = [
+    types.FunctionDeclaration(
+        name=t["function"]["name"],
+        description=t["function"]["description"],
+        parameters=t["function"]["parameters"],
+    )
+    for t in TOOLS
+]
 
 
-class GeminiConversation(Conversation):
+def _image_part(image) -> types.Part:
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=95)
+    return types.Part.from_bytes(data=buffer.getvalue(), mime_type="image/jpeg")
+
+
+def _to_parts(parts: list[Any]) -> list[types.Part]:
+    return [types.Part.from_text(text=p) if isinstance(p, str) else _image_part(p) for p in parts]
+
+
+class GeminiConversation(ToolConversation):
+    """
+    Gemini function calling, mirroring src/model/gsplat_tools_policy.py from the
+    training repository: same system prompt and tool declarations, the move
+    observation goes back as a function response plus the new camera image.
+    """
+
     def __init__(
         self,
         client: genai.Client,
         model_name: str,
-        seed=42,
         max_tokens=None,
-        temperature=None,
-        top_p=None,
-        thinking_budget=None,
+        retries: int = 4,
+        retry_delay: float = 5.0,
     ):
+        super().__init__()
         self.client = client
         self.model_name = model_name
-        self.conversation = []  # This will be populated from chat history
-        self.seed = seed
-        self.max_tokens = max_tokens  # maps to max_output_tokens in Gemini
-        self.temperature = temperature
-        self.top_p = top_p
-        self.thinking_budget = thinking_budget
+        self.max_tokens = max_tokens
+        self.retries = retries
+        self.retry_delay = retry_delay
         self.logger = logging.getLogger(__name__)
 
-        self.transaction_started = False
-        self.transaction_role = None
-        self.transaction_conversation = {}
+    def _append_user(self, parts):
+        self.native.append(types.Content(role="user", parts=_to_parts(parts)))
 
-    def begin_transaction(self, role: Role):
-        if self.transaction_started:
-            raise Exception("Transaction already started")
+    def _append_tool_results(self, calls, parts):
+        first, *rest = calls
+        text = "\n".join(p for p in parts if isinstance(p, str))
+        images = [p for p in parts if not isinstance(p, str)]
+        response_parts = [types.Part.from_function_response(name=first.name, response={"result": text})]
+        response_parts += [
+            types.Part.from_function_response(name=c.name, response={"result": SKIPPED_CALL_RESULT}) for c in rest
+        ]
+        self.native.append(types.Content(role="user", parts=response_parts + _to_parts(images)))
 
-        self.transaction_started = True
-        self.transaction_role = role
+    def _append_assistant_text(self, text):
+        self.native.append(types.Content(role="model", parts=[types.Part.from_text(text=text)]))
 
-        role = "user" if role == Role.USER else "assistant"
-
-        self.transaction_conversation = {"role": role, "content": []}
-
-    def add_text_message(self, text: str):
-        if not self.transaction_started:
-            raise Exception("Transaction not started")
-
-        if self.transaction_conversation["role"] == "assistant":
-            self.transaction_conversation["content"] = text
-        else:
-            content = self.transaction_conversation["content"]
-            content.append({"type": "text", "text": text})
-
-    async def add_image_message(self, image: Image.Image):
-        if not self.transaction_started:
-            raise Exception("Transaction not started")
-
-        def process_image():
-            img = image.convert("RGB")
-            buffer = io.BytesIO()
-            img.save(buffer, format="JPEG", quality=95)
-            return buffer.getvalue()
-
-        image_bytes = await asyncio.to_thread(process_image)
-
-        content = self.transaction_conversation["content"]
-
-        content.append({"type": "image", "image": image, "image_bytes": image_bytes})
-
-    def _to_gemini_parts(self, message_content):
-        parts = []
-        if isinstance(message_content, str):
-            return [types.Part.from_text(text=message_content)]
-        elif isinstance(message_content, list):
-            for sub in message_content:
-                if sub["type"] == "text":
-                    parts.append(types.Part.from_text(text=sub["text"]))
-                elif sub["type"] == "image":
-                    parts.append(
-                        types.Part.from_bytes(
-                            data=sub["image_bytes"], mime_type="image/jpeg"
-                        )
-                    )
-                else:
-                    parts.append(types.Part.from_text("[unsupported content]"))
-            return parts
-        else:
-            return [types.Part.from_text("[unsupported content]")]
-
-    def _get_generation_config(self):
-        config_dict = {}
-        if self.max_tokens is not None:
-            config_dict["max_output_tokens"] = self.max_tokens
-        if self.temperature is not None:
-            config_dict["temperature"] = self.temperature
-        if self.top_p is not None:
-            config_dict["top_p"] = self.top_p
-        if self.thinking_budget is not None:
-            config_dict["thinking_config"] = types.ThinkingConfig(
-                thinking_budget=self.thinking_budget
-            )
-        return types.GenerateContentConfig(**config_dict) if config_dict else None
-
-    async def _send_message_with_retry(self, message, history):
-        """Send a turn through AsyncChat so Gemini can manage AFC and chat state."""
-        retries = 3
-        delay = 5  # seconds
-        for i in range(retries):
-            try:
-                chat = self.client.aio.chats.create(
-                    model=self.model_name,
-                    config=self._get_generation_config(),
-                    history=history,
-                )
-                response = await chat.send_message(
-                    message=self._to_gemini_parts(message)
-                )
-                return response
-            except (APIError, ServerError) as e:
-                # Using 429 and 499 for rate limiting, but being broad for other transient issues
-                if e.code in [429, 499, 500, 503, 504]:
-                    self.logger.warning(
-                        f"APIError received: {e}. Retrying in {delay} seconds..."
-                    )
-                    await asyncio.sleep(delay)
-                    delay *= 2  # Exponential backoff
-                else:
-                    self.logger.error(f"Unhandled APIError: {e}")
-                    raise e
-            except Exception as e:
-                self.logger.error(f"An unexpected error occurred: {e}")
-                raise e
-        raise Exception("Failed to get response after multiple retries")
-
-    async def commit_transaction(self, send_to_vlm=False):
-        if not self.transaction_started:
-            raise Exception("Transaction not started")
-
-        message_to_commit = self.transaction_conversation
-        self.conversation.append(message_to_commit)
-
-        self.transaction_conversation = {}
-        self.transaction_started = False
-
-        role = self.transaction_role
-        self.transaction_role = None
-
-        if not send_to_vlm:
-            return
-
-        if role == Role.ASSISTANT and send_to_vlm:
-            raise Exception("Assistant cannot send messages to VLM")
-
-        history = []
-        for msg in self.conversation[:-1]:
-            msg_role = "user" if msg["role"] == "user" else "model"
-            history.append(
-                types.Content(
-                    role=msg_role, parts=self._to_gemini_parts(msg["content"])
-                )
-            )
-
-        response = await self._send_message_with_retry(
-            message_to_commit["content"], history
+    def _config(self) -> types.GenerateContentConfig:
+        return types.GenerateContentConfig(
+            system_instruction=self.system_prompt,
+            tools=[types.Tool(function_declarations=FUNCTION_DECLARATIONS)],
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            thinking_config=types.ThinkingConfig(include_thoughts=True),
+            max_output_tokens=self.max_tokens,
         )
 
-        response_content = response.text
-        if response_content is None:
-            raise RuntimeError("Gemini returned a response without text")
+    async def _generate_with_retry(self) -> types.GenerateContentResponse:
+        delay = self.retry_delay
+        for attempt in range(1, self.retries + 1):
+            try:
+                return await self.client.aio.models.generate_content(
+                    model=self.model_name, contents=self.native, config=self._config()
+                )
+            except (APIError, httpx.TimeoutException) as e:
+                code = getattr(e, "code", None)
+                if isinstance(e, APIError) and code not in RETRYABLE_CODES:
+                    raise
+                if attempt == self.retries:
+                    raise RuntimeError(f"Gemini failed after {self.retries} attempts: {e}") from e
+                self.logger.warning(
+                    f"Gemini error ({code or type(e).__name__}), attempt {attempt}/{self.retries}. "
+                    f"Retrying in {delay:.0f}s..."
+                )
+                await asyncio.sleep(delay)
+                delay *= 2
+        raise AssertionError("unreachable")
 
-        self.logger.info(f"LLM response: {response_content}")
+    async def _generate(self) -> AssistantReply:
+        response = await self._generate_with_retry()
 
-        # Add the model's response to the history
-        response_message = {"role": "assistant", "content": response_content}
-        self.conversation.append(response_message)
+        candidate = response.candidates[0] if response.candidates else None
+        content = candidate.content if candidate else None
+        if content is None or not content.parts:
+            reason = candidate.finish_reason if candidate else response.prompt_feedback
+            raise RuntimeError(f"Gemini returned no content (reason: {reason})")
 
-    def rollback_transaction(self):
-        self.transaction_conversation = {}
+        # Sent back unchanged so Gemini keeps its thought signatures.
+        self.native.append(content)
 
-        self.transaction_started = False
-        self.transaction_role = None
+        text, thoughts, calls = [], [], []
+        for part in content.parts:
+            if part.function_call is not None:
+                calls.append(
+                    ToolCall(
+                        name=part.function_call.name,
+                        arguments=dict(part.function_call.args or {}),
+                        call_id=part.function_call.id,
+                    )
+                )
+            elif part.text:
+                (thoughts if part.thought else text).append(part.text)
 
-    def get_conversation(self, save_urls=True):
-        def conversation_iterator():
-            for message in self.conversation:
-                role = Role.USER if message["role"] == "user" else Role.ASSISTANT
-                content = message["content"]
-
-                if isinstance(content, str):
-                    yield role, content
-                elif isinstance(content, list):
-                    for submessage in content:
-                        if submessage["type"] == "text":
-                            yield role, submessage["text"]
-                        elif submessage["type"] == "image":
-                            yield role, submessage["image"]
-                else:
-                    raise Exception("Invalid content type")
-
-        return list(conversation_iterator())
-
-    def get_latest_message(self):
-        if len(self.conversation) == 0:
-            raise Exception("No messages in conversation")
-
-        return self.get_conversation()[-1]
-
-    def get_entire_conversation(self):
-        return self.conversation
+        self.logger.info(f"LLM response: {''.join(text)!r}, calls: {calls}")
+        return AssistantReply(text="".join(text), reasoning="".join(thoughts), tool_calls=calls)

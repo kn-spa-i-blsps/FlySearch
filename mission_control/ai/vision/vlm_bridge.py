@@ -9,6 +9,8 @@ from PIL import Image
 
 from mission_control.ai.conversation.abstract_conversation import Conversation, Role
 from mission_control.ai.conversation.conversations import LLM_BACKEND_FACTORIES
+from mission_control.ai.conversation.tool_conversation import AssistantReply
+from mission_control.ai.prompt_helpers.training_prompt import INITIAL_USER_TEXT
 from mission_control.core.config import Config
 from mission_control.core.event_bus import EventBus
 from mission_control.core.events import (
@@ -33,6 +35,7 @@ from mission_control.core.exceptions import VLMConnectionError
 from mission_control.core.interfaces import ChatStorageHelper, VLMBridge
 from mission_control.utils.image_processing import add_grid_async
 from mission_control.utils.logger import get_configured_logger
+from mission_control.core.exceptions import ParsingError
 from mission_control.utils.parsers import (
     ModelResponse,
     get_height_async,
@@ -42,15 +45,38 @@ from mission_control.utils.parsers import (
 logger = get_configured_logger(__name__)
 
 
+def reply_to_model_response(reply: AssistantReply) -> ModelResponse:
+    """Turns the model's first tool call into a move / found decision."""
+    reasoning = "\n\n".join(r for r in (reply.reasoning, reply.text) if r)
+
+    if not reply.tool_calls:
+        # Fallback for a model that answers in text instead of calling a tool.
+        try:
+            parsed = parse_xml_response(reply.text)
+        except ParsingError as e:
+            raise ParsingError(f"Model did not call a tool. Response: {reply.text!r}") from e
+        parsed.reasoning = reasoning
+        return parsed
+
+    call = reply.tool_calls[0]
+    if call.name == "found":
+        return ModelResponse(found=True, reasoning=reasoning)
+    if call.name == "move":
+        try:
+            move = tuple(float(call.arguments[k]) for k in ("dx", "dy", "dz"))
+        except (KeyError, TypeError, ValueError) as e:
+            raise ParsingError(f"Invalid move arguments: {call.arguments}") from e
+        return ModelResponse(move=move, reasoning=reasoning)
+
+    raise ParsingError(f"Unknown tool called: {call.name}({call.arguments})")
+
+
 class FlySearchVLMBridge(VLMBridge):
     """Bridge for the communication between the server and the VLM."""
 
     def __init__(self, config: Config, event_bus: EventBus, storage: ChatStorageHelper):
         self.config = config
         self.event_bus = event_bus
-        self.collision_warning_str = (
-            "We do not agree to this move. Make another move."
-        )
         self.conversations = {}
         self.chat_locks = {}
         self.storage = storage
@@ -74,7 +100,6 @@ class FlySearchVLMBridge(VLMBridge):
             VlmErrorOccurred on error.
         """
         chat_id = event.chat_id
-        is_warning = event.is_warning
         photo_path = event.photo_path
         telemetry_path = event.telemetry_path
 
@@ -89,32 +114,29 @@ class FlySearchVLMBridge(VLMBridge):
 
             async with self.chat_locks[chat_id]:
                 conversation = self.conversations[chat_id]
-                img, message = await self._prepare_input_async(
+                img = await self._prepare_image_async(
                     photo_path, telemetry_path, self.config.fov_degrees
                 )
+                # Same layout as in training: the first user message is the intro text,
+                # the image and the mission details; later observations (image + text)
+                # are the result of the model's previous move() call.
+                if event.initial:
+                    parts = [INITIAL_USER_TEXT, img, event.observation_text]
+                else:
+                    parts = [img, event.observation_text]
                 logger.info("[VLM] Sending photo and telemetry to the model.")
 
                 # ----- PUBLISH EVENT FOR GUI -----
-                texts = []
-                if is_warning:
-                    texts.append(self.collision_warning_str)
-                texts.append(message)
-
                 prompt_event = VlmPromptSent(
                     chat_id=chat_id,
-                    texts=texts,
+                    texts=[p for p in parts if isinstance(p, str)],
                     image_b64=self._pil_to_base64(img)
                 )
                 await self.event_bus.publish(prompt_event)
                 # ---------------------------------
 
-                raw_response = await self._execute_transaction(
-                    conversation, img, message, is_warning
-                )
+                parsed = await self._execute_transaction(conversation, parts)
                 logger.info("[VLM] Received response from the model.")
-
-                # Fast, so shouldn't be problematic
-                parsed = self._parse_xml_response_sync(raw_response)
 
             analysis = VlmAnalysisCompleted(
                 chat_id=chat_id,
@@ -151,7 +173,7 @@ class FlySearchVLMBridge(VLMBridge):
                     f"Use CHAT_RESET to delete the chat first."
                 )
             conversation = self._create_empty_conversation()
-            conversation.begin_transaction(Role.USER)
+            conversation.begin_transaction(Role.SYSTEM)
             conversation.add_text_message(prompt)
             await conversation.commit_transaction(send_to_vlm=False)
             self.conversations[chat_id] = conversation
@@ -326,45 +348,30 @@ class FlySearchVLMBridge(VLMBridge):
         return f"data:image/jpeg;base64,{img_str}"
 
     @staticmethod
-    async def _prepare_input_async(
-        photo_path: Path, telemetry_path: Path, fov_degrees: float = 10.8
-    ) -> tuple[Image.Image, str]:
+    async def _prepare_image_async(
+        photo_path: Path, telemetry_path: Path, fov_degrees: float
+    ) -> Image.Image:
         drone_height = await get_height_async(telemetry_path)
-        message = f"Your current altitude is {drone_height} meters above ground level."
-        img = await add_grid_async(photo_path, drone_height, fov_degrees)
-        return img, message
+        return await add_grid_async(photo_path, drone_height, fov_degrees)
 
     async def _execute_transaction(
-        self,
-        conversation: Conversation,
-        img: Image.Image,
-        message: str,
-        is_warning: bool,
-    ) -> str:
+        self, conversation: Conversation, parts: list[str | Image.Image]
+    ) -> ModelResponse:
         try:
             conversation.begin_transaction(Role.USER)
+            for part in parts:
+                if isinstance(part, str):
+                    conversation.add_text_message(part)
+                else:
+                    await conversation.add_image_message(part)
 
-            if is_warning:
-                # Warning: Warning text + image with a grid + telemetry context
-                conversation.add_text_message(self.collision_warning_str)
-
-            # Standard Step: image with a grid + telemetry context
-            await conversation.add_image_message(img)
-            conversation.add_text_message(message)
-
-            # Send message.
             await conversation.commit_transaction(send_to_vlm=True)
-
-            role, message = conversation.get_latest_message()
         except Exception as e:
             conversation.rollback_transaction()
-            raise VLMConnectionError("Message sending to the VLM failed.") from e
+            raise VLMConnectionError(f"Message sending to the VLM failed: {e}") from e
 
-        if role == Role.ASSISTANT:
-            return str(message)
+        reply = conversation.last_reply
+        if reply is None:
+            raise VLMConnectionError("[VLM] No response from VLM.")
 
-        raise VLMConnectionError("[VLM] No response from VLM.")
-
-    @staticmethod
-    def _parse_xml_response_sync(raw_response: str) -> ModelResponse:
-        return parse_xml_response(raw_response)
+        return reply_to_model_response(reply)

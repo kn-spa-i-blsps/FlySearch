@@ -35,21 +35,8 @@ class FlySearchPromptHelper(PromptHelper):
                 "maximum_altitude": int(args.get("maximum_altitude", "120")),
             }
 
-            t = Prompts(kind)
-            factory = PROMPT_FACTORIES[t]
-
-            if t == Prompts.FS1:
-                text = factory(
-                    params["glimpses"],
-                    params["object"],
-                    params["area"],
-                    params["minimum_altitude"],
-                    params["maximum_altitude"],
-                )
-            else:
-                text = factory(
-                    params["glimpses"], params["object"], params["minimum_altitude"], params["maximum_altitude"]
-                )
+            # Mission parameters reach the model through the observations, not the system prompt.
+            text = PROMPT_FACTORIES[Prompts(kind)]()
 
             prompt_meta = {"kind": kind, "text": text, "mission_id": args.get("mission_id", "unassigned"), **params}
 

@@ -230,9 +230,8 @@ class WebServer:
             "glimpses": str(req.glimpses),
             "minimum_altitude": str(req.min_altitude),
             "maximum_altitude": str(req.max_altitude),
+            "area": str(req.area),
         }
-        if req.prompt_type == "FS-1":
-            kv["area"] = str(req.area)
 
         event = StartMissionCommand(
             mission_id=req.mission_id,
@@ -415,9 +414,8 @@ class WebServer:
                         </div>
                         <div class="form-group">
                             <label>Search Pattern (Prompt Type)</label>
-                            <select id="prompt_type" onchange="toggleArea()">
-                                <option value="FS-1">FS-1 (Area Search)</option>
-                                <option value="FS-2">FS-2 (Path/Generic Search)</option>
+                            <select id="prompt_type">
+                                <option value="RL">RL (training prompt, tool calling)</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -428,7 +426,7 @@ class WebServer:
                             <label>Max Moves (Glimpses)</label>
                             <input type="number" id="glimpses" value="10" required>
                         </div>
-                        <div class="form-group" id="area-group">
+                        <div class="form-group">
                             <label>Search Area (m x m)</label>
                             <input type="number" id="area" value="80">
                         </div>
@@ -456,12 +454,13 @@ class WebServer:
                             <label>Model backend</label>
                             <select id="model_backend">
                                 <option value="openai">OpenAI</option>
+                                <option value="vllm">vLLM (FlyLoRA / Qwen)</option>
                                 <option value="gemini">Gemini</option>
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Model name</label>
-                            <input type="text" id="model_name" required placeholder="e.g., oai-gpt-4o">
+                            <input type="text" id="model_name" required placeholder="e.g., gpt-6-luna, flylora, gemini-3.8-flash">
                         </div>
                         <button type="submit">Change Model</button>
                     </form>
@@ -497,11 +496,6 @@ class WebServer:
             </div>
 
             <script>
-                function toggleArea() {{
-                    const type = document.getElementById('prompt_type').value;
-                    document.getElementById('area-group').style.display = type === 'FS-1' ? 'block' : 'none';
-                }}
-
                 document.getElementById('mission-form').addEventListener('submit', async (e) => {{
                     e.preventDefault();
 

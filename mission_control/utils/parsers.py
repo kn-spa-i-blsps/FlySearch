@@ -38,12 +38,12 @@ def parse_prompt_arguments(cmd):
     parts = cmd.split()
     if len(parts) < 1:
         logger.info(
-            "Usage: PROMPT FS-1|FS-2 [object=.. glimpses=.. area=.. minimum_altitude=.. maximum_altitude=..]"
+            "Usage: PROMPT RL [object=.. glimpses=.. area=.. minimum_altitude=.. maximum_altitude=..]"
         )
         raise ValueError
     kind = parts[0].upper()
-    if kind not in ("FS-1", "FS-2"):
-        logger.info("Kind must be FS-1 or FS-2")
+    if kind != "RL":
+        logger.info("Kind must be RL")
         raise ValueError
 
     kv: dict[str, int | str] = {}
@@ -67,14 +67,14 @@ def parse_search_arguments(cmd):
     parts = cmd.split()
     if len(parts) < 4:  # Adjusting for minimum number of args
         logger.info(
-            "Usage: SEARCH <mission_id> <drone_id> <FS-1|FS-2> [object=.. glimpses=.. area=.. minimum_altitude=.. maximum_altitude=..]"
+            "Usage: SEARCH <mission_id> <drone_id> RL [object=.. glimpses=.. area=.. minimum_altitude=.. maximum_altitude=..]"
         )
         raise ValueError
     mission_id = parts[0]
     drone_id = parts[1]
     kind = parts[2].upper()
-    if kind not in ("FS-1", "FS-2"):
-        logger.info("Kind must be FS-1 or FS-2")
+    if kind != "RL":
+        logger.info("Kind must be RL")
         raise ValueError
 
     kv: dict[str, int | str] = {}

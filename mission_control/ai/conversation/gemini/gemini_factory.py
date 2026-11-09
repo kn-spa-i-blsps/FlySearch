@@ -7,6 +7,7 @@ from mission_control.ai.conversation.invalid_factory import InvalidFactoryFactor
 
 try:
     from google import genai
+    from google.genai import types
 
     GEMINI_AVALIABLE = True
 except ImportError:
@@ -20,7 +21,11 @@ if GEMINI_AVALIABLE:
     class _GeminiFactory(BaseConversationFactory):
         def __init__(self, model_name: str):
             self.model_name = model_name
-            self.client = genai.Client(api_key=os.environ["GEMINI_AI_KEY"])
+            # Without a timeout a stuck request (seen with overloaded models) blocks the mission forever.
+            self.client = genai.Client(
+                api_key=os.environ["GEMINI_AI_KEY"],
+                http_options=types.HttpOptions(timeout=90_000),
+            )
 
         def get_conversation(self):
             return GeminiConversation(

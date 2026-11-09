@@ -244,9 +244,13 @@ class AnalyzePhotoCommand(Command):
     """
 
     chat_id: str
-    is_warning: bool
     photo_path: Path
     telemetry_path: Path
+    # Observation text in the training format (see training_prompt.format_*_observation).
+    observation_text: str
+    # The first observation of a mission opens the conversation; later ones answer the
+    # model's previous tool call.
+    initial: bool = False
 
 
 @dataclass(kw_only=True)

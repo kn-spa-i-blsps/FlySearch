@@ -65,7 +65,7 @@ class PromptHelper(Protocol):
         Generates the system prompt text based on the mission kind and parameters.
 
         Args:
-            kind: The type of prompt (e.g., "FS-1", "FS-2").
+            kind: The type of prompt (currently only "RL").
             args: A dictionary of parameters (e.g., {"object": "person", "glimpses": "5"}).
 
         Returns:

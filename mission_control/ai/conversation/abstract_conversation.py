@@ -4,6 +4,7 @@ from PIL import Image
 
 
 class Role(str, Enum):
+    SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
 

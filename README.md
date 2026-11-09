@@ -42,10 +42,10 @@ cp .env_example .env
 
 **Laptop (Server) `.env` configuration:**
 ```dotenv
-# Select your VLM provider
-MODEL_BACKEND=openai      # or gemini
-MODEL_NAME=oai-gpt-4o     # or gemini-2.5-flash
-OPEN_AI_KEY=your_key_here # or GEMINI_AI_KEY=your_key_here
+# Select your VLM backend: openai (Responses API), gemini, or vllm (self-hosted)
+MODEL_BACKEND=openai
+MODEL_NAME=gpt-6-luna       # or gemini-3.8-flash with MODEL_BACKEND=gemini
+OPEN_AI_KEY=your_key_here   # or GEMINI_AI_KEY=your_key_here
 
 # Recording parameters
 RECORDINGS_DIR=/recordings
@@ -53,19 +53,21 @@ PULL_BATCH_SIZE=2
 PULL_CHUNK_BYTES=524288
 
 # Camera FOV (degrees) of the square photo the grid overlay is drawn on.
-# Default matches an Arducam M12 / Sony IMX477 rig's vertical FOV; if you're
-# on different hardware, verify (and retune) with scripts/calibrate_grid_scale.py.
-FOV_ANGLE=10.8
+# Verify (and retune) for your hardware with scripts/calibrate_grid_scale.py.
+FOV_ANGLE=43
 ```
 
-**Benchmarking against a self-hosted model (e.g. a LoRA finetune):** `MODEL_BACKEND=openai` talks to any OpenAI-compatible chat-completions endpoint, not just api.openai.com — set `OPENAI_BASE_URL` to point it at a self-hosted server instead (e.g. `vllm serve` exposing both a finetune and its base model on one URL, selected by `MODEL_NAME`):
+**Benchmarking against a self-hosted model (e.g. a LoRA finetune):** `MODEL_BACKEND=vllm` talks to a vLLM OpenAI-compatible server through Chat Completions with tools. One server can expose both a finetune and its base model, selected by `MODEL_NAME`:
 ```dotenv
-MODEL_BACKEND=openai
+MODEL_BACKEND=vllm
 MODEL_NAME=flylora                          # or e.g. Qwen/Qwen3.5-9B for the base model
-OPENAI_BASE_URL=http://<vllm-host>:8000/v1
-OPEN_AI_KEY=not-needed                       # vLLM ignores this unless you configured auth
+VLLM_BASE_URL=http://<vllm-host>:8000/v1
+VLLM_MAX_TOKENS=3500                        # caps the thinking block in a live mission
+VLLM_DISABLE_THINKING=false                 # thinking on, as during training
 ```
-To compare multiple models, restart `mission_control` between runs with a different `MODEL_BACKEND`/`MODEL_NAME`/`OPENAI_BASE_URL` in `.env` — there's no in-session model switch.
+vLLM has to be started with tool calling and reasoning parsing enabled (`--enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3`), otherwise the model's tool calls are returned as plain text.
+
+All backends get the same conversation FlyLoRA was trained with (`mission_control/ai/prompt_helpers/training_prompt.py`, copied from [rl-uav-search](https://github.com/apardyl/rl-uav-search)): the training system prompt, the `move(dx, dy, dz)` / `found()` tools, and observations with the position, step counter and map bounds. The backend can also be switched at runtime from the GUI (new missions only).
 
 **Raspberry Pi (Producer) `.env` configuration:**
 ```dotenv
@@ -120,26 +122,28 @@ The core feature of this pipeline is the `SEARCH` command, run from the `mission
 ### The `SEARCH` Command
 
 ```text
-SEARCH <name> <FS-1|FS-2> object=<target> glimpses=<max_moves> [area=<meters>] minimum_altitude=<meters>
+SEARCH <name> <drone_id> RL object=<target> glimpses=<max_steps> [area=<meters>] [minimum_altitude=<meters>] [maximum_altitude=<meters>]
 ```
 
-* **`FS-1` / `FS-2`**: Initial prompt strategy templates.
-* **`glimpses`**: Maximum number of VLM inferences (moves) allowed.
+* **`RL`**: The prompt and tool-calling format FlyLoRA was trained with (the only prompt kind).
+* **`glimpses`**: Maximum number of steps (tool calls), shown to the model as `Max steps`.
+* **`area`**: Side of the square search area centered on the start point, shown as `Map bounds`.
+* **`minimum_altitude` / `maximum_altitude`**: Altitude limits. A vertical move that would leave them is shortened to stop exactly at the limit, and the model is told `Movement limited: Altitude limit (...)`.
 
 **Example:**
 ```text
-SEARCH test_run FS-1 object=helipad glimpses=6 area=80 minimum_altitude=10
+SEARCH test_run drone_01 RL object=helipad glimpses=10 area=80 minimum_altitude=10
 ```
 
 ### The Human-in-the-Loop (HITL) Flow
 Once initiated, the system loops through the following sequence:
 1. **Context Gathering:** The server requests a photo and MAVLink telemetry from the RPi.
-2. **VLM Inference:** The image, telemetry, and the active prompt (`FS-1`/`FS-2`) are sent from the server to the AI model.
+2. **VLM Inference:** The image (with the grid overlay), position, step counter and map bounds are sent to the AI model, which answers with a `move` or `found` tool call.
 3. **Vector Proposal:** The VLM analyzes the scene and proposes a relative movement vector (e.g., `<x, y, z>`).
 4. **Human Approval:** The CLI prompts you to review the proposed move:
     * `Enter` / `y`: Accept and send the MAVLink move command to the drone.
     * `n`: Reject, abort the move, and stop.
-    * `w`: Send a collision/safety warning to the VLM and request a recalculation.
+    * `w`: Reject the move as unsafe; the model is told `Movement failed: Obstacle collision` and gets a new photo.
 5. **Termination:** The loop ends when the object is found, the `glimpses` limit is reached, or the user cancels.
 
 ---
@@ -169,7 +173,7 @@ You can also run individual commands in the `mission_control` CLI to manually co
 
 | Command | Description |
 | :--- | :--- |
-| `PROMPT ...` | Generates a prompt based on `FS-1`/`FS-2` strategies. |
+| `PROMPT RL ...` | Generates the training system prompt. |
 | `CHAT_INIT` | Initializes the VLM chat context (requires `PROMPT` first). |
 | `PHOTO_WITH_TELEMETRY` | Captures and caches current image + MAVLink telemetry. |
 | `SEND_TO_VLM` | Sends cached photo + telemetry to the VLM for analysis. |
