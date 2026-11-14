@@ -1,3 +1,4 @@
+import math
 from enum import Enum, auto
 
 from mission_control.core.action_status import ActionStatus
@@ -34,6 +35,11 @@ from mission_control.ai.prompt_helpers.training_prompt import (
     format_step_observation,
 )
 from mission_control.core.interfaces import EventBus, PromptHelper
+from mission_control.utils.heading import (
+    heading_compensation_enabled,
+    read_yaw,
+    to_drone_command,
+)
 from mission_control.utils.logger import get_configured_logger
 from mission_control.utils.parsers import get_height_async
 
@@ -66,7 +72,12 @@ class SearchOrchestrator:
         self.max_moves: int = 0
         self.prompt_helper = prompts
         self.current_move = None
+        # What is actually sent to the drone for current_move (heading-compensated).
+        self.current_drone_move = None
         self.move_failures = 0
+        # Heading (rad) recorded with the photo the VLM is currently looking at.
+        self.photo_yaw: float | None = None
+        self.heading_compensation = heading_compensation_enabled()
 
         # Mission parameters shown to the model in each observation (training format).
         self.task_hint: str = ""
@@ -151,6 +162,7 @@ class SearchOrchestrator:
             return
 
         self.last_altitude = float(await get_height_async(event.telemetry_path))
+        self.photo_yaw = read_yaw(event.telemetry_path)
         command = AnalyzePhotoCommand(
             chat_id=self.mission_id,
             photo_path=event.photo_path,
@@ -221,10 +233,26 @@ class SearchOrchestrator:
 
         if event.decision == ActionStatus.CONFIRMED:
             self.current_move = event.move
+            self.current_drone_move = self._drone_move(event.move)
             self.move_failures = 0
-            command = ExecuteMoveCommand(drone_id=self.drone_id, move=event.move)
+            command = ExecuteMoveCommand(drone_id=self.drone_id, move=self.current_drone_move)
             self.state = MissionState.WAITING_FOR_ACK
             await self.event_bus.publish(command)
+
+    def _drone_move(self, move):
+        """Rotate the VLM's camera-frame move by the heading at photo time, so the drone
+        flies where the model pointed in the image (see mission_control/utils/heading.py)."""
+        if move is None or not self.heading_compensation:
+            return move
+        if self.photo_yaw is None:
+            logger.warning("[SEARCH] No yaw in telemetry; sending move without heading compensation.")
+            return move
+        drone_move = to_drone_command(tuple(move), self.photo_yaw)
+        logger.info(
+            f"[SEARCH] Heading compensation: VLM move {tuple(move)} at yaw "
+            f"{math.degrees(self.photo_yaw):.0f} deg -> drone command {drone_move}"
+        )
+        return drone_move
 
     def _clamp_to_altitude_limits(self, move):
         """The VLM sometimes ignores the altitude limits, so a vertical move that would
@@ -238,6 +266,10 @@ class SearchOrchestrator:
         altitude = self.last_altitude
         target = altitude + z
         if self.min_altitude <= target <= self.max_altitude:
+            return move
+        # Already outside the limits (e.g. the drone overshot): a move that holds
+        # altitude or heads back toward the allowed range is not limited.
+        if (target < self.min_altitude and z >= 0) or (target > self.max_altitude and z <= 0):
             return move
 
         if target < self.min_altitude:
@@ -277,7 +309,7 @@ class SearchOrchestrator:
             else:
                 logger.warning(f"[SEARCH] Move failed (attempt {self.move_failures}). Retrying...")
                 self.state = MissionState.WAITING_FOR_ACK
-                command = ExecuteMoveCommand(drone_id=self.drone_id, move=self.current_move)
+                command = ExecuteMoveCommand(drone_id=self.drone_id, move=self.current_drone_move)
                 await self.event_bus.publish(command)
             return
 
@@ -304,7 +336,7 @@ class SearchOrchestrator:
             self.state = MissionState.PAUSED
         elif self.state == MissionState.WAITING_FOR_ACK:
             self.pending_command = ExecuteMoveCommand(
-                drone_id=self.drone_id, move=self.current_move
+                drone_id=self.drone_id, move=self.current_drone_move
             )
             self.state = MissionState.PAUSED
 

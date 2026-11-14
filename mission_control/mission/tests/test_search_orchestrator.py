@@ -2,10 +2,13 @@ import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from mission_control.core.action_status import ActionStatus
 from mission_control.core.events import (
     AnalyzePhotoCommand,
     AskUserConfirmationCommand,
+    ExecuteMoveCommand,
     MoveExecuted,
     PhotoWithTelemetryReceived,
     StartMissionCommand,
@@ -45,10 +48,13 @@ class Mission:
             )
         )
 
-    def photo(self, altitude):
+    def photo(self, altitude, yaw=None):
         self.photos += 1
         telemetry = self.tmp_path / f"t{self.photos}.json"
-        telemetry.write_text(json.dumps({"data": {"position": {"alt": altitude}}}))
+        data = {"position": {"alt": altitude}}
+        if yaw is not None:
+            data["attitude"] = {"yaw": yaw}
+        telemetry.write_text(json.dumps({"data": data}))
         asyncio.run(
             self.orchestrator.handle_photo_and_telemetry(
                 PhotoWithTelemetryReceived(drone_id="d", photo_path=self.tmp_path / "p.jpg", telemetry_path=telemetry)
@@ -127,6 +133,25 @@ def test_descent_at_minimum_altitude_is_blocked(tmp_path):
     assert mission.model_moves((0.0, 0.0, -5.0)) == (0.0, 0.0, 0.0)
 
 
+def test_flat_move_below_minimum_altitude_is_not_reported_as_limited(tmp_path):
+    # Luna-02: the drone overshot to 7.5 m and every flat move was then reported as limited.
+    mission = Mission(tmp_path)
+    mission.photo(7.5)
+
+    move = mission.model_moves((2.0, -1.0, 0.0))
+    assert move == (2.0, -1.0, 0.0)
+    mission.operator(ActionStatus.CONFIRMED, move)
+    mission.executed()
+    assert mission.photo(7.5).observation_text.startswith("Movement successful.\n")
+
+
+def test_descent_below_minimum_altitude_when_already_below_is_blocked(tmp_path):
+    mission = Mission(tmp_path)
+    mission.photo(7.5)
+
+    assert mission.model_moves((1.0, 0.0, -2.0)) == (1.0, 0.0, 0.0)
+
+
 def test_climb_above_maximum_altitude_stops_at_the_maximum(tmp_path):
     mission = Mission(tmp_path)
     mission.photo(100.0)
@@ -143,3 +168,34 @@ def test_operator_warning_is_reported_as_a_blocked_move(tmp_path):
     command = mission.photo(30.0)
 
     assert command.observation_text.startswith("Movement failed: Obstacle collision\nPosition: (0.0, 0.0, 30.0)\nStep: 0/10")
+
+
+def test_move_sent_to_drone_is_rotated_by_photo_heading(tmp_path):
+    import math
+
+    mission = Mission(tmp_path)
+    mission.photo(20.0, yaw=math.pi / 2)  # facing east
+    move = mission.model_moves((0.0, 10.0, 0.0))
+    mission.operator(ActionStatus.CONFIRMED, move)
+
+    sent = published(mission.bus, ExecuteMoveCommand)[-1].move
+    # Image-up is the tail = west; the drone maps N=-y, E=-x, so west 10 m is x=10, y=0.
+    assert sent[0] == pytest.approx(10.0) and sent[1] == pytest.approx(0.0, abs=1e-6)
+
+    # Position reported to the model stays in the model's own (camera) terms.
+    mission.executed()
+    assert "Position: (0.0, 10.0, 20.0)" in mission.photo(20.0, yaw=math.pi / 2).observation_text
+
+
+def test_failed_move_is_retried_with_the_rotated_command(tmp_path):
+    import math
+
+    mission = Mission(tmp_path)
+    mission.photo(20.0, yaw=math.pi)
+    move = mission.model_moves((3.0, 4.0, 0.0))
+    mission.operator(ActionStatus.CONFIRMED, move)
+    first = published(mission.bus, ExecuteMoveCommand)[-1].move
+
+    mission.orchestrator.state = mission.orchestrator.state.FLYING
+    asyncio.run(mission.orchestrator.handle_move_executed(MoveExecuted(drone_id="d", ok=False)))
+    assert published(mission.bus, ExecuteMoveCommand)[-1].move == first

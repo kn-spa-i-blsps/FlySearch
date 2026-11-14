@@ -19,6 +19,28 @@ DEFAULT_SPEED = 1.0
 DEFAULT_VEL_SEND_RATE_HZ = 5.0
 DEFAULT_ACCEL_MAG = 0.5
 DEFAULT_ACCEL_SEND_RATE_HZ = 5.0
+# How long to keep commanding zero velocity after a move. ArduCopter keeps
+# flying the last velocity setpoint for 3 s if nothing new arrives, which in
+# flight logs (Luna-02) showed up as a constant ~3 m overshoot at 1 m/s.
+DEFAULT_STOP_DURATION_S = 1.5
+VELOCITY_TYPE_MASK = 3527
+
+
+def _stop(master: Any, frame: int, tag: str) -> None:
+    """Command zero velocity for DEFAULT_STOP_DURATION_S so the drone brakes and holds."""
+    dt = 1 / DEFAULT_VEL_SEND_RATE_HZ if DEFAULT_VEL_SEND_RATE_HZ > 0 else 0.2
+    t0 = time.time()
+    while time.time() - t0 < DEFAULT_STOP_DURATION_S:
+        try:
+            master.mav.set_position_target_local_ned_send(
+                0, master.target_system, master.target_component, frame,
+                VELOCITY_TYPE_MASK, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            )
+        except Exception as exc:
+            print(f"[{tag}] Stop error:", exc)
+            return
+        time.sleep(dt)
+    print(f"[{tag}] Sent zero velocity for {DEFAULT_STOP_DURATION_S}s (brake)")
 
 
 def _is_guided(master: Any) -> bool:
@@ -108,6 +130,7 @@ def _method_velocity_ned(master: Any, dx: float, dy: float, dz: float) -> bool:
             return False
         time.sleep(dt)
 
+    _stop(master, mavutil.mavlink.MAV_FRAME_LOCAL_NED, "M1")
     time.sleep(1.0)
     return True
 
@@ -164,6 +187,7 @@ def _method_velocity_body(master: Any, dx: float, dy: float, dz: float) -> bool:
 
         time.sleep(dt)
 
+    _stop(master, mavutil.mavlink.MAV_FRAME_BODY_NED, "M2")
     time.sleep(1.0)
     return True
 
@@ -225,6 +249,7 @@ def _method_accel_ned(master: Any, dx: float, dy: float, dz: float) -> bool:
 
         time.sleep(dt)
 
+    _stop(master, mavutil.mavlink.MAV_FRAME_LOCAL_NED, "M3")
     time.sleep(1.0)
     return True
 
