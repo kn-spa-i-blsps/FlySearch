@@ -133,23 +133,23 @@ def test_descent_at_minimum_altitude_is_blocked(tmp_path):
     assert mission.model_moves((0.0, 0.0, -5.0)) == (0.0, 0.0, 0.0)
 
 
-def test_flat_move_below_minimum_altitude_is_not_reported_as_limited(tmp_path):
-    # Luna-02: the drone overshot to 7.5 m and every flat move was then reported as limited.
+def test_flat_move_below_minimum_altitude_climbs_back_to_the_minimum(tmp_path):
+    # Luna-02: the drone overshot to 7.5 m; the next move brings it back to 10 m.
     mission = Mission(tmp_path)
     mission.photo(7.5)
 
     move = mission.model_moves((2.0, -1.0, 0.0))
-    assert move == (2.0, -1.0, 0.0)
+    assert move == (2.0, -1.0, 2.5)
     mission.operator(ActionStatus.CONFIRMED, move)
     mission.executed()
-    assert mission.photo(7.5).observation_text.startswith("Movement successful.\n")
+    assert mission.photo(10.0).observation_text.startswith("Movement limited: Altitude limit")
 
 
-def test_descent_below_minimum_altitude_when_already_below_is_blocked(tmp_path):
+def test_descent_below_minimum_altitude_when_already_below_climbs_back(tmp_path):
     mission = Mission(tmp_path)
     mission.photo(7.5)
 
-    assert mission.model_moves((1.0, 0.0, -2.0)) == (1.0, 0.0, 0.0)
+    assert mission.model_moves((1.0, 0.0, -2.0)) == (1.0, 0.0, 2.5)
 
 
 def test_climb_above_maximum_altitude_stops_at_the_maximum(tmp_path):
@@ -199,3 +199,59 @@ def test_failed_move_is_retried_with_the_rotated_command(tmp_path):
     mission.orchestrator.state = mission.orchestrator.state.FLYING
     asyncio.run(mission.orchestrator.handle_move_executed(MoveExecuted(drone_id="d", ok=False)))
     assert published(mission.bus, ExecuteMoveCommand)[-1].move == first
+
+
+def fly(mission, move, altitude_after):
+    """The model asks for `move`, the operator confirms the (possibly clamped) move,
+    the drone executes it and reports `altitude_after`. Returns the executed move."""
+    executed = mission.model_moves(move)
+    mission.operator(ActionStatus.CONFIRMED, executed)
+    mission.executed()
+    mission.photo(altitude_after)
+    return executed
+
+
+def test_descent_that_ends_exactly_at_the_minimum_is_not_limited(tmp_path):
+    mission = Mission(tmp_path)
+    mission.photo(12.6)
+
+    assert fly(mission, (-3.0, 0.0, -2.6), 10.0) == (-3.0, 0.0, -2.6)
+    assert mission.orchestrator.feedback == "Movement successful."
+
+
+def test_stale_telemetry_after_a_descent_does_not_allow_going_below_the_minimum(tmp_path):
+    # Flight Flora-05: telemetry still showed 12.6m after descending to 10m,
+    # so the next -2m took the drone to 7.8m.
+    mission = Mission(tmp_path)
+    mission.photo(12.6)
+    fly(mission, (-3.0, 0.0, -2.6), 12.6)
+
+    assert fly(mission, (2.0, 0.0, -2.0), 10.0) == (2.0, 0.0, 0.0)
+    assert mission.orchestrator.feedback.startswith("Movement limited: Altitude limit")
+
+
+def test_drone_below_the_minimum_is_sent_back_up(tmp_path):
+    mission = Mission(tmp_path)
+    mission.photo(7.8)
+
+    assert mission.model_moves((-1.0, 0.0, -1.0)) == (-1.0, 0.0, 2.2)
+
+
+def test_barometer_noise_just_below_the_minimum_is_left_alone(tmp_path):
+    mission = Mission(tmp_path)
+    mission.photo(9.5)
+    assert mission.model_moves((2.0, 0.0, 0.0)) == (2.0, 0.0, 0.0)
+
+    mission = Mission(tmp_path)
+    mission.photo(9.5)
+    assert mission.model_moves((0.0, 0.0, -1.0)) == (0.0, 0.0, 0.0)
+
+
+def test_telemetry_is_trusted_again_when_it_stays_steady_over_a_horizontal_move(tmp_path):
+    # A descent that was never executed: telemetry stays at 14.8m.
+    mission = Mission(tmp_path)
+    mission.photo(14.8)
+    fly(mission, (0.0, 0.0, -2.0), 14.8)
+    fly(mission, (-4.0, 2.0, 0.0), 14.8)
+
+    assert mission.model_moves((0.0, 0.0, -4.8)) == (0.0, 0.0, -4.8)

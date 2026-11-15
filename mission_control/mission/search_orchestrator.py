@@ -45,6 +45,14 @@ from mission_control.utils.parsers import get_height_async
 
 logger = get_configured_logger(__name__)
 
+# Rounding slack, so that e.g. 12.6m - 2.6m counts as reaching the 10m limit.
+ALTITUDE_EPSILON_M = 0.05
+# Telemetry and the expected altitude closer than this are taken to agree.
+ALTITUDE_AGREEMENT_M = 0.5
+# Below the minimum by less than this is barometer noise around a descent that
+# stopped at the limit; the drone is only sent back up when it is lower.
+ALTITUDE_NOISE_M = 1.0
+
 
 class MissionState(Enum):
     WAITING_FOR_ACK = auto()
@@ -88,6 +96,13 @@ class SearchOrchestrator:
         # (x right, y toward the top of the image), summed from executed moves.
         self.position_xy: tuple[float, float] = (0.0, 0.0)
         self.last_altitude: float | None = None
+        # Altitude the drone should be at after the last executed move. The drone reports
+        # a move as done after a fixed time, so right after a descent the telemetry can
+        # still show the old altitude (seen in flights: 12.6m reported, 7.8m real one step
+        # later). The limits are checked against the lower of the two readings.
+        self.expected_altitude: float | None = None
+        self.planned_altitude: float | None = None
+        self.altitude_before_move: float | None = None
         self.observation_sent: bool = False
         # Feedback line for the next observation, in the training env wording.
         self.feedback: str = format_move_feedback(True, "", True)
@@ -163,6 +178,7 @@ class SearchOrchestrator:
 
         self.last_altitude = float(await get_height_async(event.telemetry_path))
         self.photo_yaw = read_yaw(event.telemetry_path)
+        self._resync_expected_altitude()
         command = AnalyzePhotoCommand(
             chat_id=self.mission_id,
             photo_path=event.photo_path,
@@ -235,9 +251,28 @@ class SearchOrchestrator:
             self.current_move = event.move
             self.current_drone_move = self._drone_move(event.move)
             self.move_failures = 0
+            base = self.last_altitude
+            if self.expected_altitude is not None:
+                base = min(base, self.expected_altitude)
+            self.planned_altitude = None if base is None else base + event.move[2]
             command = ExecuteMoveCommand(drone_id=self.drone_id, move=self.current_drone_move)
             self.state = MissionState.WAITING_FOR_ACK
             await self.event_bus.publish(command)
+
+    def _resync_expected_altitude(self):
+        """Trusts the telemetry again once it is consistent: it agrees with the expected
+        altitude, or it did not change over a move without a vertical component (so the
+        expected altitude is off because a vertical move was not executed, not stale)."""
+        if self.expected_altitude is None:
+            return
+        agrees = abs(self.last_altitude - self.expected_altitude) <= ALTITUDE_AGREEMENT_M
+        steady = (
+            self.altitude_before_move is not None
+            and abs(self.current_move[2]) < ALTITUDE_EPSILON_M
+            and abs(self.last_altitude - self.altitude_before_move) <= ALTITUDE_AGREEMENT_M
+        )
+        if agrees or steady:
+            self.expected_altitude = None
 
     def _drone_move(self, move):
         """Rotate the VLM's camera-frame move by the heading at photo time, so the drone
@@ -256,29 +291,34 @@ class SearchOrchestrator:
 
     def _clamp_to_altitude_limits(self, move):
         """The VLM sometimes ignores the altitude limits, so a vertical move that would
-        end outside them is shortened to stop exactly at the limit. The model is told
-        about it in the next observation, the same way the training env reports it."""
+        end outside them is changed to stop exactly at the limit (or to climb back to the
+        minimum if the drone is already below it). The model is told about it in the next
+        observation, the same way the training env reports it."""
         self.pending_feedback = format_move_feedback(True, "", True)
         if move is None or self.last_altitude is None:
             return move
 
         x, y, z = move
-        altitude = self.last_altitude
-        target = altitude + z
-        if self.min_altitude <= target <= self.max_altitude:
-            return move
-        # Already outside the limits (e.g. the drone overshot): a move that holds
-        # altitude or heads back toward the allowed range is not limited.
-        if (target < self.min_altitude and z >= 0) or (target > self.max_altitude and z <= 0):
-            return move
+        readings = [self.last_altitude]
+        if self.expected_altitude is not None:
+            readings.append(self.expected_altitude)
+        lowest, highest = min(readings), max(readings)
 
-        if target < self.min_altitude:
-            clamped_z = min(0.0, self.min_altitude - altitude)
-        else:
-            clamped_z = max(0.0, self.max_altitude - altitude)
+        # Vertical moves that end exactly at the limits.
+        floor_z = self.min_altitude - lowest
+        if lowest >= self.min_altitude - ALTITUDE_NOISE_M:
+            floor_z = min(floor_z, 0.0)
+        ceiling_z = self.max_altitude - highest
+        if highest <= self.max_altitude + ALTITUDE_NOISE_M:
+            ceiling_z = max(ceiling_z, 0.0)
+        if floor_z - ALTITUDE_EPSILON_M <= z <= ceiling_z + ALTITUDE_EPSILON_M:
+            return move
+        clamped_z = round(min(max(z, floor_z), ceiling_z), 2)
+
         logger.warning(
-            f"[SEARCH] Move {move} would end at {target:.1f}m, outside the altitude limits "
-            f"[{self.min_altitude:.1f}m, {self.max_altitude:.1f}m]. Clamping z to {clamped_z:.1f}."
+            f"[SEARCH] Move {move} from {lowest:.1f}m (telemetry {self.last_altitude:.1f}m) "
+            f"would leave the altitude limits [{self.min_altitude:.1f}m, {self.max_altitude:.1f}m]. "
+            f"Changing z to {clamped_z:.1f}."
         )
         clamped = (x, y, clamped_z)
         reason = altitude_limit_reason(self.min_altitude, self.max_altitude)
@@ -318,6 +358,8 @@ class SearchOrchestrator:
         x, y = self.position_xy
         self.position_xy = (x + self.current_move[0], y + self.current_move[1])
         self.feedback = self.pending_feedback
+        self.altitude_before_move = self.last_altitude
+        self.expected_altitude = self.planned_altitude
 
         self.state = MissionState.WAITING_FOR_DRONE
         await self.event_bus.publish(
