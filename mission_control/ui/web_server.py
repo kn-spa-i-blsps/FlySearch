@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 import uuid
+import json
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -91,6 +92,11 @@ class WebServer:
         os.makedirs(self.config.upload_dir, exist_ok=True)
         self.app.mount(
             "/uploads", StaticFiles(directory=self.config.upload_dir), name="uploads"
+        )
+        
+        # Path to last mission settings.
+        self.mission_defaults_file = (
+            Path(__file__).resolve().parents[2] / "mission_defaults.json"
         )
 
         # Endpoint registers.
@@ -243,9 +249,51 @@ class WebServer:
 
         # Publish the event to the Orchestrator
         await self.event_bus.publish(event)
+        
+        # Save mission settings as defaults for the next mission
+        try:
+            self._save_mission_defaults({
+                "drone_id": req.drone_id,
+                "prompt_type": req.prompt_type,
+                "search_object": req.search_object,
+                "glimpses": req.glimpses,
+                "area": req.area,
+                "min_altitude": req.min_altitude,
+                "max_altitude": req.max_altitude,
+        })
+        except OSError as e:
+            logger.error("Could not save mission defaults: %s", e)
 
         # Respond with the URL to the new mission's dashboard
         return {"status": "ok", "url": f"/{req.mission_id}"}
+    
+    def _load_mission_defaults(self) -> dict:
+        defaults = {
+            "drone_id": "drone_01",
+            "prompt_type": "FS-1",
+            "search_object": "",
+            "glimpses": 10,
+            "area": 80,
+            "min_altitude": 10,
+            "max_altitude": 120,
+        }
+
+        try:
+            with self.mission_defaults_file.open("r", encoding="utf-8") as file:
+                saved = json.load(file)
+            if not isinstance(saved, dict):
+                raise ValueError("Mission defaults must be a JSON object.")
+            return {**defaults, **saved}
+        except FileNotFoundError:
+            return defaults
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            logger.warning("Could not load mission defaults: %s", e)
+        return defaults
+
+
+    def _save_mission_defaults(self, values: dict) -> None:
+        with self.mission_defaults_file.open("w", encoding="utf-8") as file:
+            json.dump(values, file, indent=4)
     
     async def api_change_vlm_model(self, req: ChangeVlmModelRequest):
         """Endpoint: POST /api/vlm/model"""
@@ -346,6 +394,12 @@ class WebServer:
             active_missions_html = (
                 '<p class="empty-state">No active missions running at the moment.</p>'
             )
+            
+        mission_defaults = self._load_mission_defaults()
+        mission_defaults_json = json.dumps(mission_defaults).replace(
+            "<", "\\u003c"
+        ).replace(">", "\\u003e").replace("&", "\\u0026")
+        
         # TODO: move to additional file
         html = f"""
         <!DOCTYPE html>
@@ -411,7 +465,7 @@ class WebServer:
                         </div>
                         <div class="form-group">
                             <label>Drone ID</label>
-                            <input type="text" id="drone_id" required placeholder="e.g., drone_01">
+                            <input type="text" id="drone_id" required>
                         </div>
                         <div class="form-group">
                             <label>Search Pattern (Prompt Type)</label>
@@ -422,23 +476,23 @@ class WebServer:
                         </div>
                         <div class="form-group">
                             <label>Target Object</label>
-                            <input type="text" id="search_object" required placeholder="e.g., lost hiker">
+                            <input type="text" id="search_object" required>
                         </div>
                         <div class="form-group">
                             <label>Max Moves (Glimpses)</label>
-                            <input type="number" id="glimpses" value="10" required>
+                            <input type="number" id="glimpses" required>
                         </div>
                         <div class="form-group" id="area-group">
                             <label>Search Area (m x m)</label>
-                            <input type="number" id="area" value="80">
+                            <input type="number" id="area">
                         </div>
                         <div class="form-group">
                             <label>Min Altitude (m)</label>
-                            <input type="number" id="min_altitude" value="10" required>
+                            <input type="number" id="min_altitude" required>
                         </div>
                         <div class="form-group">
                             <label>Max Altitude (m)</label>
-                            <input type="number" id="max_altitude" value="120" required>
+                            <input type="number" id="max_altitude" required>
                         </div>
                         <button type="submit">Launch Mission</button>
                     </form>
@@ -457,11 +511,12 @@ class WebServer:
                             <select id="model_backend">
                                 <option value="openai">OpenAI</option>
                                 <option value="gemini">Gemini</option>
+                                <option value="vllm">vLLM</option>
                             </select>
                         </div>
                         <div class="form-group">
                             <label>Model name</label>
-                            <input type="text" id="model_name" required placeholder="e.g., oai-gpt-4o">
+                            <select id="model_name"></select>
                         </div>
                         <button type="submit">Change Model</button>
                     </form>
@@ -501,6 +556,18 @@ class WebServer:
                     const type = document.getElementById('prompt_type').value;
                     document.getElementById('area-group').style.display = type === 'FS-1' ? 'block' : 'none';
                 }}
+                
+                const missionDefaults = {mission_defaults_json};
+
+                document.getElementById("drone_id").value = missionDefaults.drone_id;
+                document.getElementById("prompt_type").value = missionDefaults.prompt_type;
+                document.getElementById("search_object").value = missionDefaults.search_object;
+                document.getElementById("glimpses").value = missionDefaults.glimpses;
+                document.getElementById("area").value = missionDefaults.area;
+                document.getElementById("min_altitude").value = missionDefaults.min_altitude;
+                document.getElementById("max_altitude").value = missionDefaults.max_altitude;
+
+                toggleArea();
 
                 document.getElementById('mission-form').addEventListener('submit', async (e) => {{
                     e.preventDefault();
@@ -531,13 +598,42 @@ class WebServer:
                     }}
                 }});
                 
+                const modelOptions = {{
+                    openai: ["gpt-6-luna"],
+                    gemini: ["gemini-3.5-flash"],
+                    vllm: [
+                        "flylora",
+                        "Qwen/Qwen3.5-9B"
+                    ]
+                }};
+
+                function updateModelOptions() {{
+                    const backend = document.getElementById("model_backend").value;
+                    const modelSelect = document.getElementById("model_name");
+
+                    modelSelect.innerHTML = "";
+
+                    modelOptions[backend].forEach(modelName => {{
+                        const option = document.createElement("option");
+                        option.value = modelName;
+                        option.textContent = modelName;
+                        modelSelect.appendChild(option);
+                    }});
+                }}
+
+                document.getElementById("model_backend")
+                    .addEventListener("change", updateModelOptions);
+
+                updateModelOptions();
+                
                 document.getElementById("vlm-form").addEventListener("submit", async (e) => {{
                     e.preventDefault();
 
-                    const model_backend = document.getElementById("model_backend").value;
-                    const model_name = document.getElementById("model_name").value.trim();
+                    const selectedBackend = document.getElementById("model_backend").value;
+                    const model_backend = selectedBackend === "vllm" ? "openai" : selectedBackend;
+                    const model_name = document.getElementById("model_name").value;
+                    
                     const message = document.getElementById("vlm-message");
-
                     message.textContent = "Changing VLM model...";
 
                     try {{

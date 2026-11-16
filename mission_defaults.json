@@ -1,0 +1,9 @@
+{
+    "drone_id": "drone_01",
+    "prompt_type": "FS-1",
+    "search_object": "",
+    "glimpses": 10,
+    "area": 80,
+    "min_altitude": 10,
+    "max_altitude": 120
+}
